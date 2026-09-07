@@ -182,7 +182,11 @@ public static class RamenLayoutBuilder
         // 이 그룹 자체에는 Image를 붙이지 않는다. 붙이면 화면 전체를 덮어 모든 클릭을 삼킨다.
         BuildCursor(CreateGroup("DragLayer", canvas));
 
-        EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+        // 더티 표시만 하면 디스크 파일은 그대로라, 이 상태로 커밋하면 옛 씬이 올라간다.
+        // 실제로 한 번 그렇게 커밋돼서 클론 시 주문 시스템이 없는 씬이 나갔다. 그래서 바로 저장한다.
+        Scene scene = SceneManager.GetActiveScene();
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
         Selection.activeGameObject = canvas.gameObject;
         Debug.Log("[RamenLayoutBuilder] " + SceneManager.GetActiveScene().name +
                   " 씬에 조리 UI를 생성했습니다. 슬롯 " + Slots.Length + "개.");
