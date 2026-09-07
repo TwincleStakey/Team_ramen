@@ -7,7 +7,7 @@ public class RecipeGenerator
     public Dictionary<IngredientType, int> GenerateTargetRecipe(CustomerOrder order)
     {
         // 1. 기본 레시피 가져와서 타깃 주문 딕셔너리에 해당 재료 및 개수 넣기
-        Dictionary<IngredientType, int> targetRecipe = GetBaseRecipe(order.ramenType);
+        Dictionary<IngredientType, int> targetRecipe =  GetBaseRecipe(order.ramenType);
 
         // 2. 추가 주문 적용
         if (order.requests != null)
