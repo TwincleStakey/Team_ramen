@@ -3,16 +3,16 @@ using System.Text;
 using UnityEngine;
 
 /// <summary>
-/// 씬에 하나만 존재하는 진입점. 지금은 제출 내용을 로그로만 확인한다.
+/// 씬에 하나만 존재하는 진입점.
+/// 그릇이 제출되면 B의 OrderManager로 넘겨 채점시킨다.
 /// </summary>
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
 
-    // ── B 연결 자리 ───────────────────────────────────────────────
-    // 9/8 통합 때 B의 OrderManager를 여기에 꽂는다.
-    // [SerializeField] private OrderManager orderManager;
-    // ─────────────────────────────────────────────────────────────
+    // 채점을 맡는 B의 컴포넌트. 인스펙터에서 꽂아 두면 그걸 쓰고,
+    // 비어 있으면 제출 시점에 씬에서 한 번 찾는다.
+    [SerializeField] private OrderManager orderManager;
 
     private void Awake()
     {
@@ -46,8 +46,18 @@ public class GameManager : MonoBehaviour
         // 그래서 폐기분 로그는 Bowl이 제출 직전에 직접 남긴다.
         Debug.Log("[제출] 그릇: " + Describe(ramenState.selectedIngredients));
 
-        // TODO(통합): B가 EvaluateRamen을 만들면 여기서 호출한다.
-        //             현재 OrderManager에는 CreateOrder만 있고 평가 진입점이 없다.
+        if (orderManager == null) orderManager = FindFirstObjectByType<OrderManager>();
+
+        if (orderManager == null)
+        {
+            // 주문 화면(B)이 아직 씬에 없으면 채점할 상대가 없다. 조리만 확인하는 단계.
+            Debug.LogWarning("[GameManager] 씬에 OrderManager가 없어 채점을 건너뜁니다.");
+
+            return;
+        }
+
+        int price = orderManager.EvaluateRamen(ramenState);
+        Debug.Log("[정산] 판매 금액 " + price.ToString("N0") + "원");
     }
 
     private static string Describe(Dictionary<IngredientType, int> dict)
