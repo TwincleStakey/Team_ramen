@@ -1,18 +1,24 @@
 ﻿using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
+using UnityEngine.UI;
 
 /// <summary>
 /// 씬에 하나만 존재하는 진입점.
-/// 그릇이 제출되면 B의 OrderManager로 넘겨 채점시킨다.
+/// 손님을 한 명씩 받아 주문을 띄우고, 그릇이 제출되면 B의 OrderManager로 넘겨 채점한다.
+/// 아직 주문·정산 화면이 없어서 조리 화면 위에 글자로만 보여 준다.
 /// </summary>
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
 
-    // 채점을 맡는 B의 컴포넌트. 인스펙터에서 꽂아 두면 그걸 쓰고,
-    // 비어 있으면 제출 시점에 씬에서 한 번 찾는다.
+    // 아래 셋은 RamenLayoutBuilder가 씬을 만들 때 꽂아 준다.
     [SerializeField] private OrderManager orderManager;
+    [SerializeField] private Text orderText;
+    [SerializeField] private Text revenueText;
+
+    /// <summary>지금까지 판 금액의 합. 재료비가 없어져서 매출이 곧 성적표다. (기획 확정)</summary>
+    private int totalRevenue;
 
     private void Awake()
     {
@@ -24,6 +30,12 @@ public class GameManager : MonoBehaviour
         Instance = this;
     }
 
+    private void Start()
+    {
+        RefreshRevenue();
+        NextCustomer();
+    }
+
     private void OnDestroy()
     {
         if (Instance == this) Instance = null;
@@ -31,7 +43,7 @@ public class GameManager : MonoBehaviour
 
     /// <summary>
     /// 그릇을 제출 영역에 놓으면 호출된다.
-    /// 지금은 로그만 남기고, 통합 후에는 B의 정산 코드로 넘긴다.
+    /// 채점하고 매출에 더한 뒤 바로 다음 손님을 받는다.
     /// </summary>
     public void SubmitRamen(RamenState ramenState)
     {
@@ -46,18 +58,49 @@ public class GameManager : MonoBehaviour
         // 그래서 폐기분 로그는 Bowl이 제출 직전에 직접 남긴다.
         Debug.Log("[제출] 그릇: " + Describe(ramenState.selectedIngredients));
 
-        if (orderManager == null) orderManager = FindFirstObjectByType<OrderManager>();
-
-        if (orderManager == null)
+        if (!EnsureOrderManager())
         {
-            // 주문 화면(B)이 아직 씬에 없으면 채점할 상대가 없다. 조리만 확인하는 단계.
             Debug.LogWarning("[GameManager] 씬에 OrderManager가 없어 채점을 건너뜁니다.");
-
             return;
         }
 
         int price = orderManager.EvaluateRamen(ramenState);
-        Debug.Log("[정산] 판매 금액 " + price.ToString("N0") + "원");
+        totalRevenue += price;
+        RefreshRevenue();
+
+        Debug.Log("[정산] 판매 금액 " + price.ToString("N0") + "원 / 누적 매출 " + totalRevenue.ToString("N0") + "원");
+
+        NextCustomer();
+    }
+
+    /// <summary>다음 손님의 주문을 만들어 화면에 띄운다.</summary>
+    private void NextCustomer()
+    {
+        if (!EnsureOrderManager())
+        {
+            SetOrderText("(주문 시스템이 씬에 없습니다)");
+            return;
+        }
+
+        orderManager.CreateOrder();
+        SetOrderText(orderManager.CurrentDialogue);
+    }
+
+    /// <summary>인스펙터가 비어 있으면 씬에서 한 번 찾아 둔다.</summary>
+    private bool EnsureOrderManager()
+    {
+        if (orderManager == null) orderManager = FindFirstObjectByType<OrderManager>();
+        return orderManager != null;
+    }
+
+    private void SetOrderText(string text)
+    {
+        if (orderText != null) orderText.text = text;
+    }
+
+    private void RefreshRevenue()
+    {
+        if (revenueText != null) revenueText.text = "누적 매출 " + totalRevenue.ToString("N0") + "원";
     }
 
     private static string Describe(Dictionary<IngredientType, int> dict)

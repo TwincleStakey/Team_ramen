@@ -48,6 +48,14 @@ public static class RamenLayoutBuilder
     private static readonly Color InkColor = new Color(0.16f, 0.16f, 0.16f);   // 베이지 배경 위 글자색
     private const int SlotLabelSize = 22;
 
+    /// <summary>상단 바에서 만들어 두고 나중에 다른 것과 연결해야 하는 것들.</summary>
+    private class TopBarRefs
+    {
+        public Image Discard;      // 그릇이 생긴 뒤 onClick을 붙인다
+        public Text OrderText;     // GameManager가 손님 대사를 써 넣는다
+        public Text RevenueText;   // GameManager가 누적 매출을 써 넣는다
+    }
+
     /// <summary>슬롯 하나의 정의. 좌표표를 그대로 코드로 옮긴 것.</summary>
     private class SlotDef
     {
@@ -159,12 +167,16 @@ public static class RamenLayoutBuilder
 
         // 순서가 곧 그리기 순서다. 배경이 맨 처음, DragLayer가 맨 마지막.
         BuildBackground(canvas);
-        Image discardButton = BuildTopBar(canvas, font);
+        TopBarRefs topBar = BuildTopBar(canvas, font);
         BuildSlots(CreateGroup("Slots", canvas), font);
         Bowl bowl = BuildBowl(canvas);
 
         // 폐기 버튼은 그릇보다 먼저 만들어지므로 둘이 다 생긴 뒤에 연결한다.
-        WireDiscardButton(discardButton, bowl);
+        WireDiscardButton(topBar.Discard, bowl);
+
+        // 주문을 만들어 줄 B의 컴포넌트들을 씬에 올리고 GameManager와 잇는다.
+        OrderManager orderManager = EnsureOrderSystem();
+        WireGameManager(orderManager, topBar);
 
         // DragLayer는 반드시 마지막. 그래야 드래그 고스트와 커서가 항상 모든 UI 위에 그려진다.
         // 이 그룹 자체에는 Image를 붙이지 않는다. 붙이면 화면 전체를 덮어 모든 클릭을 삼킨다.
@@ -211,8 +223,8 @@ public static class RamenLayoutBuilder
         img.raycastTarget = false;   // 배경이 클릭을 먹지 않도록
     }
 
-    /// <summary>폐기 버튼 이미지를 돌려준다. 그릇이 생긴 뒤 onClick을 연결해야 하기 때문.</summary>
-    private static Image BuildTopBar(Transform canvas, Font font)
+    /// <summary>나중에 연결해야 하는 것들을 묶어 돌려준다.</summary>
+    private static TopBarRefs BuildTopBar(Transform canvas, Font font)
     {
         Transform bar = CreateGroup("TopBar", canvas);
         Sprite panel = PanelSprite();
@@ -230,15 +242,20 @@ public static class RamenLayoutBuilder
         Undo.AddComponent<SubmitZone>(submit.gameObject);
         CreateLabel(submit.transform, "제출하기", 30, InkColor, font);
 
-        // 누적 매출 (자리만). 재료비와 자본은 기획 확정으로 제거되어 누적 매출만 표시한다.
+        // 누적 매출. 재료비와 자본은 기획 확정으로 제거되어 누적 매출만 표시한다.
         Image revenue = CreateImage("RevenuePanel", bar, TopRight, new Vector2(-250f, -55f), new Vector2(280f, 60f), Hex("#FFFFFF"), panel);
-        CreateLabel(revenue.transform, "누적 매출 0원", 26, InkColor, font);
+        Text revenueText = CreateLabel(revenue.transform, "누적 매출 0원", 26, InkColor, font);
 
         // 폐기 버튼. onClick은 그릇이 생긴 뒤 WireDiscardButton에서 붙인다.
         Image discard = CreateImage("DiscardButton", bar, TopRight, new Vector2(-60f, -55f), new Vector2(90f, 70f), Hex("#7BB661"), panel);
         CreateLabel(discard.transform, "폐기", 26, InkColor, font);
 
-        return discard;
+        // 손님 대사 줄. 주문 화면(B)이 아직 없어서 조리 화면 위에 글자로만 띄운다.
+        // 좌우 타래통·재료통과 겹치지 않도록 폭을 800으로 맞췄다.
+        Image order = CreateImage("OrderPanel", bar, TopCenter, new Vector2(0f, -135f), new Vector2(800f, 60f), Hex("#FFF8E7"), panel);
+        Text orderText = CreateLabel(order.transform, "손님을 기다리는 중...", 26, InkColor, font);
+
+        return new TopBarRefs { Discard = discard, OrderText = orderText, RevenueText = revenueText };
     }
 
     /// <summary>
@@ -399,6 +416,63 @@ public static class RamenLayoutBuilder
         {
             Undo.AddComponent<InputSystemUIInputModule>(es.gameObject);
         }
+    }
+
+    /// <summary>
+    /// 주문을 만들어 주는 B의 컴포넌트들을 한 오브젝트에 올리고 서로 물려 준다.
+    /// 전부 MonoBehaviour라 씬에 없으면 주문이 아예 생성되지 않는다.
+    /// 이미 있으면 인스펙터에서 손댄 값이 날아가지 않도록 그대로 둔다.
+    /// </summary>
+    private static OrderManager EnsureOrderSystem()
+    {
+        OrderManager existing = Object.FindFirstObjectByType<OrderManager>();
+        if (existing != null) return existing;
+
+        var go = new GameObject("OrderSystem",
+                                typeof(CustomerOrderGenerator),
+                                typeof(CustomerDialogueGenerator),
+                                typeof(RamenCalculator),
+                                typeof(OrderManager));
+        Undo.RegisterCreatedObjectUndo(go, UndoLabel);
+
+        var orderGenerator = go.GetComponent<CustomerOrderGenerator>();
+        var dialogueGenerator = go.GetComponent<CustomerDialogueGenerator>();
+        var calculator = go.GetComponent<RamenCalculator>();
+        var manager = go.GetComponent<OrderManager>();
+
+        // 셋 다 private [SerializeField]라 직접 대입할 수 없다.
+        SetPrivateReference(dialogueGenerator, "orderGenerator", orderGenerator);
+        SetPrivateReference(manager, "dialogueGenerator", dialogueGenerator);
+        SetPrivateReference(manager, "ramenCalculator", calculator);
+
+        return manager;
+    }
+
+    /// <summary>GameManager가 주문·표시할 글자를 찾을 수 있도록 꽂아 준다.</summary>
+    private static void WireGameManager(OrderManager orderManager, TopBarRefs topBar)
+    {
+        GameManager gameManager = Object.FindFirstObjectByType<GameManager>();
+        if (gameManager == null) return;
+
+        SetPrivateReference(gameManager, "orderManager", orderManager);
+        SetPrivateReference(gameManager, "orderText", topBar.OrderText);
+        SetPrivateReference(gameManager, "revenueText", topBar.RevenueText);
+    }
+
+    /// <summary>private [SerializeField] 칸에 값을 넣는다. 인스펙터로 꽂는 것과 같은 결과.</summary>
+    private static void SetPrivateReference(Object target, string fieldName, Object value)
+    {
+        var serialized = new SerializedObject(target);
+        SerializedProperty property = serialized.FindProperty(fieldName);
+
+        if (property == null)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] " + target.GetType().Name + "." + fieldName + " 을(를) 찾지 못했습니다.");
+            return;
+        }
+
+        property.objectReferenceValue = value;
+        serialized.ApplyModifiedPropertiesWithoutUndo();
     }
 
     private static void EnsureGameManager()
