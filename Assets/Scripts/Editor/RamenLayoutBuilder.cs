@@ -124,6 +124,8 @@ public static class RamenLayoutBuilder
         public TextMeshProUGUI Revenue;
         public TextMeshProUGUI Dialogue;
         public Button Start;
+        public Image StartImage;
+        public TextMeshProUGUI StartLabel;
     }
 
     /// <summary>5일 완료 화면에서 FinalResultUI에 꽂아 줘야 하는 것들.</summary>
@@ -847,28 +849,30 @@ public static class RamenLayoutBuilder
 
         // 손님 대화창. 그림에 꼬리가 붙어 있어 따로 그리지 않는다.
         // 53:38 비율을 지킨다. 꼬리가 오른쪽으로 약 7/53만큼 튀어나와 있어 글자 자리는 그만큼 좁다.
-        Image bubble = CreateImage("Bubble", root, Center, new Vector2(-520f, 150f), new Vector2(760f, 545f),
+        // 대사를 한 줄씩 넘기므로 상자는 한두 줄만 들어가면 된다.
+        Image bubble = CreateImage("Bubble", root, Center, new Vector2(-560f, 190f), new Vector2(560f, 402f),
                                    Color.white, SpeechBubbleSprite());
         bubble.preserveAspect = true;
 
         // 대사는 페르소나·난이도에 따라 6~8줄까지 간다. 글자 크기를 자동으로 줄여
         // 상자를 넘지 않게 하고, 버튼 자리는 따로 비워 둔다.
-        var dialogue = CreateTmpText("DialogueText", bubble.transform, Center, new Vector2(-50f, 55f),
-                                     new Vector2(580f, 300f), "손님을 기다리는 중...", 30f, tmpFont);
-        dialogue.alignment = TextAlignmentOptions.TopLeft;
+        var dialogue = CreateTmpText("DialogueText", bubble.transform, Center, new Vector2(-35f, 45f),
+                                     new Vector2(400f, 150f), "손님을 기다리는 중...", 28f, tmpFont);
+        dialogue.alignment = TextAlignmentOptions.Center;
         dialogue.enableAutoSizing = true;
-        dialogue.fontSizeMin = 14f;
-        dialogue.fontSizeMax = 30f;
+        dialogue.fontSizeMin = 16f;
+        dialogue.fontSizeMax = 28f;
 
         // 재료 이름표와 같은 판을 쓰되 색으로 구분한다.
-        Image startImage = CreateImage("StartButton", bubble.transform, Center, new Vector2(130f, -185f),
-                                       new Vector2(290f, 76f), Hex("#E8896B"),
+        // 색과 글자는 OrderScreenUI가 남은 줄 수에 따라 [다음]과 [조리 시작]으로 바꾼다.
+        Image startImage = CreateImage("StartButton", bubble.transform, Center, new Vector2(-30f, -110f),
+                                       new Vector2(240f, 66f), Hex("#7BA7C7"),
                                        LoadSlicedSprite(UiDir + "TextBox.png", new Vector4(8f, 8f, 8f, 8f)));
         var start = Undo.AddComponent<Button>(startImage.gameObject);
         start.targetGraphic = startImage;
         StyleButton(start);
         var startLabel = CreateTmpText("Label", startImage.transform, Center, Vector2.zero,
-                                       new Vector2(280f, 60f), "조리 시작  →", 34f, tmpFont);
+                                       new Vector2(230f, 52f), "다음  →", 28f, tmpFont);
         startLabel.color = Color.white;
 
         Image dayPanel = CreateImage("DayTimePanel", root, TopLeft, new Vector2(360f, -60f),
@@ -889,7 +893,9 @@ public static class RamenLayoutBuilder
             DayTime = dayTime,
             Revenue = revenue,
             Dialogue = dialogue,
-            Start = start
+            Start = start,
+            StartImage = startImage,
+            StartLabel = startLabel
         };
     }
 
@@ -1254,6 +1260,8 @@ public static class RamenLayoutBuilder
             SetPrivateReference(orderScreenUI, "revenueText", orderScreen.Revenue);
             SetPrivateReference(orderScreenUI, "dialogueText", orderScreen.Dialogue);
             SetPrivateReference(orderScreenUI, "startButton", orderScreen.Start);
+            SetPrivateReference(orderScreenUI, "startButtonImage", orderScreen.StartImage);
+            SetPrivateReference(orderScreenUI, "startButtonLabel", orderScreen.StartLabel);
         }
 
         // 정보 패널(? 버튼). 이것도 root를 끄는 쪽이라 패널 바깥에 붙여야 한다.
