@@ -64,13 +64,11 @@ public static class RamenLayoutBuilder
 
     // 이름표 판. 글자가 가장 긴 "목이버섯"이 들어가는 크기로 고정한다.
     /// <summary>시간·수익 판 왼쪽 아이콘이 차지하는 폭. 글자를 이만큼 오른쪽으로 민다.</summary>
-    private const float PanelIconPad = 130f;
+    private const float PanelIconPad = 110f;
 
-    // 아이콘이 박힌 판은 3배로는 아이콘이 너무 작다. 4배로 키운다.
-    // 판 높이를 원본 내용 높이 x 배수와 정확히 맞춰야 아이콘이 세로로 늘어나지 않는다.
-    private const float PanelScale = 4f;
-    private const float TimePanelHeight = 80f;    // 원본 내용 20px x 4
-    private const float MoneyPanelHeight = 92f;   // 원본 내용 23px x 4
+    // 막대는 아이콘이 빠져 있어 마음껏 늘려도 된다. 높이는 두 판을 같게 맞춘다.
+    private const float PanelScale = 3f;
+    private const float PanelBarHeight = 58f;
 
     private const float LabelBoxWidth = 150f;
     private const float LabelBoxHeight = 46f;
@@ -364,10 +362,11 @@ public static class RamenLayoutBuilder
                                  Color.white, icons.Help);
 
         // 날짜와 영업 시각. 왼쪽에 시계 아이콘이 붙은 판이라 글자를 그만큼 오른쪽으로 민다.
-        Image day = CreateImage("DayPanel", bar, TopLeft, new Vector2(280f, -62f), new Vector2(340f, TimePanelHeight),
-                                Color.white, TimePanelSprite(), PanelScale);
+        Image day = CreateImage("DayPanel", bar, TopLeft, new Vector2(270f, -58f), new Vector2(330f, PanelBarHeight),
+                                Color.white, TimeBarSprite(), PanelScale);
+        AttachPanelIcon(day, TimeIconSprite(), new Vector2(90f, 100f));
         Text dayText = CreateText("Label", day.transform, Center, new Vector2(PanelIconPad * 0.5f, 0f),
-                                  new Vector2(340f - PanelIconPad, 50f), "1일차", 29, PopupInkColor, font,
+                                  new Vector2(330f - PanelIconPad, 46f), "1일차", 27, PopupInkColor, font,
                                   TextAnchor.MiddleCenter);
 
         // 제출 영역. 와이어프레임의 회색 가로 바.
@@ -377,10 +376,11 @@ public static class RamenLayoutBuilder
         CreateLabel(submit.transform, "제출하기", 33, PopupInkColor, font);
 
         // 누적 매출. 재료비와 자본은 기획 확정으로 제거되어 누적 매출만 표시한다.
-        Image revenue = CreateImage("RevenuePanel", bar, TopRight, new Vector2(-330f, -62f), new Vector2(420f, MoneyPanelHeight),
-                                    Color.white, MoneyPanelSprite(), PanelScale);
+        Image revenue = CreateImage("RevenuePanel", bar, TopRight, new Vector2(-320f, -58f), new Vector2(400f, PanelBarHeight),
+                                    Color.white, MoneyBarSprite(), PanelScale);
+        AttachPanelIcon(revenue, MoneyIconSprite(), new Vector2(90f, 90f));
         Text revenueText = CreateText("Label", revenue.transform, Center, new Vector2(PanelIconPad * 0.5f, 0f),
-                                      new Vector2(420f - PanelIconPad, 50f), "누적 수익 : 0₩", 27, PopupInkColor, font,
+                                      new Vector2(400f - PanelIconPad, 46f), "누적 수익 : 0₩", 26, PopupInkColor, font,
                                       TextAnchor.MiddleCenter);
 
         // 폐기 버튼. onClick은 그릇이 생긴 뒤 WireDiscardButton에서 붙인다.
@@ -690,18 +690,43 @@ public static class RamenLayoutBuilder
         return new OrderNoteRefs { Root = root.gameObject, Dialogue = dialogue };
     }
 
-    /// <summary>시간 패널. 왼쪽 시계 아이콘이 늘어나지 않도록 왼쪽 테두리를 넉넉히 잡았다.</summary>
-    private static Sprite TimePanelSprite()
+    // 시간·수익 판은 막대와 아이콘을 따로 잘라 쓴다.
+    // 한 장으로 9-슬라이스하면 아이콘이 판 높이에 묶여 작게만 나온다.
+    // 막대는 늘어나도 되는 둥근 사각형이라 마음껏 늘리고, 아이콘은 원본 비율로 크게 얹는다.
+
+    private static Sprite TimeBarSprite()
     {
         return LoadCroppedSprite(UiDir + "Time.png", "TimeBar",
-                                 new Rect(8f, 27f, 48f, 20f), new Vector4(13f, 6f, 6f, 6f));
+                                 new Rect(19f, 27f, 37f, 16f), new Vector4(6f, 5f, 6f, 5f));
     }
 
-    /// <summary>수익 패널. 원 표시가 들어간 쪽이다.</summary>
-    private static Sprite MoneyPanelSprite()
+    private static Sprite TimeIconSprite()
+    {
+        return LoadCroppedSprite(UiDir + "Time.png", "TimeIcon",
+                                 new Rect(10f, 37f, 9f, 10f), Vector4.zero);
+    }
+
+    private static Sprite MoneyBarSprite()
     {
         return LoadCroppedSprite(UiDir + "Money_UI2.png", "MoneyBar",
-                                 new Rect(7f, 16f, 50f, 23f), new Vector4(12f, 7f, 6f, 7f));
+                                 new Rect(17f, 16f, 40f, 20f), new Vector4(6f, 6f, 6f, 6f));
+    }
+
+    private static Sprite MoneyIconSprite()
+    {
+        return LoadCroppedSprite(UiDir + "Money_UI2.png", "MoneyIcon",
+                                 new Rect(8f, 30f, 9f, 9f), Vector4.zero);
+    }
+
+    /// <summary>판 왼쪽 끝에 아이콘을 크게 얹는다. 판보다 커서 위아래로 튀어나온다.</summary>
+    private static void AttachPanelIcon(Image panel, Sprite icon, Vector2 size)
+    {
+        if (icon == null) return;
+
+        float x = -panel.rectTransform.sizeDelta.x * 0.5f + size.x * 0.35f;
+        Image image = CreateImage("Icon", panel.transform, Center, new Vector2(x, 4f), size, Color.white, icon);
+        image.preserveAspect = true;
+        image.raycastTarget = false;
     }
 
     /// <summary>
@@ -728,12 +753,18 @@ public static class RamenLayoutBuilder
             return null;
         }
 
-        bool needsSlice = importer.spriteImportMode != SpriteImportMode.Multiple
-                          || importer.spritesheet == null
-                          || importer.spritesheet.Length != 1
-                          || importer.spritesheet[0].rect != rect;
+        // 한 파일에서 조각을 여럿 잘라 쓸 수 있어야 한다. 이미 있는 조각은 두고 필요한 것만 더한다.
+        var slices = new System.Collections.Generic.List<SpriteMetaData>();
+        if (importer.spriteImportMode == SpriteImportMode.Multiple && importer.spritesheet != null)
+        {
+            slices.AddRange(importer.spritesheet);
+        }
+
+        int found = slices.FindIndex(m => m.name == spriteName);
+        bool needsSlice = found < 0 || slices[found].rect != rect || slices[found].border != border;
 
         if (needsSlice
+            || importer.spriteImportMode != SpriteImportMode.Multiple
             || importer.filterMode != FilterMode.Point
             || importer.textureCompression != TextureImporterCompression.Uncompressed)
         {
@@ -744,17 +775,19 @@ public static class RamenLayoutBuilder
             importer.filterMode = FilterMode.Point;
             importer.textureCompression = TextureImporterCompression.Uncompressed;
 
-            importer.spritesheet = new[]
+            var meta = new SpriteMetaData
             {
-                new SpriteMetaData
-                {
-                    name = spriteName,
-                    rect = rect,
-                    border = border,
-                    alignment = (int)SpriteAlignment.Center,
-                    pivot = new Vector2(0.5f, 0.5f)
-                }
+                name = spriteName,
+                rect = rect,
+                border = border,
+                alignment = (int)SpriteAlignment.Center,
+                pivot = new Vector2(0.5f, 0.5f)
             };
+
+            if (found >= 0) slices[found] = meta;
+            else slices.Add(meta);
+
+            importer.spritesheet = slices.ToArray();
             importer.SaveAndReimport();
         }
 
@@ -885,15 +918,17 @@ public static class RamenLayoutBuilder
                                        new Vector2(230f, 52f), "다음  →", 28f, tmpFont);
         startLabel.color = Color.white;
 
-        Image dayPanel = CreateImage("DayTimePanel", root, TopLeft, new Vector2(390f, -66f),
-                                     new Vector2(660f, TimePanelHeight), Color.white, TimePanelSprite(), PanelScale);
+        Image dayPanel = CreateImage("DayTimePanel", root, TopLeft, new Vector2(370f, -62f),
+                                     new Vector2(620f, PanelBarHeight), Color.white, TimeBarSprite(), PanelScale);
+        AttachPanelIcon(dayPanel, TimeIconSprite(), new Vector2(90f, 100f));
         var dayTime = CreateTmpText("DayTimeText", dayPanel.transform, Center, new Vector2(PanelIconPad * 0.5f, 0f),
-                                    new Vector2(660f - PanelIconPad, 60f), "영업 시간 1일차 / 17 : 00", 32f, tmpFont);
+                                    new Vector2(620f - PanelIconPad, 56f), "영업 시간 1일차 / 17 : 00", 30f, tmpFont);
 
-        Image revenuePanel = CreateImage("RevenuePanel", root, TopRight, new Vector2(-320f, -66f),
-                                         new Vector2(520f, MoneyPanelHeight), Color.white, MoneyPanelSprite(), PanelScale);
+        Image revenuePanel = CreateImage("RevenuePanel", root, TopRight, new Vector2(-300f, -62f),
+                                         new Vector2(480f, PanelBarHeight), Color.white, MoneyBarSprite(), PanelScale);
+        AttachPanelIcon(revenuePanel, MoneyIconSprite(), new Vector2(90f, 90f));
         var revenue = CreateTmpText("RevenueText", revenuePanel.transform, Center, new Vector2(PanelIconPad * 0.5f, 0f),
-                                    new Vector2(520f - PanelIconPad, 60f), "누적 수익 : 0₩", 32f, tmpFont);
+                                    new Vector2(480f - PanelIconPad, 56f), "누적 수익 : 0₩", 30f, tmpFont);
 
         root.gameObject.SetActive(false);
 

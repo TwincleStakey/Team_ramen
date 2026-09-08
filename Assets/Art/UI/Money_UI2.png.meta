@@ -8,6 +8,9 @@ TextureImporter:
   - first:
       213: 5422835937737945996
     second: MoneyBar
+  - first:
+      213: 2382518083541889405
+    second: MoneyIcon
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -145,13 +148,13 @@ TextureImporter:
       name: MoneyBar
       rect:
         serializedVersion: 2
-        x: 7
+        x: 17
         y: 16
-        width: 50
-        height: 23
+        width: 40
+        height: 20
       alignment: 0
       pivot: {x: 0.5, y: 0.5}
-      border: {x: 12, y: 7, z: 6, w: 7}
+      border: {x: 6, y: 6, z: 6, w: 6}
       customData: 
       outline: []
       physicsShape: []
@@ -159,6 +162,28 @@ TextureImporter:
       bones: []
       spriteID: c83b710dd88c14b40800000000000000
       internalID: 5422835937737945996
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: MoneyIcon
+      rect:
+        serializedVersion: 2
+        x: 8
+        y: 30
+        width: 9
+        height: 9
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d717578e297601120800000000000000
+      internalID: 2382518083541889405
       vertices: []
       indices: 
       edges: []
@@ -178,6 +203,7 @@ TextureImporter:
       entries: []
     nameFileIdTable:
       MoneyBar: 5422835937737945996
+      MoneyIcon: 2382518083541889405
       Money_UI2_0: -1998357878355586633
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0

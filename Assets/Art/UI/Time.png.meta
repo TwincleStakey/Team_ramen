@@ -8,6 +8,9 @@ TextureImporter:
   - first:
       213: 2355115501617983005
     second: TimeBar
+  - first:
+      213: -308124574194127518
+    second: TimeIcon
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -145,13 +148,13 @@ TextureImporter:
       name: TimeBar
       rect:
         serializedVersion: 2
-        x: 8
+        x: 19
         y: 27
-        width: 48
-        height: 20
+        width: 37
+        height: 16
       alignment: 0
       pivot: {x: 0.5, y: 0.5}
-      border: {x: 13, y: 6, z: 6, w: 6}
+      border: {x: 6, y: 5, z: 6, w: 5}
       customData: 
       outline: []
       physicsShape: []
@@ -159,6 +162,28 @@ TextureImporter:
       bones: []
       spriteID: d1ea4fe121d0fa020800000000000000
       internalID: 2355115501617983005
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: TimeIcon
+      rect:
+        serializedVersion: 2
+        x: 10
+        y: 37
+        width: 9
+        height: 10
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 26d2790155259bbf0800000000000000
+      internalID: -308124574194127518
       vertices: []
       indices: 
       edges: []
@@ -178,6 +203,7 @@ TextureImporter:
       entries: []
     nameFileIdTable:
       TimeBar: 2355115501617983005
+      TimeIcon: -308124574194127518
       Time_0: -3092223754324887936
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0

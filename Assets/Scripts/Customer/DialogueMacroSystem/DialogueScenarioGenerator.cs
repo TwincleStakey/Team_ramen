@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -76,8 +76,8 @@ public class DialogueScenarioGenerator : MonoBehaviour
             ? IngredientType.ThinNoodles
             : IngredientType.ThickNoodles;
 
-        // 50% 확률로 면 교체 요청 발생 (자주 등장하여 체감 및 테스트 가능)
-        bool swapNoodle = UnityEngine.Random.value < 0.5f;
+        // 40% 확률로 면 교체 요청 발생
+        bool swapNoodle = UnityEngine.Random.value < 0.4f;
 
         // 변경할 총 개수 (최대 4개)
         int maxChanges = Mathf.Min(MAX_REQUEST_COUNT, candidates.Count + (swapNoodle ? 1 : 0));
