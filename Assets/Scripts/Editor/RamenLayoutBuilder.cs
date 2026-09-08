@@ -735,8 +735,7 @@ public static class RamenLayoutBuilder
         if (existing != null) Undo.DestroyObjectImmediate(existing.gameObject);
 
         var go = new GameObject("OrderSystem",
-                                typeof(CustomerOrderGenerator),
-                                typeof(CustomerDialogueGenerator),
+                                typeof(DialogueScenarioGenerator),
                                 typeof(RamenCalculator),
                                 typeof(DayManager),
                                 typeof(DailyResultUI),
@@ -745,15 +744,15 @@ public static class RamenLayoutBuilder
                                 typeof(OrderManager));
         Undo.RegisterCreatedObjectUndo(go, UndoLabel);
 
-        var orderGenerator = go.GetComponent<CustomerOrderGenerator>();
-        var dialogueGenerator = go.GetComponent<CustomerDialogueGenerator>();
+        var scenarioGenerator = go.GetComponent<DialogueScenarioGenerator>();
         var calculator = go.GetComponent<RamenCalculator>();
         var dayManager = go.GetComponent<DayManager>();
         var manager = go.GetComponent<OrderManager>();
 
         // 전부 private [SerializeField]라 직접 대입할 수 없다.
-        SetPrivateReference(dialogueGenerator, "orderGenerator", orderGenerator);
-        SetPrivateReference(manager, "dialogueGenerator", dialogueGenerator);
+        // 대사·주문 생성은 DialogueMacroSystem이 통째로 맡는다. 표 데이터는
+        // Assets/Resources/DialogueDB.json 에서 생성기가 알아서 읽으므로 따로 꽂을 게 없다.
+        SetPrivateReference(manager, "dialogueScenarioGenerator", scenarioGenerator);
         SetPrivateReference(manager, "ramenCalculator", calculator);
 
         // OrderManager는 일차를 DayManager에서만 읽는다. 안 꽂으면 항상 1일차로 주문이 생긴다.
