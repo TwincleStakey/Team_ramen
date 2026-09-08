@@ -1,10 +1,12 @@
-﻿using UnityEditor;
+﻿using TMPro;
+using UnityEditor;
 using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.SceneManagement;
+using UnityEngine.TextCore.LowLevel;
 using UnityEngine.UI;
 
 /// <summary>
@@ -19,7 +21,7 @@ using UnityEngine.UI;
 public static class RamenLayoutBuilder
 {
     private const string CanvasName = "CookingCanvas";
-    private const string FontPath = "Assets/Art/Fonts/malgun.ttf";
+    private const string FontPath = "Assets/Fonts/ThinMulmaru Mono.ttf";
     private const string UndoLabel = "Build Cooking Layout";
 
     private const string BowlDir = "Assets/Art/그릇/";
@@ -39,14 +41,27 @@ public static class RamenLayoutBuilder
 
     // 원본 픽셀의 몇 배로 띄울지를 실제 물건 크기 느낌에 맞춰 정한 것.
     // 냄비 > 재료통·타래통 > 조미료병 순서고, 면 튀김기가 제일 큰 장비다.
+    // 타래 행. 미소는 기획서 v1.1 19.5에 올라왔지만 아직 "본편 채택 전 별도 확정 필요" 상태라
+    // 자리만 회색으로 잡아 둔다. IngredientType.MisoTare가 B 파일에 없어 기능 슬롯으로는 못 만든다.
+    // 정산 팝업은 밝은 판 위에 글자를 얹으므로 조리 화면의 흰 글자를 그대로 쓸 수 없다.
+    private static readonly Color PopupInkColor = new Color(0.16f, 0.16f, 0.16f);
+    private const string TmpFontPath = "Assets/Fonts/ThinMulmaru Mono SDF.asset";
+
+    private const float TareRowY = -215f;
+    private const float MisoSlotX = 610f;   // 시오 130 · 쇼유 290 · 돈코츠 450 다음 칸 (간격 160)
+
     private static readonly Vector2 BinSize = new Vector2(192f, 192f);        // 64px x 3
     private static readonly Vector2 PotSize = new Vector2(320f, 320f);        // 64px x 5 (육수 냄비)
     private static readonly Vector2 NoodleBinSize = new Vector2(384f, 384f);  // 128px x 3
     private static readonly Vector2 BowlSize = new Vector2(768f, 768f);       // 128px x 6
     private static readonly Vector2 CursorSize = new Vector2(256f, 256f);     // 64px x 4
 
-    private static readonly Color InkColor = new Color(0.16f, 0.16f, 0.16f);   // 베이지 배경 위 글자색
-    private const int SlotLabelSize = 22;
+    // 글자는 흰색으로 두고 검은 테두리를 둘러 배경 위에서 읽히게 한다.
+    // 배경이 베이지 판과 45도 픽셀아트로 갈려서 단색 글자로는 한쪽에서 반드시 묻힌다.
+    private static readonly Color InkColor = Color.white;
+    private static readonly Color TextOutlineColor = Color.black;
+    private static readonly Vector2 TextOutlineDistance = new Vector2(2f, -2f);
+    private const int SlotLabelSize = 25;
 
     /// <summary>상단 바에서 만들어 두고 나중에 다른 것과 연결해야 하는 것들.</summary>
     private class TopBarRefs
@@ -54,6 +69,23 @@ public static class RamenLayoutBuilder
         public Image Discard;      // 그릇이 생긴 뒤 onClick을 붙인다
         public Text OrderText;     // GameManager가 손님 대사를 써 넣는다
         public Text RevenueText;   // GameManager가 누적 매출을 써 넣는다
+    }
+
+    /// <summary>주문 시스템 오브젝트에서 나중에 다른 것과 연결해야 하는 것들.</summary>
+    private class OrderSystemRefs
+    {
+        public OrderManager Order;   // 주문 생성과 채점
+        public DayManager Day;       // 일차·손님 수 진행
+    }
+
+    /// <summary>정산 팝업에서 B의 DailyResultUI에 꽂아 줘야 하는 것들.</summary>
+    private class ResultPopupRefs
+    {
+        public GameObject Root;              // 열고 닫을 때 통째로 켜고 끈다
+        public TextMeshProUGUI Title;
+        public TextMeshProUGUI Profit;
+        public TextMeshProUGUI Accuracy;
+        public Button Confirm;
     }
 
     /// <summary>슬롯 하나의 정의. 좌표표를 그대로 코드로 옮긴 것.</summary>
@@ -168,15 +200,20 @@ public static class RamenLayoutBuilder
         // 순서가 곧 그리기 순서다. 배경이 맨 처음, DragLayer가 맨 마지막.
         BuildBackground(canvas);
         TopBarRefs topBar = BuildTopBar(canvas, font);
-        BuildSlots(CreateGroup("Slots", canvas), font);
+        Transform slots = CreateGroup("Slots", canvas);
+        BuildSlots(slots, font);
+        BuildMisoPlaceholder(slots, font);
         Bowl bowl = BuildBowl(canvas);
 
         // 폐기 버튼은 그릇보다 먼저 만들어지므로 둘이 다 생긴 뒤에 연결한다.
         WireDiscardButton(topBar.Discard, bowl);
 
+        // 정산 팝업. 커서보다 아래여야 하므로 DragLayer보다 먼저 만든다.
+        ResultPopupRefs popup = BuildResultPopup(canvas);
+
         // 주문을 만들어 줄 B의 컴포넌트들을 씬에 올리고 GameManager와 잇는다.
-        OrderManager orderManager = EnsureOrderSystem();
-        WireGameManager(orderManager, topBar);
+        OrderSystemRefs orderSystem = EnsureOrderSystem(popup);
+        WireGameManager(orderSystem, topBar);
 
         // DragLayer는 반드시 마지막. 그래야 드래그 고스트와 커서가 항상 모든 UI 위에 그려진다.
         // 이 그룹 자체에는 Image를 붙이지 않는다. 붙이면 화면 전체를 덮어 모든 클릭을 삼킨다.
@@ -235,29 +272,30 @@ public static class RamenLayoutBuilder
 
         // 주문 확인 ? 버튼 (자리만)
         Image help = CreateImage("OrderCheckButton", bar, TopLeft, new Vector2(70f, -55f), new Vector2(60f, 60f), Hex("#FFFFFF"), panel);
-        CreateLabel(help.transform, "?", 32, InkColor, font);
+        CreateLabel(help.transform, "?", 35, InkColor, font);
 
         // 날짜 (자리만)
         Image day = CreateImage("DayPanel", bar, TopLeft, new Vector2(215f, -55f), new Vector2(190f, 60f), Hex("#FFFFFF"), panel);
-        CreateLabel(day.transform, "1일차", 28, InkColor, font);
+        CreateLabel(day.transform, "1일차", 31, InkColor, font);
 
         // 제출 영역. 와이어프레임의 회색 가로 바.
         Image submit = CreateImage("SubmitZone", bar, TopCenter, new Vector2(0f, -55f), new Vector2(560f, 80f), Hex("#C9C9C9"), panel);
         Undo.AddComponent<SubmitZone>(submit.gameObject);
-        CreateLabel(submit.transform, "제출하기", 30, InkColor, font);
+        CreateLabel(submit.transform, "제출하기", 33, InkColor, font);
 
         // 누적 매출. 재료비와 자본은 기획 확정으로 제거되어 누적 매출만 표시한다.
         Image revenue = CreateImage("RevenuePanel", bar, TopRight, new Vector2(-250f, -55f), new Vector2(280f, 60f), Hex("#FFFFFF"), panel);
-        Text revenueText = CreateLabel(revenue.transform, "누적 매출 0원", 26, InkColor, font);
+        Text revenueText = CreateLabel(revenue.transform, "누적 매출 0원", 29, InkColor, font);
 
         // 폐기 버튼. onClick은 그릇이 생긴 뒤 WireDiscardButton에서 붙인다.
         Image discard = CreateImage("DiscardButton", bar, TopRight, new Vector2(-60f, -55f), new Vector2(90f, 70f), Hex("#7BB661"), panel);
-        CreateLabel(discard.transform, "폐기", 26, InkColor, font);
+        CreateLabel(discard.transform, "폐기", 29, InkColor, font);
 
         // 손님 대사 줄. 주문 화면(B)이 아직 없어서 조리 화면 위에 글자로만 띄운다.
-        // 좌우 타래통·재료통과 겹치지 않도록 폭을 800으로 맞췄다.
+        // 이 줄은 임시다. 기획서 v1.1에서 대사가 6~8줄로 길어져 한 줄 바로는 담기지 않는다.
+        // Tab 말풍선이 들어오면 사라질 자리라, 예약해 둔 미소 타래 칸과 좌측이 조금 겹쳐도 그대로 둔다.
         Image order = CreateImage("OrderPanel", bar, TopCenter, new Vector2(0f, -135f), new Vector2(800f, 60f), Hex("#FFF8E7"), panel);
-        Text orderText = CreateLabel(order.transform, "손님을 기다리는 중...", 26, InkColor, font);
+        Text orderText = CreateLabel(order.transform, "손님을 기다리는 중...", 29, InkColor, font);
 
         return new TopBarRefs { Discard = discard, OrderText = orderText, RevenueText = revenueText };
     }
@@ -266,6 +304,143 @@ public static class RamenLayoutBuilder
     /// 슬롯 하나 = 통 그림 + 아래에 이름.
     /// 고체는 IngredientSlot(드래그), 액체는 LiquidSlot(클릭해서 국자에 담기)이 붙는다.
     /// </summary>
+    /// <summary>
+    /// 하루 마감 때 뜨는 정산 팝업. 내용 갱신과 열고 닫기는 B의 DailyResultUI가 한다.
+    /// 여기서는 그 스크립트가 요구하는 오브젝트만 만들어 준다.
+    ///
+    /// DailyResultUI가 TextMeshProUGUI를 요구하므로 이 팝업만 TMP를 쓴다.
+    /// 조리 화면은 그대로 legacy Text다.
+    /// </summary>
+    private static ResultPopupRefs BuildResultPopup(Transform canvas)
+    {
+        TMP_FontAsset tmpFont = EnsureTmpFont();
+
+        Transform root = CreateGroup("ResultPopup", canvas);
+
+        // 뒷판. raycastTarget을 켜 두어야 팝업이 떠 있는 동안 아래 조리 UI가 눌리지 않는다.
+        var backdrop = CreateImage("Backdrop", root, Center, Vector2.zero, RefResolution, new Color(0f, 0f, 0f, 0.6f));
+        backdrop.raycastTarget = true;
+
+        Image panel = CreateImage("Panel", root, Center, Vector2.zero, new Vector2(760f, 460f),
+                                  Hex("#FFF8E7"), PanelSprite());
+
+        var title = CreateTmpText("TitleText", panel.transform, Center, new Vector2(0f, 150f),
+                                  new Vector2(700f, 80f), "Day 1 정산", 52f, tmpFont);
+        var profit = CreateTmpText("ProfitText", panel.transform, Center, new Vector2(0f, 40f),
+                                   new Vector2(700f, 60f), "당일 총 수익 : 0원", 38f, tmpFont);
+        var accuracy = CreateTmpText("AverageAccuracyText", panel.transform, Center, new Vector2(0f, -30f),
+                                     new Vector2(700f, 60f), "평균 정확도 : 0.0%", 38f, tmpFont);
+
+        Image confirmImage = CreateImage("ConfirmButton", panel.transform, Center, new Vector2(0f, -150f),
+                                         new Vector2(260f, 80f), Hex("#7BB661"), PanelSprite());
+        var confirm = Undo.AddComponent<Button>(confirmImage.gameObject);
+        confirm.targetGraphic = confirmImage;
+        CreateTmpText("Label", confirmImage.transform, Center, Vector2.zero,
+                      new Vector2(240f, 60f), "확인", 36f, tmpFont);
+
+        // 시작할 때는 닫혀 있어야 한다. DailyResultUI.Awake도 끄지만, 에디터에서도 가려지지 않게 여기서 끈다.
+        root.gameObject.SetActive(false);
+
+        return new ResultPopupRefs
+        {
+            Root = root.gameObject,
+            Title = title,
+            Profit = profit,
+            Accuracy = accuracy,
+            Confirm = confirm
+        };
+    }
+
+    /// <summary>
+    /// 조리 화면과 같은 글꼴의 TMP 폰트 애셋. 없으면 만들어서 프로젝트에 저장한다.
+    /// 한글은 글자 수가 많아 정적 아틀라스로 구우면 용량이 커지므로 Dynamic으로 둔다.
+    /// Dynamic은 실제로 쓰인 글자만 실행 중에 아틀라스로 채운다.
+    /// </summary>
+    private static TMP_FontAsset EnsureTmpFont()
+    {
+        var existing = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(TmpFontPath);
+        if (existing != null) return existing;
+
+        Font source = AssetDatabase.LoadAssetAtPath<Font>(FontPath);
+        if (source == null)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] " + FontPath + " 을(를) 찾지 못해 TMP 폰트를 만들지 못했습니다.");
+            return null;
+        }
+
+        TMP_FontAsset asset = TMP_FontAsset.CreateFontAsset(
+            source, 90, 9, GlyphRenderMode.SDFAA, 1024, 1024, AtlasPopulationMode.Dynamic, true);
+
+        if (asset == null)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] TMP 폰트 애셋 생성에 실패했습니다.");
+            return null;
+        }
+
+        asset.name = "ThinMulmaru Mono SDF";
+        AssetDatabase.CreateAsset(asset, TmpFontPath);
+
+        // 아틀라스 텍스처와 머티리얼을 같은 파일 안에 넣어야 참조가 끊기지 않는다.
+        if (asset.atlasTextures != null && asset.atlasTextures.Length > 0)
+        {
+            asset.atlasTextures[0].name = "ThinMulmaru Mono Atlas";
+            AssetDatabase.AddObjectToAsset(asset.atlasTextures[0], asset);
+        }
+        if (asset.material != null)
+        {
+            asset.material.name = "ThinMulmaru Mono SDF Material";
+            AssetDatabase.AddObjectToAsset(asset.material, asset);
+        }
+
+        AssetDatabase.SaveAssets();
+        Debug.Log("[RamenLayoutBuilder] TMP 폰트 애셋을 만들었습니다: " + TmpFontPath);
+        return asset;
+    }
+
+    private static TextMeshProUGUI CreateTmpText(string name, Transform parent, Vector2 anchor, Vector2 pos,
+                                                 Vector2 size, string content, float fontSize, TMP_FontAsset font)
+    {
+        var go = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI));
+        var rt = go.GetComponent<RectTransform>();
+        rt.SetParent(parent, false);
+        rt.anchorMin = anchor;
+        rt.anchorMax = anchor;
+        rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = pos;
+        rt.sizeDelta = size;
+
+        var text = go.GetComponent<TextMeshProUGUI>();
+        if (font != null) text.font = font;
+        text.text = content;
+        text.fontSize = fontSize;
+        text.color = PopupInkColor;
+        text.alignment = TextAlignmentOptions.Center;
+        text.raycastTarget = false;
+        return text;
+    }
+
+    /// <summary>
+    /// 미소 타래 자리. 기획서 v1.1 19.5에 메뉴로 올라왔으나 "본편 채택 전 별도 확정 필요" 상태라
+    /// 확정되면 바로 끼울 수 있도록 자리만 잡아 둔다.
+    ///
+    /// 기능 슬롯이 아니다. IngredientType에 MisoTare가 없고 그 enum은 B 파일이라 손대지 않는다.
+    /// 미소 타래통 아트도 아직 없어서 패널 스프라이트를 회색으로 깔았다.
+    /// 미해금 표현을 회색 잠금으로 가기로 했으므로 톤도 그것과 맞춘다.
+    ///
+    /// 채택이 확정되면 이 메서드를 지우고 Slots 배열에 SlotDef 한 줄을 더하면 된다.
+    /// </summary>
+    private static void BuildMisoPlaceholder(Transform parent, Font font)
+    {
+        Image bin = CreateImage("Slot_MisoTare_Reserved", parent, TopLeft,
+                                new Vector2(MisoSlotX, TareRowY), BinSize,
+                                Hex("#B9B2A6"), PanelSprite());
+        bin.raycastTarget = false;   // 아직 기능이 없으므로 클릭을 먹지 않는다
+
+        CreateText("Label", bin.transform, Center, new Vector2(0f, -BinSize.y * 0.5f - 14f),
+                   new Vector2(BinSize.x + 80f, 30f), "미소 (미확정)", SlotLabelSize,
+                   InkColor, font, TextAnchor.MiddleCenter);
+    }
+
     private static void BuildSlots(Transform parent, Font font)
     {
         foreach (SlotDef def in Slots)
@@ -285,6 +460,9 @@ public static class RamenLayoutBuilder
                 slot.type = def.Type;
                 slot.bowlSprite = LoadSprite(def.BowlPath);
                 slot.dragSprite = LoadSprite(def.DragPath);
+
+                // 통이 표준보다 크면 원본 그림도 그만큼 크다. 면 통 384는 2배, 나머지 192는 1배.
+                slot.ghostScale = def.Size.x / BinSize.x;
             }
 
             CreateSlotLabel(bin.transform, def, font);
@@ -379,6 +557,9 @@ public static class RamenLayoutBuilder
         component.shoyuBowlSprite = LoadSprite(BowlDir + "쇼유그릇.png");
         component.tonkotsuBowlSprite = LoadSprite(BowlDir + "돈코츠그릇.png");
 
+        // 국물이 차오르는 8프레임(128px 4열 x 2행). 재생 속도는 Bowl.brothPourFps로 조절한다.
+        component.brothPourFrames = LoadSpriteSheet(BowlDir + "애니메이션_육수그릇.png", 128, 128);
+
         // 드래그 중에 레이캐스트를 통과시키려면 CanvasGroup이 필요하다.
         // 없으면 그릇 자신이 SubmitZone을 가려서 제출이 영영 안 된다.
         Undo.AddComponent<CanvasGroup>(bowl.gameObject);
@@ -427,38 +608,65 @@ public static class RamenLayoutBuilder
     /// 전부 MonoBehaviour라 씬에 없으면 주문이 아예 생성되지 않는다.
     /// 이미 있으면 인스펙터에서 손댄 값이 날아가지 않도록 그대로 둔다.
     /// </summary>
-    private static OrderManager EnsureOrderSystem()
+    private static OrderSystemRefs EnsureOrderSystem(ResultPopupRefs popup)
     {
+        // 예전 빌드로 만든 OrderSystem에는 DayManager가 없다. 남겨 두고 컴포넌트만 덧붙이면
+        // 배선이 반쯤 빈 채로 남을 수 있어서, 캔버스와 같은 방식으로 지우고 새로 만든다.
         OrderManager existing = Object.FindFirstObjectByType<OrderManager>();
-        if (existing != null) return existing;
+        if (existing != null) Undo.DestroyObjectImmediate(existing.gameObject);
 
         var go = new GameObject("OrderSystem",
                                 typeof(CustomerOrderGenerator),
                                 typeof(CustomerDialogueGenerator),
                                 typeof(RamenCalculator),
+                                typeof(DayManager),
+                                typeof(DailyResultUI),
                                 typeof(OrderManager));
         Undo.RegisterCreatedObjectUndo(go, UndoLabel);
 
         var orderGenerator = go.GetComponent<CustomerOrderGenerator>();
         var dialogueGenerator = go.GetComponent<CustomerDialogueGenerator>();
         var calculator = go.GetComponent<RamenCalculator>();
+        var dayManager = go.GetComponent<DayManager>();
         var manager = go.GetComponent<OrderManager>();
 
-        // 셋 다 private [SerializeField]라 직접 대입할 수 없다.
+        // 전부 private [SerializeField]라 직접 대입할 수 없다.
         SetPrivateReference(dialogueGenerator, "orderGenerator", orderGenerator);
         SetPrivateReference(manager, "dialogueGenerator", dialogueGenerator);
         SetPrivateReference(manager, "ramenCalculator", calculator);
 
-        return manager;
+        // OrderManager는 일차를 DayManager에서만 읽는다. 안 꽂으면 항상 1일차로 주문이 생긴다.
+        SetPrivateReference(manager, "dayManager", dayManager);
+
+        SetPrivateReference(dayManager, "orderManager", manager);
+        SetPrivateReference(dayManager, "ramenCalculator", calculator);
+
+        // 정산 팝업. DailyResultUI는 Awake에서 popupRoot를 꺼 버리므로
+        // 팝업 자신이 아니라 항상 살아 있는 이 오브젝트에 붙여야 한다.
+        var resultUI = go.GetComponent<DailyResultUI>();
+        SetPrivateReference(dayManager, "dailyResultUI", resultUI);
+        SetPrivateReference(resultUI, "dayManager", dayManager);
+
+        if (popup != null)
+        {
+            SetPrivateReference(resultUI, "popupRoot", popup.Root);
+            SetPrivateReference(resultUI, "titleText", popup.Title);
+            SetPrivateReference(resultUI, "profitText", popup.Profit);
+            SetPrivateReference(resultUI, "averageAccuracyText", popup.Accuracy);
+            SetPrivateReference(resultUI, "confirmButton", popup.Confirm);
+        }
+
+        return new OrderSystemRefs { Order = manager, Day = dayManager };
     }
 
     /// <summary>GameManager가 주문·표시할 글자를 찾을 수 있도록 꽂아 준다.</summary>
-    private static void WireGameManager(OrderManager orderManager, TopBarRefs topBar)
+    private static void WireGameManager(OrderSystemRefs orderSystem, TopBarRefs topBar)
     {
         GameManager gameManager = Object.FindFirstObjectByType<GameManager>();
         if (gameManager == null) return;
 
-        SetPrivateReference(gameManager, "orderManager", orderManager);
+        SetPrivateReference(gameManager, "orderManager", orderSystem.Order);
+        SetPrivateReference(gameManager, "dayManager", orderSystem.Day);
         SetPrivateReference(gameManager, "orderText", topBar.OrderText);
         SetPrivateReference(gameManager, "revenueText", topBar.RevenueText);
     }
@@ -583,6 +791,12 @@ public static class RamenLayoutBuilder
 
         // 라벨이 레이캐스트를 먹으면 슬롯의 드래그가 시작되지 않는다.
         text.raycastTarget = false;
+
+        // 흰 글자를 배경 위에서 읽히게 하는 검은 테두리.
+        var outline = text.gameObject.AddComponent<Outline>();
+        outline.effectColor = TextOutlineColor;
+        outline.effectDistance = TextOutlineDistance;
+
         return text;
     }
 
@@ -597,6 +811,94 @@ public static class RamenLayoutBuilder
     /// 그대로 두면 픽셀아트가 흐려지고, 그림을 갈아 끼울 때 씬의 참조가 끊긴다.
     /// 그래서 불러오기 전에 설정을 확인하고 어긋나 있으면 바로잡는다.
     /// </summary>
+    /// <summary>
+    /// 한 장에 여러 칸이 들어 있는 그림을 격자로 잘라 프레임 배열로 돌려준다.
+    /// LoadSprite는 Single을 강제하므로 애니메이션 시트에는 쓸 수 없어 따로 둔다.
+    /// 잘린 순서는 왼쪽 위에서 오른쪽으로, 그다음 아랫줄이다.
+    /// </summary>
+    private static Sprite[] LoadSpriteSheet(string path, int cellWidth, int cellHeight)
+    {
+        var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+        if (importer == null)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] 그림을 찾지 못했습니다: " + path);
+            return new Sprite[0];
+        }
+
+        var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        if (texture == null) return new Sprite[0];
+
+        int cols = texture.width / cellWidth;
+        int rows = texture.height / cellHeight;
+        if (cols <= 0 || rows <= 0)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] 칸 크기가 그림보다 큽니다: " + path);
+            return new Sprite[0];
+        }
+
+        // 이미 같은 개수로 잘려 있으면 다시 임포트하지 않는다. 재임포트는 느리다.
+        bool needsSlice = importer.spriteImportMode != SpriteImportMode.Multiple
+                          || importer.spritesheet == null
+                          || importer.spritesheet.Length != cols * rows;
+
+        if (needsSlice
+            || importer.filterMode != FilterMode.Point
+            || importer.textureCompression != TextureImporterCompression.Uncompressed
+            || importer.mipmapEnabled)
+        {
+            importer.textureType = TextureImporterType.Sprite;
+            importer.spriteImportMode = SpriteImportMode.Multiple;
+            importer.alphaIsTransparency = true;
+            importer.mipmapEnabled = false;
+            importer.filterMode = FilterMode.Point;
+            importer.textureCompression = TextureImporterCompression.Uncompressed;
+
+            string baseName = System.IO.Path.GetFileNameWithoutExtension(path);
+            var slices = new System.Collections.Generic.List<SpriteMetaData>();
+
+            // 유니티 텍스처 좌표는 아래가 0이라, 위에서부터 세려면 y를 뒤집어야 한다.
+            for (int row = 0; row < rows; row++)
+            {
+                for (int col = 0; col < cols; col++)
+                {
+                    var meta = new SpriteMetaData();
+                    meta.name = baseName + "_" + (row * cols + col);
+                    meta.rect = new Rect(col * cellWidth,
+                                         texture.height - (row + 1) * cellHeight,
+                                         cellWidth, cellHeight);
+                    meta.alignment = (int)SpriteAlignment.Center;
+                    meta.pivot = new Vector2(0.5f, 0.5f);
+                    slices.Add(meta);
+                }
+            }
+
+            importer.spritesheet = slices.ToArray();
+            importer.SaveAndReimport();
+        }
+
+        // LoadAllAssetsAtPath는 순서를 보장하지 않는다. 이름 끝 번호로 다시 세운다.
+        var frames = new Sprite[cols * rows];
+        foreach (Object asset in AssetDatabase.LoadAllAssetsAtPath(path))
+        {
+            var sprite = asset as Sprite;
+            if (sprite == null) continue;
+
+            int underscore = sprite.name.LastIndexOf('_');
+            int index;
+            if (underscore < 0 || !int.TryParse(sprite.name.Substring(underscore + 1), out index)) continue;
+            if (index >= 0 && index < frames.Length) frames[index] = sprite;
+        }
+
+        int missing = 0;
+        foreach (var f in frames) if (f == null) missing++;
+        if (missing > 0)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] " + path + " 에서 프레임 " + missing + "개를 못 찾았습니다.");
+        }
+
+        return frames;
+    }
+
     private static Sprite LoadSprite(string path)
     {
         if (string.IsNullOrEmpty(path)) return null;

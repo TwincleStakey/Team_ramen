@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 0f8c66cc0e5b9f0478a320b75556a504
+guid: f89300079a9e83b469a0690a2b57bd68
 TrueTypeFontImporter:
   externalObjects: {}
   serializedVersion: 4
@@ -9,7 +9,7 @@ TrueTypeFontImporter:
   characterPadding: 1
   includeFontData: 1
   fontNames:
-  - Malgun Gothic
+  - ThinMulmaru Mono
   fallbackFontReferences: []
   customCharacters: 
   fontRenderingMode: 0

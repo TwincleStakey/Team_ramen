@@ -12,8 +12,9 @@ public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
 
-    // 아래 셋은 RamenLayoutBuilder가 씬을 만들 때 꽂아 준다.
+    // 아래 넷은 RamenLayoutBuilder가 씬을 만들 때 꽂아 준다.
     [SerializeField] private OrderManager orderManager;
+    [SerializeField] private DayManager dayManager;
     [SerializeField] private Text orderText;
     [SerializeField] private Text revenueText;
 
@@ -28,17 +29,39 @@ public class GameManager : MonoBehaviour
             return;
         }
         Instance = this;
+
+        // 구독은 반드시 Awake에서 한다. 실행 순서가 정해져 있지 않아 DayManager.Start()가
+        // 이쪽 Start()보다 먼저 돌 수 있고, 그러면 1일차 첫 주문 신호를 놓친다.
+        // 유니티는 모든 Awake를 끝낸 뒤에야 Start를 시작하므로 여기서 걸면 순서와 무관하게 안전하다.
+        if (EnsureDayManager()) dayManager.OnDayStarted += HandleDayStarted;
     }
 
     private void Start()
     {
         RefreshRevenue();
-        NextCustomer();
+
+        // 첫 주문은 DayManager가 StartDay()에서 만든다.
+        // 여기서 또 만들면 손님 한 명에 주문이 두 개 생기고, 화면에 뜬 주문과 채점되는 주문이 어긋난다.
+        if (dayManager == null)
+        {
+            Debug.LogWarning("[GameManager] 씬에 DayManager가 없어 하루 진행이 시작되지 않습니다. " +
+                             "Tools > Ramen > Build Cooking Layout을 다시 실행해 주세요.");
+        }
     }
 
     private void OnDestroy()
     {
+        if (dayManager != null) dayManager.OnDayStarted -= HandleDayStarted;
         if (Instance == this) Instance = null;
+    }
+
+    /// <summary>
+    /// DayManager가 하루를 열 때 온다. StartDay()는 주문을 먼저 만들고 이 신호를 쏘므로
+    /// 여기서는 이미 만들어진 주문을 화면에 옮기기만 하면 된다.
+    /// </summary>
+    private void HandleDayStarted(int day)
+    {
+        ShowCurrentOrder();
     }
 
     /// <summary>
@@ -70,11 +93,17 @@ public class GameManager : MonoBehaviour
 
         Debug.Log("[정산] 판매 금액 " + price.ToString("N0") + "원 / 누적 매출 " + totalRevenue.ToString("N0") + "원");
 
-        NextCustomer();
+        // 진행은 DayManager가 쥔다. 이 안에서 다음 주문을 만들거나 오늘 영업을 마감한다.
+        // 동기 호출이라 돌아온 직후엔 CurrentDialogue가 이미 갱신돼 있다.
+        if (EnsureDayManager())
+        {
+            dayManager.OnCustomerServed();
+            ShowCurrentOrder();
+        }
     }
 
-    /// <summary>다음 손님의 주문을 만들어 화면에 띄운다.</summary>
-    private void NextCustomer()
+    /// <summary>지금 주문을 화면에 옮긴다. 주문을 만드는 것은 DayManager 몫이라 여기서는 읽기만 한다.</summary>
+    private void ShowCurrentOrder()
     {
         if (!EnsureOrderManager())
         {
@@ -82,7 +111,6 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        orderManager.CreateOrder();
         SetOrderText(orderManager.CurrentDialogue);
     }
 
@@ -91,6 +119,12 @@ public class GameManager : MonoBehaviour
     {
         if (orderManager == null) orderManager = FindFirstObjectByType<OrderManager>();
         return orderManager != null;
+    }
+
+    private bool EnsureDayManager()
+    {
+        if (dayManager == null) dayManager = FindFirstObjectByType<DayManager>();
+        return dayManager != null;
     }
 
     private void SetOrderText(string text)

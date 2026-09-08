@@ -17,6 +17,13 @@ public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
     /// <summary>드래그할 때 마우스를 따라다니는 그림. 테두리가 강조된 판이 있으면 그걸 쓴다.</summary>
     public Sprite dragSprite;
 
+    /// <summary>
+    /// 고스트 크기 배율. 재료통이 표준(192)보다 크면 원본 그림도 그만큼 크게 그려져 있다는 뜻이라
+    /// 같은 비율로 키워야 다른 재료와 눈에 보이는 크기가 맞는다.
+    /// 면은 원본이 128px(통 384)이고 나머지는 64px(통 192)라, 안 키우면 면만 절반으로 보인다.
+    /// </summary>
+    public float ghostScale = 1f;
+
     private const string DragLayerName = "DragLayer";
 
     // 젓가락에 집힌 것처럼 보이도록 커서 크기의 절반으로 띄운다.
@@ -44,6 +51,7 @@ public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
         float side = CookingCursor.Instance != null
             ? CookingCursor.Instance.Size * GhostToCursorRatio
             : FallbackGhostSide;
+        if (ghostScale > 0f) side *= ghostScale;
         rt.sizeDelta = new Vector2(side, side);
 
         var img = ghost.GetComponent<UnityEngine.UI.Image>();

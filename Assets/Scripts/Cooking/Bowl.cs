@@ -19,6 +19,19 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     public Sprite shoyuBowlSprite;
     public Sprite tonkotsuBowlSprite;
 
+    // ── 육수 붓기 애니메이션 ─────────────────────────────────────
+    /// <summary>국물이 차오르는 8프레임. RamenLayoutBuilder가 시트를 잘라 넣어 준다.</summary>
+    public Sprite[] brothPourFrames;
+
+    /// <summary>
+    /// 붓기 애니메이션 속도(초당 프레임). 값이 작을수록 느리다.
+    /// 인스펙터에서 바꾸면 바로 반영되지만 빌더를 다시 돌리면 이 기본값으로 되돌아간다.
+    /// 속도를 굳히려면 아래 숫자를 고칠 것.
+    /// </summary>
+    public float brothPourFps = 10f;
+
+    private Coroutine brothPour;
+
     // 지금 그릇에 담긴 재료
     private readonly Dictionary<IngredientType, int> bowl = new Dictionary<IngredientType, int>();
 
@@ -200,7 +213,16 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         int count = CountIn(bowl, type) + 1;
         bowl[type] = count;
         AddIcon(type, icon, count);
-        RefreshBowlSprite();
+
+        // 육수는 그릇 그림을 바로 갈아 끼우지 않고 차오르는 장면을 보여 준다.
+        if (type == IngredientType.Broth && HasPourFrames())
+        {
+            PlayBrothPour();
+        }
+        else
+        {
+            RefreshBowlSprite();
+        }
         return true;
     }
 
@@ -330,9 +352,48 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
 
     // ── 표시와 도우미 ────────────────────────────────────────────
 
+    private bool HasPourFrames()
+    {
+        return brothPourFrames != null && brothPourFrames.Length > 0;
+    }
+
+    /// <summary>국물이 차오르는 장면을 한 번 재생하고 평소 그릇 그림으로 안착한다.</summary>
+    private void PlayBrothPour()
+    {
+        StopBrothPour();
+        brothPour = StartCoroutine(BrothPourRoutine());
+    }
+
+    private void StopBrothPour()
+    {
+        if (brothPour != null)
+        {
+            StopCoroutine(brothPour);
+            brothPour = null;
+        }
+    }
+
+    private IEnumerator BrothPourRoutine()
+    {
+        // fps가 0이나 음수면 아예 안 넘어가므로 최소값을 둔다.
+        float perFrame = 1f / Mathf.Max(0.1f, brothPourFps);
+
+        for (int i = 0; i < brothPourFrames.Length; i++)
+        {
+            if (brothPourFrames[i] != null) image.sprite = brothPourFrames[i];
+            yield return new WaitForSeconds(perFrame);
+        }
+
+        brothPour = null;
+        RefreshBowlSprite();
+    }
+
     /// <summary>국물 상태에 맞는 그릇 그림을 고른다. 타래가 있으면 타래 색이 이긴다.</summary>
     private void RefreshBowlSprite()
     {
+        // 붓는 도중에 타래를 붓거나 폐기하면 최신 상태가 이겨야 한다.
+        StopBrothPour();
+
         Sprite next = emptyBowlSprite;
 
         if (bowl.ContainsKey(IngredientType.ShioTare)) next = shioBowlSprite;
