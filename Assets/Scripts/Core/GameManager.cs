@@ -21,6 +21,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] private FinalResultUI finalResultUI;
     [SerializeField] private OrderScreenUI orderScreenUI;
     [SerializeField] private RecipeBookUI recipeBookUI;
+    [SerializeField] private OrderResultUI orderResultUI;
 
     /// <summary>지금까지 판 금액의 합. 재료비가 없어져서 매출이 곧 성적표다. (기획 확정)</summary>
     private int totalRevenue;
@@ -154,16 +155,33 @@ public class GameManager : MonoBehaviour
 
         Debug.Log("[정산] 판매 금액 " + price.ToString("N0") + "원 / 누적 매출 " + totalRevenue.ToString("N0") + "원");
 
-        // 진행은 DayManager가 쥔다. 이 안에서 다음 주문을 만들거나 오늘 영업을 마감한다.
-        // 동기 호출이라 돌아온 직후엔 CurrentDialogue가 이미 갱신돼 있다.
-        if (EnsureDayManager())
+        // 결과창을 먼저 보여 주고, [확인]을 누르면 AdvanceCustomer가 진행을 이어받는다.
+        // 결과창이 없으면(빌더를 안 돌린 경우) 예전처럼 바로 넘어간다.
+        if (orderResultUI != null)
         {
-            dayManager.OnCustomerServed();
-
-            // 손님을 다 받았으면 다음 주문이 없다. 그때는 정산 팝업이 대신 뜬다.
-            bool dayContinues = dayManager.CurrentCustomerCount < dayManager.TargetCustomerCount;
-            if (dayContinues) OpenOrderScreen(dayManager.CurrentDay);
+            float shown = EnsureRamenCalculator() ? ramenCalculator.LastAccuracy : 0f;
+            orderResultUI.Open(shown, price, totalRevenue);
         }
+        else
+        {
+            AdvanceCustomer();
+        }
+    }
+
+    /// <summary>
+    /// 결과창의 [확인]이 부른다. 여기서부터 다음 손님이다.
+    /// 진행은 DayManager가 쥔다. 이 안에서 다음 주문을 만들거나 오늘 영업을 마감한다.
+    /// 동기 호출이라 돌아온 직후엔 CurrentDialogue가 이미 갱신돼 있다.
+    /// </summary>
+    public void AdvanceCustomer()
+    {
+        if (!EnsureDayManager()) return;
+
+        dayManager.OnCustomerServed();
+
+        // 손님을 다 받았으면 다음 주문이 없다. 그때는 하루 마감 정산 팝업이 대신 뜬다.
+        bool dayContinues = dayManager.CurrentCustomerCount < dayManager.TargetCustomerCount;
+        if (dayContinues) OpenOrderScreen(dayManager.CurrentDay);
     }
 
     /// <summary>인스펙터가 비어 있으면 씬에서 한 번 찾아 둔다.</summary>

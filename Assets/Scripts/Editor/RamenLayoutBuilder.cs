@@ -74,6 +74,19 @@ public static class RamenLayoutBuilder
         public DayManager Day;       // 일차·손님 수 진행
     }
 
+    /// <summary>손님별 결과창에서 OrderResultUI에 꽂아 줘야 하는 것들.</summary>
+    private class OrderResultRefs
+    {
+        public GameObject Root;
+        public TextMeshProUGUI Accuracy;
+        public TextMeshProUGUI Reward;
+        public TextMeshProUGUI Revenue;
+        public TextMeshProUGUI CustomerLine;
+        public Image Emoji;
+        public Sprite[] Faces;
+        public Button Confirm;
+    }
+
     /// <summary>정보 패널(? 버튼)에서 RecipeBookUI에 꽂아 줘야 하는 것들.</summary>
     private class RecipeBookRefs
     {
@@ -258,9 +271,10 @@ public static class RamenLayoutBuilder
         // 주문 화면. 조리 화면을 통째로 덮으므로 팝업들보다 뒤에 만든다.
         OrderScreenRefs orderScreen = BuildOrderScreen(canvas);
         RecipeBookRefs recipeBook = BuildRecipeBook(canvas);
+        OrderResultRefs orderResult = BuildOrderResult(canvas);
 
         // 주문을 만들어 줄 B의 컴포넌트들을 씬에 올리고 GameManager와 잇는다.
-        OrderSystemRefs orderSystem = EnsureOrderSystem(popup, finalPopup, orderScreen, recipeBook);
+        OrderSystemRefs orderSystem = EnsureOrderSystem(popup, finalPopup, orderScreen, recipeBook, orderResult);
         WireGameManager(orderSystem, topBar);
 
         // DragLayer는 반드시 마지막. 그래야 드래그 고스트와 커서가 항상 모든 UI 위에 그려진다.
@@ -392,6 +406,133 @@ public static class RamenLayoutBuilder
             Accuracy = accuracy,
             Confirm = confirm
         };
+    }
+
+    /// <summary>
+    /// 손님 한 명분 결과창. 제출 직후에 뜨고 [확인]을 눌러야 다음 손님으로 넘어간다.
+    /// </summary>
+    private static OrderResultRefs BuildOrderResult(Transform canvas)
+    {
+        TMP_FontAsset tmpFont = EnsureTmpFont();
+
+        Transform root = CreateGroup("OrderResult", canvas);
+
+        var backdrop = CreateImage("Backdrop", root, Center, Vector2.zero, RefResolution, new Color(0f, 0f, 0f, 0.7f));
+        backdrop.raycastTarget = true;
+
+        Image panel = CreateImage("Panel", root, Center, Vector2.zero, new Vector2(900f, 560f),
+                                  Hex("#FFF8E7"), PanelSprite());
+
+        var accuracy = CreateTmpText("AccuracyText", panel.transform, Center, new Vector2(0f, 190f),
+                                     new Vector2(820f, 80f), "정확도 : 0%", 54f, tmpFont);
+
+        // 이모지는 아이콘 아틀라스에서 잘라 쓴다. 표정은 OrderResultUI가 정확도로 고른다.
+        Sprite[] faces = LoadEmojiSprites();
+        Image emoji = CreateImage("Emoji", panel.transform, Center, new Vector2(0f, 60f),
+                                  new Vector2(128f, 128f), Color.white,
+                                  faces != null && faces.Length > 0 ? faces[0] : null);
+        emoji.preserveAspect = true;
+
+        var line = CreateTmpText("CustomerLine", panel.transform, Center, new Vector2(0f, -60f),
+                                 new Vector2(820f, 60f), "잘 먹었습니다.", 38f, tmpFont);
+
+        var reward = CreateTmpText("RewardText", panel.transform, Center, new Vector2(-200f, -150f),
+                                   new Vector2(380f, 60f), "+ 0₩", 40f, tmpFont);
+        var revenue = CreateTmpText("RevenueText", panel.transform, Center, new Vector2(200f, -150f),
+                                    new Vector2(400f, 60f), "누적 수익 : 0₩", 32f, tmpFont);
+
+        Image confirmImage = CreateImage("ConfirmButton", panel.transform, Center, new Vector2(0f, -230f),
+                                         new Vector2(260f, 74f), Hex("#7BB661"), PanelSprite());
+        var confirm = Undo.AddComponent<Button>(confirmImage.gameObject);
+        confirm.targetGraphic = confirmImage;
+        var confirmLabel = CreateTmpText("Label", confirmImage.transform, Center, Vector2.zero,
+                                         new Vector2(240f, 60f), "확인", 34f, tmpFont);
+        confirmLabel.color = Color.white;
+
+        root.gameObject.SetActive(false);
+
+        return new OrderResultRefs
+        {
+            Root = root.gameObject,
+            Accuracy = accuracy,
+            Reward = reward,
+            Revenue = revenue,
+            CustomerLine = line,
+            Emoji = emoji,
+            Faces = faces,
+            Confirm = confirm
+        };
+    }
+
+    /// <summary>
+    /// Icon.png에서 표정 3종을 잘라 온다. 웃음 · 무표정 · 화남 순.
+    /// 아틀라스가 균일 격자가 아니라(줄 간격이 17px) 필요한 칸만 직접 지정한다.
+    /// </summary>
+    private static Sprite[] LoadEmojiSprites()
+    {
+        const string path = "Assets/Art/UI/Icon.png";
+
+        var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+        var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        if (importer == null || texture == null)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] 아이콘 아틀라스를 찾지 못했습니다: " + path);
+            return new Sprite[0];
+        }
+
+        // 그림 좌표는 위에서 아래, 유니티 텍스처 좌표는 아래에서 위라 y를 뒤집는다.
+        const int cell = 16;
+        const int topDownY = 34;   // 표정 줄의 위쪽 y. 아틀라스 셋째 줄이다.
+        const int pitchX = 17;     // 칸 사이에 1px 간격이 있어 16이 아니라 17이다.
+        int y = texture.height - topDownY - cell;
+
+        // 칸 좌표까지 비교해야 한다. 개수만 보면 좌표를 고쳐도 다시 자르지 않는다.
+        Rect expected = new Rect(0f, y, cell, cell);
+        bool needsSlice = importer.spriteImportMode != SpriteImportMode.Multiple
+                          || importer.spritesheet == null
+                          || importer.spritesheet.Length != 3
+                          || importer.spritesheet[0].rect != expected;
+
+        if (needsSlice
+            || importer.filterMode != FilterMode.Point
+            || importer.textureCompression != TextureImporterCompression.Uncompressed)
+        {
+            importer.textureType = TextureImporterType.Sprite;
+            importer.spriteImportMode = SpriteImportMode.Multiple;
+            importer.alphaIsTransparency = true;
+            importer.mipmapEnabled = false;
+            importer.filterMode = FilterMode.Point;
+            importer.textureCompression = TextureImporterCompression.Uncompressed;
+
+            var slices = new SpriteMetaData[3];
+            for (int i = 0; i < 3; i++)
+            {
+                slices[i] = new SpriteMetaData
+                {
+                    name = "Face_" + i,
+                    rect = new Rect(i * pitchX, y, cell, cell),
+                    alignment = (int)SpriteAlignment.Center,
+                    pivot = new Vector2(0.5f, 0.5f)
+                };
+            }
+
+            importer.spritesheet = slices;
+            importer.SaveAndReimport();
+        }
+
+        var faces = new Sprite[3];
+        foreach (Object asset in AssetDatabase.LoadAllAssetsAtPath(path))
+        {
+            var sprite = asset as Sprite;
+            if (sprite == null) continue;
+
+            int index;
+            int underscore = sprite.name.LastIndexOf('_');
+            if (underscore < 0 || !int.TryParse(sprite.name.Substring(underscore + 1), out index)) continue;
+            if (index >= 0 && index < 3) faces[index] = sprite;
+        }
+
+        return faces;
     }
 
     /// <summary>
@@ -812,7 +953,8 @@ public static class RamenLayoutBuilder
     /// 이미 있으면 인스펙터에서 손댄 값이 날아가지 않도록 그대로 둔다.
     /// </summary>
     private static OrderSystemRefs EnsureOrderSystem(ResultPopupRefs popup, FinalPopupRefs finalPopup,
-                                                     OrderScreenRefs orderScreen, RecipeBookRefs recipeBook)
+                                                     OrderScreenRefs orderScreen, RecipeBookRefs recipeBook,
+                                                     OrderResultRefs orderResult)
     {
         // 예전 빌드로 만든 OrderSystem에는 DayManager가 없다. 남겨 두고 컴포넌트만 덧붙이면
         // 배선이 반쯤 빈 채로 남을 수 있어서, 캔버스와 같은 방식으로 지우고 새로 만든다.
@@ -827,6 +969,7 @@ public static class RamenLayoutBuilder
                                 typeof(FinalResultUI),
                                 typeof(OrderScreenUI),
                                 typeof(RecipeBookUI),
+                                typeof(OrderResultUI),
                                 typeof(OrderManager));
         Undo.RegisterCreatedObjectUndo(go, UndoLabel);
 
@@ -898,6 +1041,27 @@ public static class RamenLayoutBuilder
             SetPrivateReference(book, "closeButton", recipeBook.Close);
         }
 
+        // 손님별 결과창.
+        var result = go.GetComponent<OrderResultUI>();
+        if (orderResult != null)
+        {
+            SetPrivateReference(result, "root", orderResult.Root);
+            SetPrivateReference(result, "accuracyText", orderResult.Accuracy);
+            SetPrivateReference(result, "rewardText", orderResult.Reward);
+            SetPrivateReference(result, "revenueText", orderResult.Revenue);
+            SetPrivateReference(result, "customerLine", orderResult.CustomerLine);
+            SetPrivateReference(result, "emoji", orderResult.Emoji);
+            SetPrivateReference(result, "confirmButton", orderResult.Confirm);
+            SetPrivateReference(result, "gameManager", Object.FindFirstObjectByType<GameManager>());
+
+            if (orderResult.Faces != null && orderResult.Faces.Length >= 3)
+            {
+                SetPrivateReference(result, "emojiHappy", orderResult.Faces[0]);
+                SetPrivateReference(result, "emojiNeutral", orderResult.Faces[1]);
+                SetPrivateReference(result, "emojiAngry", orderResult.Faces[2]);
+            }
+        }
+
         return new OrderSystemRefs { Order = manager, Day = dayManager };
     }
 
@@ -915,6 +1079,7 @@ public static class RamenLayoutBuilder
         SetPrivateReference(gameManager, "finalResultUI", Object.FindFirstObjectByType<FinalResultUI>());
         SetPrivateReference(gameManager, "orderScreenUI", Object.FindFirstObjectByType<OrderScreenUI>());
         SetPrivateReference(gameManager, "recipeBookUI", Object.FindFirstObjectByType<RecipeBookUI>());
+        SetPrivateReference(gameManager, "orderResultUI", Object.FindFirstObjectByType<OrderResultUI>());
 
         // ? 버튼: 주문 원문 + 기본 레시피 + 재료 속성표 (기획서 6.1).
         // 조리 화면에는 대사줄이 없으므로 이게 유일한 확인 수단이다.
