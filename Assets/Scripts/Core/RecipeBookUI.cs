@@ -1,12 +1,13 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// 조리 중 ? 버튼으로 여는 정보 패널. 기획서 6.1이 요구하는 세 가지를 한 화면에 보여 준다.
-/// 주문 원문 · 기본 레시피 · 재료 속성표. 최종 정답은 보여 주지 않는다.
+/// B 키로 여닫는 레시피 책. 기본 레시피와 재료 속성표를 담는다.
+/// 손님 주문 내역은 여기 없다. 그쪽은 Tab으로 여는 OrderNoteUI가 맡는다.
+/// 최종 정답은 보여 주지 않는다.
 ///
 /// 기본 레시피는 B의 RecipeGenerator에서 그때그때 읽는다. 표를 이쪽에 베껴 두면
 /// B가 값을 바꿨을 때 책과 채점이 어긋나기 때문이다.
@@ -15,7 +16,6 @@ public class RecipeBookUI : MonoBehaviour
 {
     // 아래는 RamenLayoutBuilder가 씬을 만들 때 꽂아 준다.
     [SerializeField] private GameObject root;
-    [SerializeField] private TextMeshProUGUI orderText;
     [SerializeField] private TextMeshProUGUI recipeNames;
     [SerializeField] private TextMeshProUGUI recipeValues;
     [SerializeField] private TextMeshProUGUI ingredientNames;
@@ -77,13 +77,15 @@ public class RecipeBookUI : MonoBehaviour
         if (closeButton != null) closeButton.onClick.RemoveListener(Close);
     }
 
-    public void Open(string dialogue)
+    public void Open()
     {
         if (root != null) root.SetActive(true);
-        if (orderText != null)
-        {
-            orderText.text = string.IsNullOrEmpty(dialogue) ? "(받은 주문이 없습니다)" : dialogue;
-        }
+    }
+
+    public void Toggle()
+    {
+        if (IsOpen) Close();
+        else Open();
     }
 
     public void Close()

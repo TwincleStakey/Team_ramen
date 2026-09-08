@@ -1,13 +1,10 @@
 fileFormatVersion: 2
-guid: 44b03d624f3d0d541910b2edc5ee8ecd
+guid: a1f46d5c4c65aa1469271de3433fb279
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: 3302265257784454079
-    second: Order_history_0
-  - first:
-      213: -1121359296222245046
-    second: OrderPaper
+      213: -1998357878355586633
+    second: Money_UI2_0
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -40,7 +37,7 @@ TextureImporter:
   maxTextureSize: 2048
   textureSettings:
     serializedVersion: 2
-    filterMode: 0
+    filterMode: 1
     aniso: 1
     mipBias: 0
     wrapU: 1
@@ -78,7 +75,7 @@ TextureImporter:
     maxTextureSize: 2048
     resizeAlgorithm: 0
     textureFormat: -1
-    textureCompression: 0
+    textureCompression: 1
     compressionQuality: 50
     crunchedCompression: 0
     allowsAlphaSplitting: 0
@@ -142,23 +139,23 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: OrderPaper
+      name: Money_UI2_0
       rect:
         serializedVersion: 2
-        x: 13
-        y: 6
-        width: 40
-        height: 49
+        x: 6
+        y: 15
+        width: 52
+        height: 25
       alignment: 0
-      pivot: {x: 0.5, y: 0.5}
-      border: {x: 6, y: 10, z: 6, w: 14}
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: a4f471b49a12070f0800000000000000
-      internalID: -1121359296222245046
+      spriteID: 7b1138ee8186444e0800000000000000
+      internalID: -1998357878355586633
       vertices: []
       indices: 
       edges: []
@@ -177,8 +174,7 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      OrderPaper: -1121359296222245046
-      Order_history_0: 3302265257784454079
+      Money_UI2_0: -1998357878355586633
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

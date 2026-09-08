@@ -95,11 +95,17 @@ public static class RamenLayoutBuilder
         public Button Confirm;
     }
 
-    /// <summary>정보 패널(? 버튼)에서 RecipeBookUI에 꽂아 줘야 하는 것들.</summary>
+    /// <summary>주문 내역(Tab)에서 OrderNoteUI에 꽂아 줘야 하는 것들.</summary>
+    private class OrderNoteRefs
+    {
+        public GameObject Root;
+        public TextMeshProUGUI Dialogue;
+    }
+
+    /// <summary>레시피 책(B 키)에서 RecipeBookUI에 꽂아 줘야 하는 것들.</summary>
     private class RecipeBookRefs
     {
         public GameObject Root;
-        public TextMeshProUGUI Order;
         public TextMeshProUGUI RecipeNames;
         public TextMeshProUGUI RecipeValues;
         public TextMeshProUGUI IngredientNames;
@@ -279,10 +285,11 @@ public static class RamenLayoutBuilder
         // 주문 화면. 조리 화면을 통째로 덮으므로 팝업들보다 뒤에 만든다.
         OrderScreenRefs orderScreen = BuildOrderScreen(canvas);
         RecipeBookRefs recipeBook = BuildRecipeBook(canvas);
+        OrderNoteRefs orderNote = BuildOrderNote(canvas);
         OrderResultRefs orderResult = BuildOrderResult(canvas);
 
         // 주문을 만들어 줄 B의 컴포넌트들을 씬에 올리고 GameManager와 잇는다.
-        OrderSystemRefs orderSystem = EnsureOrderSystem(popup, finalPopup, orderScreen, recipeBook, orderResult);
+        OrderSystemRefs orderSystem = EnsureOrderSystem(popup, finalPopup, orderScreen, recipeBook, orderResult, orderNote);
         WireGameManager(orderSystem, topBar);
 
         // DragLayer는 반드시 마지막. 그래야 드래그 고스트와 커서가 항상 모든 UI 위에 그려진다.
@@ -623,7 +630,94 @@ public static class RamenLayoutBuilder
     }
 
     /// <summary>
-    /// ? 버튼이 여는 정보 패널. 주문 원문·기본 레시피·재료 속성표를 한 화면에 놓는다.
+    /// Tab으로 여는 주문 내역. 영수증 그림 위에 손님 대사를 그대로 얹는다.
+    /// 조리를 막지 않도록 뒷판을 두지 않는다. 보면서 재료를 넣을 수 있어야 한다.
+    /// </summary>
+    private static OrderNoteRefs BuildOrderNote(Transform canvas)
+    {
+        TMP_FontAsset tmpFont = EnsureTmpFont();
+
+        Transform root = CreateGroup("OrderNote", canvas);
+
+        // 64x64 그림 안에 영수증이 40x49로 들어 있다. 여백째 늘리면 종이가 뭉개지므로 잘라 쓴다.
+        // 9-슬라이스는 쓰지 않는다. 위쪽 ORDER 머리글이 가로로 늘어나 뭉개진다.
+        // 대신 원본 비율(40:49)을 지킨 채 통째로 확대한다.
+        Sprite paper = LoadCroppedSprite(UiDir + "Order_history.png", "OrderPaper",
+                                         new Rect(13f, 6f, 40f, 49f), Vector4.zero);
+
+        Image sheet = CreateImage("Paper", root, Center, new Vector2(-560f, 0f),
+                                  new Vector2(420f, 515f), Color.white, paper);
+        sheet.preserveAspect = true;
+        sheet.raycastTarget = false;
+
+        // ORDER 머리글이 위쪽 5분의 1을 쓴다. 글자는 그 아래에서 시작해야 한다.
+        var dialogue = CreateTmpText("DialogueText", sheet.transform, Center, new Vector2(0f, -35f),
+                                     new Vector2(320f, 370f), "", 26f, tmpFont);
+        dialogue.alignment = TextAlignmentOptions.TopLeft;
+        dialogue.enableAutoSizing = true;
+        dialogue.fontSizeMin = 16f;
+        dialogue.fontSizeMax = 26f;
+
+        root.gameObject.SetActive(false);
+
+        return new OrderNoteRefs { Root = root.gameObject, Dialogue = dialogue };
+    }
+
+    /// <summary>
+    /// 그림 안의 일부만 잘라 9-슬라이스로 쓴다.
+    /// 낱장 스프라이트는 이미지 전체가 영역이라, 여백이 큰 그림은 늘리면 여백까지 늘어난다.
+    /// </summary>
+    private static Sprite LoadCroppedSprite(string path, string spriteName, Rect rect, Vector4 border)
+    {
+        var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+        if (importer == null)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] 그림을 찾지 못했습니다: " + path);
+            return null;
+        }
+
+        bool needsSlice = importer.spriteImportMode != SpriteImportMode.Multiple
+                          || importer.spritesheet == null
+                          || importer.spritesheet.Length != 1
+                          || importer.spritesheet[0].rect != rect;
+
+        if (needsSlice
+            || importer.filterMode != FilterMode.Point
+            || importer.textureCompression != TextureImporterCompression.Uncompressed)
+        {
+            importer.textureType = TextureImporterType.Sprite;
+            importer.spriteImportMode = SpriteImportMode.Multiple;
+            importer.alphaIsTransparency = true;
+            importer.mipmapEnabled = false;
+            importer.filterMode = FilterMode.Point;
+            importer.textureCompression = TextureImporterCompression.Uncompressed;
+
+            importer.spritesheet = new[]
+            {
+                new SpriteMetaData
+                {
+                    name = spriteName,
+                    rect = rect,
+                    border = border,
+                    alignment = (int)SpriteAlignment.Center,
+                    pivot = new Vector2(0.5f, 0.5f)
+                }
+            };
+            importer.SaveAndReimport();
+        }
+
+        foreach (Object asset in AssetDatabase.LoadAllAssetsAtPath(path))
+        {
+            var sprite = asset as Sprite;
+            if (sprite != null && sprite.name == spriteName) return sprite;
+        }
+
+        Debug.LogWarning("[RamenLayoutBuilder] 잘라낸 스프라이트를 찾지 못했습니다: " + path);
+        return null;
+    }
+
+    /// <summary>
+    /// B 키로 여는 레시피 책. 주문 원문·기본 레시피·재료 속성표를 한 화면에 놓는다.
     /// 표는 이름 열과 내용 열을 따로 둔다. 한글은 글자 폭이 제각각이라 한 덩이 텍스트로는 줄이 안 맞는다.
     /// </summary>
     private static RecipeBookRefs BuildRecipeBook(Transform canvas)
@@ -639,36 +733,29 @@ public static class RamenLayoutBuilder
                                   Hex("#FFF8E7"), PanelSprite());
 
         CreateTmpText("Title", panel.transform, Center, new Vector2(0f, 390f),
-                      new Vector2(800f, 70f), "주문 확인", 46f, tmpFont);
+                      new Vector2(800f, 70f), "레시피 책", 46f, tmpFont);
 
-        // 왼쪽: 손님 주문 원문
-        CreateTmpText("OrderHeader", panel.transform, Center, new Vector2(-540f, 300f),
-                      new Vector2(480f, 50f), "손님 주문", 34f, tmpFont);
-        var order = CreateTmpText("OrderText", panel.transform, Center, new Vector2(-540f, 70f),
-                                  new Vector2(480f, 420f), "", 28f, tmpFont);
-        order.alignment = TextAlignmentOptions.TopLeft;
-
-        // 오른쪽 위: 기본 레시피
-        CreateTmpText("RecipeHeader", panel.transform, Center, new Vector2(120f, 300f),
+        // 위: 기본 레시피
+        CreateTmpText("RecipeHeader", panel.transform, Center, new Vector2(0f, 300f),
                       new Vector2(700f, 50f), "기본 레시피", 34f, tmpFont);
-        var recipeNames = CreateTmpText("RecipeNames", panel.transform, Center, new Vector2(-90f, 160f),
-                                        new Vector2(160f, 200f), "", 24f, tmpFont);
+        var recipeNames = CreateTmpText("RecipeNames", panel.transform, Center, new Vector2(-320f, 160f),
+                                        new Vector2(160f, 200f), "", 26f, tmpFont);
         recipeNames.alignment = TextAlignmentOptions.TopRight;
-        var recipeValues = CreateTmpText("RecipeValues", panel.transform, Center, new Vector2(405f, 160f),
-                                         new Vector2(790f, 200f), "", 24f, tmpFont);
+        var recipeValues = CreateTmpText("RecipeValues", panel.transform, Center, new Vector2(190f, 160f),
+                                         new Vector2(820f, 200f), "", 26f, tmpFont);
         recipeValues.alignment = TextAlignmentOptions.TopLeft;
 
         // 줄바꿈이 생기면 왼쪽 이름 열과 줄이 어긋난다. 한 메뉴는 반드시 한 줄이어야 한다.
         recipeValues.textWrappingMode = TextWrappingModes.NoWrap;
 
-        // 오른쪽 아래: 재료 속성표
-        CreateTmpText("IngredientHeader", panel.transform, Center, new Vector2(120f, 60f),
+        // 아래: 재료 속성표
+        CreateTmpText("IngredientHeader", panel.transform, Center, new Vector2(0f, 60f),
                       new Vector2(700f, 50f), "재료 속성", 34f, tmpFont);
-        var ingNames = CreateTmpText("IngredientNames", panel.transform, Center, new Vector2(-90f, -170f),
-                                     new Vector2(160f, 380f), "", 24f, tmpFont);
+        var ingNames = CreateTmpText("IngredientNames", panel.transform, Center, new Vector2(-320f, -170f),
+                                     new Vector2(160f, 380f), "", 26f, tmpFont);
         ingNames.alignment = TextAlignmentOptions.TopRight;
-        var ingAttrs = CreateTmpText("IngredientAttrs", panel.transform, Center, new Vector2(405f, -170f),
-                                     new Vector2(790f, 380f), "", 24f, tmpFont);
+        var ingAttrs = CreateTmpText("IngredientAttrs", panel.transform, Center, new Vector2(190f, -170f),
+                                     new Vector2(820f, 380f), "", 26f, tmpFont);
         ingAttrs.alignment = TextAlignmentOptions.TopLeft;
         ingAttrs.textWrappingMode = TextWrappingModes.NoWrap;
 
@@ -686,7 +773,6 @@ public static class RamenLayoutBuilder
         return new RecipeBookRefs
         {
             Root = root.gameObject,
-            Order = order,
             RecipeNames = recipeNames,
             RecipeValues = recipeValues,
             IngredientNames = ingNames,
@@ -1063,7 +1149,7 @@ public static class RamenLayoutBuilder
     /// </summary>
     private static OrderSystemRefs EnsureOrderSystem(ResultPopupRefs popup, FinalPopupRefs finalPopup,
                                                      OrderScreenRefs orderScreen, RecipeBookRefs recipeBook,
-                                                     OrderResultRefs orderResult)
+                                                     OrderResultRefs orderResult, OrderNoteRefs orderNote)
     {
         // 예전 빌드로 만든 OrderSystem에는 DayManager가 없다. 남겨 두고 컴포넌트만 덧붙이면
         // 배선이 반쯤 빈 채로 남을 수 있어서, 캔버스와 같은 방식으로 지우고 새로 만든다.
@@ -1078,6 +1164,8 @@ public static class RamenLayoutBuilder
                                 typeof(FinalResultUI),
                                 typeof(OrderScreenUI),
                                 typeof(RecipeBookUI),
+                                typeof(OrderNoteUI),
+                                typeof(CookingHotkeys),
                                 typeof(OrderResultUI),
                                 typeof(OrderManager));
         Undo.RegisterCreatedObjectUndo(go, UndoLabel);
@@ -1142,7 +1230,6 @@ public static class RamenLayoutBuilder
         if (recipeBook != null)
         {
             SetPrivateReference(book, "root", recipeBook.Root);
-            SetPrivateReference(book, "orderText", recipeBook.Order);
             SetPrivateReference(book, "recipeNames", recipeBook.RecipeNames);
             SetPrivateReference(book, "recipeValues", recipeBook.RecipeValues);
             SetPrivateReference(book, "ingredientNames", recipeBook.IngredientNames);
@@ -1171,6 +1258,20 @@ public static class RamenLayoutBuilder
             }
         }
 
+        // 주문 내역(Tab). 이것도 root를 끄는 쪽이라 패널 바깥에 붙여야 한다.
+        var note = go.GetComponent<OrderNoteUI>();
+        if (orderNote != null)
+        {
+            SetPrivateReference(note, "root", orderNote.Root);
+            SetPrivateReference(note, "dialogueText", orderNote.Dialogue);
+        }
+
+        // 단축키. Tab은 누르는 동안 주문 내역, B는 레시피 책 토글.
+        var hotkeys = go.GetComponent<CookingHotkeys>();
+        SetPrivateReference(hotkeys, "orderNote", note);
+        SetPrivateReference(hotkeys, "recipeBook", book);
+        SetPrivateReference(hotkeys, "orderManager", manager);
+
         return new OrderSystemRefs { Order = manager, Day = dayManager };
     }
 
@@ -1187,7 +1288,7 @@ public static class RamenLayoutBuilder
         SetPrivateReference(gameManager, "ramenCalculator", Object.FindFirstObjectByType<RamenCalculator>());
         SetPrivateReference(gameManager, "finalResultUI", Object.FindFirstObjectByType<FinalResultUI>());
         SetPrivateReference(gameManager, "orderScreenUI", Object.FindFirstObjectByType<OrderScreenUI>());
-        SetPrivateReference(gameManager, "recipeBookUI", Object.FindFirstObjectByType<RecipeBookUI>());
+        SetPrivateReference(gameManager, "orderNoteUI", Object.FindFirstObjectByType<OrderNoteUI>());
         SetPrivateReference(gameManager, "orderResultUI", Object.FindFirstObjectByType<OrderResultUI>());
 
         // ? 버튼: 주문 원문 + 기본 레시피 + 재료 속성표 (기획서 6.1).
