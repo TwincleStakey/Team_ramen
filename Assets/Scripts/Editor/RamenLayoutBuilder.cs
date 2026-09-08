@@ -300,7 +300,11 @@ public static class RamenLayoutBuilder
 
         // DragLayer는 반드시 마지막. 그래야 드래그 고스트와 커서가 항상 모든 UI 위에 그려진다.
         // 이 그룹 자체에는 Image를 붙이지 않는다. 붙이면 화면 전체를 덮어 모든 클릭을 삼킨다.
-        BuildCursor(CreateGroup("DragLayer", canvas));
+        // 주문 내역(Tab)은 빼 둔다. 그건 보면서 조리하는 창이라 젓가락이 그대로 있어야 한다.
+        BuildCursor(CreateGroup("DragLayer", canvas), new[]
+        {
+            popup.Root, finalPopup.Root, orderScreen.Root, recipeBook.Root, orderResult.Root
+        });
 
         // 더티 표시만 하면 디스크 파일은 그대로라, 이 상태로 커밋하면 옛 씬이 올라간다.
         // 실제로 한 번 그렇게 커밋돼서 클론 시 주문 시스템이 없는 씬이 나갔다. 그래서 바로 저장한다.
@@ -698,14 +702,10 @@ public static class RamenLayoutBuilder
                                  new Rect(19f, 27f, 37f, 16f), new Vector4(6f, 5f, 6f, 5f));
     }
 
-    /// <summary>
-    /// 시계 아이콘만. 아래로 한 줄이라도 더 잡으면 뒤에 있는 흰 막대가 딸려 들어와
-    /// 아이콘 밑에 흰 덩어리가 붙는다. 그림 좌표로 x8~18, y17~25가 아이콘의 끝이다.
-    /// </summary>
+    /// <summary>시계 아이콘만. 그림 좌표로 x9~18, y17~25. x8 칸은 막대의 왼쪽 테두리라 뺀다.</summary>
     private static Sprite TimeIconSprite()
     {
-        return LoadCroppedSprite(UiDir + "Time.png", "TimeIcon",
-                                 new Rect(8f, 38f, 11f, 9f), Vector4.zero);
+        return LoadCleanedIcon(UiDir + "Time.png", "TimeIcon", new RectInt(9, 38, 10, 9));
     }
 
     private static Sprite MoneyBarSprite()
@@ -714,11 +714,87 @@ public static class RamenLayoutBuilder
                                  new Rect(17f, 16f, 40f, 20f), new Vector4(6f, 6f, 6f, 6f));
     }
 
-    /// <summary>원 표시 배지만. 그림 좌표로 x7~16, y25~31이고 그 아래는 전부 흰 막대다.</summary>
+    /// <summary>원 표시 배지만. 그림 좌표로 x8~16, y25~31. x7 칸은 막대의 왼쪽 테두리라 뺀다.</summary>
     private static Sprite MoneyIconSprite()
     {
-        return LoadCroppedSprite(UiDir + "Money_UI2.png", "MoneyIcon",
-                                 new Rect(7f, 32f, 10f, 7f), Vector4.zero);
+        return LoadCleanedIcon(UiDir + "Money_UI2.png", "MoneyIcon", new RectInt(8, 32, 9, 7));
+    }
+
+    /// <summary>
+    /// 판 그림에서 아이콘만 오려 내고, 뒤에 비치는 흰 막대를 지운 그림을 따로 만든다.
+    ///
+    /// 아이콘과 막대가 서로 물려 그려져 있어 사각형으로 자르면 흰 픽셀이 같이 딸려 온다.
+    /// 아이콘을 막대 밖에 놓으면 그 흰색이 배경 위에 덩어리로 드러난다.
+    /// 그래서 잘라낸 뒤 흰색만 투명으로 바꿔 Generated 폴더에 저장해 두고 그걸 쓴다.
+    /// </summary>
+    private static Sprite LoadCleanedIcon(string sourcePath, string outputName, RectInt area)
+    {
+        string folder = UiDir + "Generated";
+        string outPath = folder + "/" + outputName + ".png";
+
+        byte[] made = BuildCleanedIconBytes(sourcePath, area);
+        if (made == null) return null;
+
+        if (!AssetDatabase.IsValidFolder(folder))
+        {
+            AssetDatabase.CreateFolder(UiDir.TrimEnd('/'), "Generated");
+        }
+
+        string full = System.IO.Path.GetFullPath(outPath);
+        bool changed = !System.IO.File.Exists(full)
+                       || !ByteArraysEqual(System.IO.File.ReadAllBytes(full), made);
+
+        if (changed)
+        {
+            System.IO.File.WriteAllBytes(full, made);
+            AssetDatabase.ImportAsset(outPath, ImportAssetOptions.ForceUpdate);
+        }
+
+        return LoadSprite(outPath);
+    }
+
+    /// <summary>잘라낸 조각에서 흰색을 투명으로 바꾼 PNG 바이트를 만든다.</summary>
+    private static byte[] BuildCleanedIconBytes(string sourcePath, RectInt area)
+    {
+        var importer = AssetImporter.GetAtPath(sourcePath) as TextureImporter;
+        if (importer == null)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] 그림을 찾지 못했습니다: " + sourcePath);
+            return null;
+        }
+
+        // 픽셀을 읽으려면 읽기 허용이 켜져 있어야 한다.
+        if (!importer.isReadable)
+        {
+            importer.isReadable = true;
+            importer.SaveAndReimport();
+        }
+
+        var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(sourcePath);
+        if (texture == null) return null;
+
+        var pixels = texture.GetPixels(area.x, area.y, area.width, area.height);
+        for (int i = 0; i < pixels.Length; i++)
+        {
+            Color c = pixels[i];
+            bool white = c.a > 0.1f && c.r > 0.9f && c.g > 0.9f && c.b > 0.9f;
+            if (white) pixels[i] = new Color(0f, 0f, 0f, 0f);
+        }
+
+        var cut = new Texture2D(area.width, area.height, TextureFormat.RGBA32, false);
+        cut.SetPixels(pixels);
+        cut.Apply();
+
+        byte[] png = cut.EncodeToPNG();
+        Object.DestroyImmediate(cut);
+        return png;
+    }
+
+    private static bool ByteArraysEqual(byte[] a, byte[] b)
+    {
+        if (a == null || b == null || a.Length != b.Length) return false;
+        for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;
+        return true;
     }
 
     /// <summary>
@@ -1103,7 +1179,7 @@ public static class RamenLayoutBuilder
     }
 
     /// <summary>시스템 커서를 대신하는 조리 도구. 평소 젓가락, 액체를 뜨면 국자.</summary>
-    private static void BuildCursor(Transform dragLayer)
+    private static void BuildCursor(Transform dragLayer, GameObject[] uiScreens)
     {
         Sprite[] frames = LoadChopstickFrames();
 
@@ -1123,6 +1199,39 @@ public static class RamenLayoutBuilder
         cursor.ladleBroth = LoadSprite(EtcDir + "국자 육수.png");
         cursor.flavorOilBottle = LoadSprite(EtcDir + "향미유.png");
         cursor.chiliPowderBottle = LoadSprite(EtcDir + "시치미.png");
+
+        // 메뉴 화면에서 쓰는 화살표. 끝점은 그림 왼쪽 위에서 2px 안쪽이다.
+        cursor.uiScreens = uiScreens;
+        cursor.arrowCursor = LoadCursorTexture(UiDir + "Cursor_Arrow.png");
+        cursor.arrowHotspot = new Vector2(2f, 2f);
+    }
+
+    /// <summary>
+    /// 시스템 커서로 쓸 그림. Cursor 타입으로 들여와야 읽을 수 있고,
+    /// 압축을 끄고 Point로 둬야 픽셀이 뭉개지지 않는다.
+    /// </summary>
+    private static Texture2D LoadCursorTexture(string path)
+    {
+        var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+        if (importer == null)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] 커서 그림을 찾지 못했습니다: " + path);
+            return null;
+        }
+
+        if (importer.textureType != TextureImporterType.Cursor
+            || importer.filterMode != FilterMode.Point
+            || importer.textureCompression != TextureImporterCompression.Uncompressed)
+        {
+            importer.textureType = TextureImporterType.Cursor;
+            importer.alphaIsTransparency = true;
+            importer.mipmapEnabled = false;
+            importer.filterMode = FilterMode.Point;
+            importer.textureCompression = TextureImporterCompression.Uncompressed;
+            importer.SaveAndReimport();
+        }
+
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
     }
 
     /// <summary>

@@ -1,16 +1,10 @@
 fileFormatVersion: 2
-guid: a1f46d5c4c65aa1469271de3433fb279
+guid: 18de321522e80a942b8d8b40be819f3d
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: -1998357878355586633
-    second: Money_UI2_0
-  - first:
-      213: 5422835937737945996
-    second: MoneyBar
-  - first:
-      213: 2382518083541889405
-    second: MoneyIcon
+      213: 2738376409307087187
+    second: Cursor_Arrow_0
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -63,7 +57,7 @@ TextureImporter:
   alphaUsage: 1
   alphaIsTransparency: 1
   spriteTessellationDetail: -1
-  textureType: 8
+  textureType: 7
   textureShape: 1
   singleChannelComponent: 0
   flipbookRows: 1
@@ -145,45 +139,23 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: MoneyBar
+      name: Cursor_Arrow_0
       rect:
         serializedVersion: 2
-        x: 17
-        y: 16
-        width: 40
-        height: 20
+        x: 0
+        y: 0
+        width: 23
+        height: 32
       alignment: 0
-      pivot: {x: 0.5, y: 0.5}
-      border: {x: 6, y: 6, z: 6, w: 6}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: c83b710dd88c14b40800000000000000
-      internalID: 5422835937737945996
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
-    - serializedVersion: 2
-      name: MoneyIcon
-      rect:
-        serializedVersion: 2
-        x: 7
-        y: 32
-        width: 10
-        height: 7
-      alignment: 0
-      pivot: {x: 0.5, y: 0.5}
+      pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: d717578e297601120800000000000000
-      internalID: 2382518083541889405
+      spriteID: 3510f02f5daa00620800000000000000
+      internalID: 2738376409307087187
       vertices: []
       indices: 
       edges: []
@@ -202,9 +174,7 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      MoneyBar: 5422835937737945996
-      MoneyIcon: 2382518083541889405
-      Money_UI2_0: -1998357878355586633
+      Cursor_Arrow_0: 2738376409307087187
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

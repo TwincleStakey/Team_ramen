@@ -21,6 +21,12 @@ public class CookingCursor : MonoBehaviour
     public Sprite flavorOilBottle;
     public Sprite chiliPowderBottle;
 
+    // 메뉴 화면에서는 조리 도구 대신 시스템 화살표를 쓴다.
+    // 버튼을 누르는 화면에 젓가락이 떠 있으면 어디를 가리키는지 읽히지 않는다.
+    public GameObject[] uiScreens;   // 하나라도 켜져 있으면 젓가락을 감춘다
+    public Texture2D arrowCursor;    // 그동안 띄울 픽셀 화살표
+    public Vector2 arrowHotspot;     // 화살표 끝이 가리키는 점 (그림 좌표)
+
     /// <summary>국자나 병에 무언가 들려 있는가. 들려 있어야 그릇에 부을 수 있다.</summary>
     public bool IsHolding { get; private set; }
     public IngredientType Held { get; private set; }
@@ -72,6 +78,9 @@ public class CookingCursor : MonoBehaviour
     /// <summary>참이면 마우스를 따라가지 않는다. 뿌리는 동작 중에만 켠다.</summary>
     private bool frozen;
 
+    /// <summary>메뉴 화면이 떠 있는가. 참이면 젓가락을 끄고 화살표를 띄운다.</summary>
+    private bool uiOpen;
+
     /// <summary>드래그 고스트가 커서에 비례한 크기로 나오도록 알려 준다.</summary>
     public float Size
     {
@@ -88,18 +97,48 @@ public class CookingCursor : MonoBehaviour
 
     private void OnEnable()
     {
-        Cursor.visible = false;
+        uiOpen = AnyUiOpen();
+        ApplyCursorMode();
     }
 
     private void OnDisable()
     {
+        // 플레이를 멈춰도 화살표가 남지 않도록 시스템 기본값으로 돌려 놓는다.
+        Cursor.SetCursor(null, Vector2.zero, CursorMode.Auto);
         Cursor.visible = true;
         if (Instance == this) Instance = null;
+    }
+
+    /// <summary>주문 화면·팝업 중 하나라도 열려 있는가.</summary>
+    private bool AnyUiOpen()
+    {
+        if (uiScreens == null) return false;
+
+        for (int i = 0; i < uiScreens.Length; i++)
+        {
+            if (uiScreens[i] != null && uiScreens[i].activeInHierarchy) return true;
+        }
+        return false;
+    }
+
+    private void ApplyCursorMode()
+    {
+        if (image != null) image.enabled = !uiOpen;
+        Cursor.visible = uiOpen;
+        if (uiOpen && arrowCursor != null) Cursor.SetCursor(arrowCursor, arrowHotspot, CursorMode.Auto);
     }
 
     private void Update()
     {
         if (Mouse.current == null) return;
+
+        bool open = AnyUiOpen();
+        if (open != uiOpen)
+        {
+            uiOpen = open;
+            ApplyCursorMode();
+        }
+        if (uiOpen) return;   // 화살표가 도는 동안 젓가락은 멈춰 둔다
 
         UpdateSprite();
         Follow();
