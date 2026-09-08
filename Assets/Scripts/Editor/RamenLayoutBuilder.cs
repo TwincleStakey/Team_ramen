@@ -633,19 +633,24 @@ public static class RamenLayoutBuilder
 
         // 말풍선 꼬리. 정사각형을 45도 돌려 절반을 말풍선 뒤에 숨기면 삼각형으로 보인다.
         // 반드시 말풍선보다 먼저 만들어야 한다. 뒤에 만들면 사각형 그대로 드러난다.
-        Image tail = CreateImage("BubbleTail", root, Center, new Vector2(-155f, 40f),
+        Image tail = CreateImage("BubbleTail", root, Center, new Vector2(-150f, 60f),
                                  new Vector2(90f, 90f), Hex("#FFF8E7"));
         tail.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 45f);
         tail.raycastTarget = false;
 
-        Image bubble = CreateImage("Bubble", root, Center, new Vector2(-510f, 120f), new Vector2(700f, 360f),
+        Image bubble = CreateImage("Bubble", root, Center, new Vector2(-540f, 150f), new Vector2(740f, 560f),
                                    Hex("#FFF8E7"), PanelSprite());
 
-        var dialogue = CreateTmpText("DialogueText", bubble.transform, Center, new Vector2(0f, 55f),
-                                     new Vector2(620f, 200f), "손님을 기다리는 중...", 36f, tmpFont);
+        // 대사는 페르소나·난이도에 따라 6~8줄까지 간다. 글자 크기를 자동으로 줄여
+        // 상자를 넘지 않게 하고, 버튼 자리는 따로 비워 둔다.
+        var dialogue = CreateTmpText("DialogueText", bubble.transform, Center, new Vector2(0f, 60f),
+                                     new Vector2(660f, 340f), "손님을 기다리는 중...", 30f, tmpFont);
         dialogue.alignment = TextAlignmentOptions.TopLeft;
+        dialogue.enableAutoSizing = true;
+        dialogue.fontSizeMin = 14f;
+        dialogue.fontSizeMax = 30f;
 
-        Image startImage = CreateImage("StartButton", bubble.transform, Center, new Vector2(120f, -110f),
+        Image startImage = CreateImage("StartButton", bubble.transform, Center, new Vector2(180f, -210f),
                                        new Vector2(300f, 80f), Hex("#C0392B"), PanelSprite());
         var start = Undo.AddComponent<Button>(startImage.gameObject);
         start.targetGraphic = startImage;
@@ -808,6 +813,9 @@ public static class RamenLayoutBuilder
                 // 통이 표준보다 크면 원본 그림도 그만큼 크다. 면 통 384는 2배, 나머지 192는 1배.
                 slot.ghostScale = def.Size.x / BinSize.x;
             }
+
+            // 커서가 젓가락 그림이라 어느 통을 가리키는지 알기 어렵다. 통이 직접 반응하게 한다.
+            Undo.AddComponent<SlotHover>(bin.gameObject);
 
             CreateSlotLabel(bin.transform, def, font);
         }

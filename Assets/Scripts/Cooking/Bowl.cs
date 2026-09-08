@@ -32,6 +32,9 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
 
     private Coroutine brothPour;
 
+    /// <summary>드래그 전 그리기 순서. 끝나면 여기로 돌려놓는다.</summary>
+    private int siblingIndexBeforeDrag = -1;
+
     // 지금 그릇에 담긴 재료
     private readonly Dictionary<IngredientType, int> bowl = new Dictionary<IngredientType, int>();
 
@@ -226,22 +229,39 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         return true;
     }
 
+    /// <summary>타래가 하나라도 들어가 있는가.</summary>
+    private bool HasTare
+    {
+        get
+        {
+            return bowl.ContainsKey(IngredientType.ShioTare)
+                || bowl.ContainsKey(IngredientType.ShoyuTare)
+                || bowl.ContainsKey(IngredientType.TonkotsuBase);
+        }
+    }
+
     private bool IsAllowed(IngredientType type)
     {
+        // 베이스는 타래 → 육수 → 면 순서로만 넣을 수 있다.
         if (IsTare(type))
         {
-            // 육수가 없으면 탈 국물이 없다. 빈 그릇에 타래만 붓는 상태를 막는다.
-            if (!bowl.ContainsKey(IngredientType.Broth)) return false;
-
-            // 타래가 이미 하나라도 있으면 같은 타래든 다른 타래든 전부 거부한다.
-            return !bowl.ContainsKey(IngredientType.ShioTare)
-                && !bowl.ContainsKey(IngredientType.ShoyuTare)
-                && !bowl.ContainsKey(IngredientType.TonkotsuBase);
+            // 타래가 맨 처음이다. 하나라도 있으면 같은 타래든 다른 타래든 전부 거부한다.
+            return !HasTare;
         }
 
-        if (type == IngredientType.Broth) return CountIn(bowl, type) < MaxBroth;
-        if (type == IngredientType.Noodles) return CountIn(bowl, type) < MaxNoodles;
+        if (type == IngredientType.Broth)
+        {
+            if (!HasTare) return false;
+            return CountIn(bowl, type) < MaxBroth;
+        }
 
+        if (type == IngredientType.Noodles)
+        {
+            if (!bowl.ContainsKey(IngredientType.Broth)) return false;
+            return CountIn(bowl, type) < MaxNoodles;
+        }
+
+        // 토핑과 조미료는 순서를 따지지 않는다.
         return true;
     }
 
@@ -254,9 +274,10 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
 
     private void Reject(IngredientType type)
     {
-        string reason = IsTare(type) && !bowl.ContainsKey(IngredientType.Broth)
-            ? "육수를 먼저 부어야 합니다."
-            : "이미 넣었거나 지금 넣을 수 없는 재료입니다.";
+        string reason;
+        if (type == IngredientType.Broth && !HasTare) reason = "타래를 먼저 넣어야 합니다.";
+        else if (type == IngredientType.Noodles && !bowl.ContainsKey(IngredientType.Broth)) reason = "육수를 먼저 부어야 합니다.";
+        else reason = "이미 넣었거나 지금 넣을 수 없는 재료입니다.";
 
         Debug.Log("[투입 거부] " + type + " — " + reason);
         if (blink != null) StopCoroutine(blink);
@@ -290,6 +311,10 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     {
         // 이걸 끄지 않으면 그릇이 자기 밑의 SubmitZone을 가려서 제출이 영영 안 된다.
         if (canvasGroup != null) canvasGroup.blocksRaycasts = false;
+
+        // 끄는 동안에만 맨 위로 올린다. 끝나고 되돌리지 않으면 그릇이 커서와 결과창까지
+        // 영원히 덮어 버려서, 마우스 위치도 안 보이고 결과창 버튼도 안 눌린다.
+        siblingIndexBeforeDrag = transform.GetSiblingIndex();
         transform.SetAsLastSibling();
     }
 
@@ -306,6 +331,12 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
 
         // SubmitZone.OnDrop은 이 시점보다 먼저 끝나 있다. 제출됐든 아니든 그릇은 원래 자리로 돌아간다.
         rect.anchoredPosition = homePosition;
+
+        if (siblingIndexBeforeDrag >= 0)
+        {
+            transform.SetSiblingIndex(siblingIndexBeforeDrag);
+            siblingIndexBeforeDrag = -1;
+        }
     }
 
     /// <summary>SubmitZone이 부른다. 넘기고 나면 다음 손님을 위해 그릇과 폐기 기록을 모두 비운다.</summary>
