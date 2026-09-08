@@ -12,32 +12,32 @@ using UnityEngine.UI;
 /// </summary>
 public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDragHandler, IDragHandler, IEndDragHandler
 {
-    // 그릇 상태별 그림. RamenLayoutBuilder가 넣어 준다.
+    /// <summary>아직 아무것도 안 들어간 그릇. 타래를 붓기 전까지는 이 그림이다.</summary>
     public Sprite emptyBowlSprite;
-    public Sprite brothBowlSprite;
-    public Sprite shioBowlSprite;
-    public Sprite shoyuBowlSprite;
-    public Sprite tonkotsuBowlSprite;
 
-    // ── 붓기 애니메이션 ──────────────────────────────────────────
-    // 국물이 차오르거나 타래 색이 물드는 장면. RamenLayoutBuilder가 시트를 잘라 넣어 준다.
-    public Sprite[] brothPourFrames;
-    public Sprite[] shioPourFrames;
-    public Sprite[] shoyuPourFrames;
-    public Sprite[] tonkotsuPourFrames;
+    // ── 그릇 8프레임 시트 ────────────────────────────────────────
+    // 타래 종류마다 한 장씩. 한 시트가 조리 전 과정을 담는다.
+    //   0~3  타래를 부어 국물이 생기는 구간
+    //   4~6  육수를 부어 국물이 차오르는 구간
+    //   7    면을 넣은 모습
+    // RamenLayoutBuilder가 시트를 잘라 넣어 준다.
+    public Sprite[] shioFrames;
+    public Sprite[] shoyuFrames;
+    public Sprite[] tonkotsuFrames;
 
     /// <summary>
-    /// 붓기 애니메이션 속도(초당 프레임). 값이 작을수록 느리다. 육수와 타래에 같이 쓴다.
+    /// 붓기 애니메이션 속도(초당 프레임). 값이 작을수록 느리다.
     /// 인스펙터에서 바꾸면 바로 반영되지만 빌더를 다시 돌리면 이 기본값으로 되돌아간다.
     /// 속도를 굳히려면 아래 숫자를 고칠 것.
     /// </summary>
     public float pourFps = 10f;
 
-    /// <summary>육수는 앞에서 몇 장까지 쓸지. 시트에는 더 있지만 뒤쪽은 안 쓴다.</summary>
-    public int brothFrameCount = 5;
-
-    /// <summary>타래는 앞에서 몇 장까지 쓸지. 이미 국물이 있으니 짧게 스친다.</summary>
-    public int tareFrameCount = 2;
+    // 시트 안에서 각 구간이 차지하는 자리.
+    private const int TareFirstFrame = 0;
+    private const int TareLastFrame = 3;
+    private const int BrothFirstFrame = 4;
+    private const int BrothLastFrame = 6;
+    private const int NoodleFrame = 7;
 
 
     private Coroutine brothPour;
@@ -60,9 +60,6 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
 
     // ── 그릇 안 표시 ─────────────────────────────────────────────
     private const string ContentsName = "Contents";
-
-    /// <summary>면 사리는 그릇 그림과 같은 판에 그려져 있어 그릇과 같은 크기로 겹쳐 놓는다.</summary>
-    private static readonly Vector2 NoodleNestSize = new Vector2(768f, 768f);
 
     /// <summary>
     /// 재료 그림 한 변. 64px 원본의 3배다.
@@ -230,17 +227,16 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         // 앞의 연출이 남아 있으면 새 상태를 덮어쓴다. 여기서 확실히 끊는다.
         StopBrothPour();
 
-        // 육수와 타래는 그릇 그림을 바로 갈아 끼우지 않고 부어지는 장면을 보여 준다.
-        Sprite[] frames = PourFramesFor(type);
-        if (frames != null && frames.Length > 0)
+        // 타래와 육수는 그릇 그림을 바로 갈아 끼우지 않고 부어지는 장면을 보여 준다.
+        // 면은 한 장짜리라 애니메이션 없이 바로 바뀐다.
+        Sprite[] sheet = CurrentSheet;
+        if (sheet != null && sheet.Length > NoodleFrame)
         {
-            int frameCount = IsTare(type) ? tareFrameCount : brothFrameCount;
-            PlayPour(frames, frameCount);
+            if (IsTare(type)) { PlayPour(sheet, TareFirstFrame, TareLastFrame); return true; }
+            if (type == IngredientType.Broth) { PlayPour(sheet, BrothFirstFrame, BrothLastFrame); return true; }
         }
-        else
-        {
-            RefreshBowlSprite();
-        }
+
+        RefreshBowlSprite();
         return true;
     }
 
@@ -398,24 +394,26 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
 
     // ── 표시와 도우미 ────────────────────────────────────────────
 
-    /// <summary>그 재료를 부을 때 보여 줄 장면. 없으면 null.</summary>
-    private Sprite[] PourFramesFor(IngredientType type)
+    /// <summary>
+    /// 지금 그릇이 쓰는 시트. 어떤 타래가 들어갔는지로 정해진다.
+    /// 타래가 없으면 아직 시트를 고를 수 없다.
+    /// </summary>
+    private Sprite[] CurrentSheet
     {
-        switch (type)
+        get
         {
-            case IngredientType.Broth: return brothPourFrames;
-            case IngredientType.ShioTare: return shioPourFrames;
-            case IngredientType.ShoyuTare: return shoyuPourFrames;
-            case IngredientType.TonkotsuBase: return tonkotsuPourFrames;
-            default: return null;
+            if (bowl.ContainsKey(IngredientType.ShioTare)) return shioFrames;
+            if (bowl.ContainsKey(IngredientType.ShoyuTare)) return shoyuFrames;
+            if (bowl.ContainsKey(IngredientType.TonkotsuBase)) return tonkotsuFrames;
+            return null;
         }
     }
 
-    /// <summary>붓는 장면을 한 번 재생하고 평소 그릇 그림으로 안착한다.</summary>
-    private void PlayPour(Sprite[] frames, int count)
+    /// <summary>시트의 한 구간을 재생하고 지금 상태에 맞는 그림으로 안착한다.</summary>
+    private void PlayPour(Sprite[] frames, int first, int last)
     {
         StopBrothPour();
-        brothPour = StartCoroutine(PourRoutine(frames, count));
+        brothPour = StartCoroutine(PourRoutine(frames, first, last));
     }
 
     private void StopBrothPour()
@@ -427,13 +425,13 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         }
     }
 
-    private IEnumerator PourRoutine(Sprite[] frames, int count)
+    private IEnumerator PourRoutine(Sprite[] frames, int first, int last)
     {
         // fps가 0이나 음수면 아예 안 넘어가므로 최소값을 둔다.
         float perFrame = 1f / Mathf.Max(0.1f, pourFps);
-        int last = Mathf.Clamp(count, 1, frames.Length);
+        int end = Mathf.Min(last, frames.Length - 1);
 
-        for (int i = 0; i < last; i++)
+        for (int i = first; i <= end; i++)
         {
             if (frames[i] != null) image.sprite = frames[i];
             yield return new WaitForSeconds(perFrame);
@@ -443,38 +441,37 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         brothPour = null;
     }
 
-    /// <summary>국물 상태에 맞는 그릇 그림을 고른다. 타래가 있으면 타래 색이 이긴다.</summary>
+    /// <summary>
+    /// 지금 담긴 것에 맞는 그릇 그림을 고른다.
+    /// 타래가 정해져야 시트가 정해지므로, 타래 전에는 빈 그릇 그림을 쓴다.
+    /// </summary>
     private void RefreshBowlSprite()
     {
+        Sprite[] sheet = CurrentSheet;
+        if (sheet == null || sheet.Length <= NoodleFrame)
+        {
+            if (emptyBowlSprite != null) image.sprite = emptyBowlSprite;
+            return;
+        }
 
-        Sprite next = emptyBowlSprite;
+        int frame = TareLastFrame;
+        if (bowl.ContainsKey(IngredientType.Noodles)) frame = NoodleFrame;
+        else if (bowl.ContainsKey(IngredientType.Broth)) frame = BrothLastFrame;
 
-        if (bowl.ContainsKey(IngredientType.ShioTare)) next = shioBowlSprite;
-        else if (bowl.ContainsKey(IngredientType.ShoyuTare)) next = shoyuBowlSprite;
-        else if (bowl.ContainsKey(IngredientType.TonkotsuBase)) next = tonkotsuBowlSprite;
-        else if (bowl.ContainsKey(IngredientType.Broth)) next = brothBowlSprite;
-
-        if (next != null) image.sprite = next;
+        if (sheet[frame] != null) image.sprite = sheet[frame];
     }
 
     private void AddIcon(IngredientType type, Sprite icon, int count)
     {
         if (contents == null) return;
 
-        // 타래와 육수는 그릇 그림 자체가 바뀌므로 따로 얹을 게 없다.
-        if (IsTare(type) || type == IngredientType.Broth) return;
+        // 타래·육수·면은 그릇 그림 자체가 바뀌므로 따로 얹을 게 없다.
+        // 면은 시트 마지막 프레임에 이미 그려져 있어서, 따로 얹으면 두 번 겹친다.
+        // 굵은면과 얇은면은 그릇 안에서 같은 그림을 쓴다.
+        if (IsTare(type) || type == IngredientType.Broth || type == IngredientType.Noodles) return;
 
         // 조미료는 그릇용 그림이 없다. 수량만 세고 화면에는 안 나온다.
         if (icon == null) return;
-
-        if (type == IngredientType.Noodles)
-        {
-            // 면 사리는 국물 바로 위, 토핑 아래.
-            RectTransform nest = CreateIcon(type, icon, Vector2.zero, NoodleNestSize, 0f);
-            nest.SetSiblingIndex(0);
-            backInsertIndex = 1;
-            return;
-        }
 
         if (!Layouts.TryGetValue(type, out ToppingLayout layout))
         {

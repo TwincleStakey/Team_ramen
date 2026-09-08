@@ -1086,17 +1086,12 @@ public static class RamenLayoutBuilder
 
         Bowl component = Undo.AddComponent<Bowl>(bowl.gameObject);
         component.emptyBowlSprite = LoadSprite(BowlDir + "빈그릇.png");
-        component.brothBowlSprite = LoadSprite(BowlDir + "육수그릇.png");
-        component.shioBowlSprite = LoadSprite(BowlDir + "시오그릇.png");
-        component.shoyuBowlSprite = LoadSprite(BowlDir + "쇼유그릇.png");
-        component.tonkotsuBowlSprite = LoadSprite(BowlDir + "돈코츠그릇.png");
 
-        // 붓는 장면들. 재생 속도는 Bowl.pourFps로 한꺼번에 조절한다.
-        // 육수는 8프레임(4열 x 2행), 타래는 5프레임(가로 한 줄)이다.
-        component.brothPourFrames = LoadSpriteSheet(BowlDir + "애니메이션_육수그릇.png", 128, 128);
-        component.shioPourFrames = LoadSpriteSheet(EtcDir + "시오 애니메이션.png", 128, 128);
-        component.shoyuPourFrames = LoadSpriteSheet(EtcDir + "쇼유 애니메이션.png", 128, 128);
-        component.tonkotsuPourFrames = LoadSpriteSheet(EtcDir + "돈코츠 애니메이션.png", 128, 128);
+        // 타래 종류마다 8프레임 시트가 한 장씩(4열 x 2행).
+        // 0~3 타래 / 4~6 육수 / 7 면. 재생 속도는 Bowl.pourFps로 조절한다.
+        component.shioFrames = LoadSpriteSheet(BowlDir + "Sio_Ani.png", 128, 128);
+        component.shoyuFrames = LoadSpriteSheet(BowlDir + "Syo_Ani.png", 128, 128);
+        component.tonkotsuFrames = LoadSpriteSheet(BowlDir + "Don_Ani.png", 128, 128);
 
         // 드래그 중에 레이캐스트를 통과시키려면 CanvasGroup이 필요하다.
         // 없으면 그릇 자신이 SubmitZone을 가려서 제출이 영영 안 된다.
