@@ -4,10 +4,8 @@ using UnityEngine;
 
 public class RamenCalculator : MonoBehaviour
 {
-    // 1. 라멘 기본 정가 설정
-    private const int SHIO_PRICE = 8000;       // 시오라멘: 8,000원
-    private const int SHOYU_PRICE = 10000;     // 소유라멘: 10,000원
-    private const int TONKOTSU_PRICE = 13000;  // 돈꼬츠라멘: 13,000원
+    // 1. 라멘 기본 정가 설정 (모든 라멘 종류 통일: 1,000원)
+    public const int BASE_PRICE = 1000;
 
     // 2. 당일 총 이익 및 정확도 변수
     [Header("당일 통계")]
@@ -29,24 +27,105 @@ public class RamenCalculator : MonoBehaviour
     public int LastTotalErrorCount => lastTotalErrorCount;
     public int LastTotalTargetCount => lastTotalTargetCount;
 
-    // 라멘 종류별 정가 반환
-    public int GetRamenBasePrice(RamenType ramenType)
+    /// <summary>
+    /// 라멘의 3대 핵심 필수 요소(베이스, 육수, 면)를 검증합니다.
+    /// 베이스 누락/오답, 육수 누락, 면 누락/오답이거나 3요소 중 하나라도 2개 이상 투입된 경우 false를 반환합니다.
+    /// </summary>
+    public bool ValidateCoreIngredients(RamenType ramenType, Dictionary<IngredientType, int> targetRecipe, Dictionary<IngredientType, int> submittedRecipe, out string failReason)
     {
+        failReason = string.Empty;
+        if (submittedRecipe == null)
+        {
+            failReason = "제출된 라멘 데이터가 없습니다.";
+            return false;
+        }
+
+        // 1. 베이스/타래 검증 (ShioTare, ShoyuTare, TonkotsuBase)
+        IngredientType expectedBase;
         switch (ramenType)
         {
             case RamenType.Shio:
-                return SHIO_PRICE;
+                expectedBase = IngredientType.ShioTare;
+                break;
             case RamenType.Shoyu:
-                return SHOYU_PRICE;
+                expectedBase = IngredientType.ShoyuTare;
+                break;
             case RamenType.Tonkotsu:
-                return TONKOTSU_PRICE;
+                expectedBase = IngredientType.TonkotsuBase;
+                break;
             default:
-                return 0;
+                expectedBase = IngredientType.ShioTare;
+                break;
         }
+
+        int shioTare = submittedRecipe.TryGetValue(IngredientType.ShioTare, out int st) ? st : 0;
+        int shoyuTare = submittedRecipe.TryGetValue(IngredientType.ShoyuTare, out int syt) ? syt : 0;
+        int tonkotsuBase = submittedRecipe.TryGetValue(IngredientType.TonkotsuBase, out int tb) ? tb : 0;
+        int totalBaseCount = shioTare + shoyuTare + tonkotsuBase;
+
+        if (totalBaseCount == 0)
+        {
+            failReason = $"베이스(타래) 누락 (필요: {expectedBase})";
+            return false;
+        }
+        if (totalBaseCount >= 2)
+        {
+            failReason = $"베이스(타래) 2개 이상 투입 (총 {totalBaseCount}개)";
+            return false;
+        }
+        int expectedBaseAmount = submittedRecipe.TryGetValue(expectedBase, out int eb) ? eb : 0;
+        if (expectedBaseAmount != 1)
+        {
+            failReason = $"잘못된 베이스(타래) 투입 (요구: {expectedBase})";
+            return false;
+        }
+
+        // 2. 육수 검증 (Broth)
+        int brothCount = submittedRecipe.TryGetValue(IngredientType.Broth, out int br) ? br : 0;
+        if (brothCount == 0)
+        {
+            failReason = "육수 누락";
+            return false;
+        }
+        if (brothCount >= 2)
+        {
+            failReason = $"육수 2개 이상 투입 (총 {brothCount}개)";
+            return false;
+        }
+
+        // 3. 면 검증 (ThinNoodles, ThickNoodles)
+        int targetThin = (targetRecipe != null && targetRecipe.TryGetValue(IngredientType.ThinNoodles, out int tt)) ? tt : 0;
+        int targetThick = (targetRecipe != null && targetRecipe.TryGetValue(IngredientType.ThickNoodles, out int tk)) ? tk : 0;
+        IngredientType expectedNoodle = (targetThin > 0) ? IngredientType.ThinNoodles : IngredientType.ThickNoodles;
+
+        int submittedThin = submittedRecipe.TryGetValue(IngredientType.ThinNoodles, out int sth) ? sth : 0;
+        int submittedThick = submittedRecipe.TryGetValue(IngredientType.ThickNoodles, out int stk) ? stk : 0;
+        int totalNoodleCount = submittedThin + submittedThick;
+
+        if (totalNoodleCount == 0)
+        {
+            failReason = $"면 누락 (필요: {expectedNoodle})";
+            return false;
+        }
+        if (totalNoodleCount >= 2)
+        {
+            failReason = $"면 2개 이상 투입 (총 {totalNoodleCount}개)";
+            return false;
+        }
+        int expectedNoodleAmount = submittedRecipe.TryGetValue(expectedNoodle, out int en) ? en : 0;
+        if (expectedNoodleAmount != 1)
+        {
+            failReason = $"잘못된 면 종류 투입 (요구: {expectedNoodle})";
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>
     /// 정답 레시피와 손님에게 제공한 레시피를 비교하여 정확도 및 판매 금액을 계산하고 당일 총 이익에 누적합니다.
+    /// 필수 3대 요소(베이스, 육수, 면) 미달 시 즉시 정확도 0%, 판매금 0원으로 처리되며,
+    /// 통과 시 나머지 토핑/조미료 합을 분모로 하여 오차율에 따른 정확도 및 판매금을 산출합니다.
     /// </summary>
     /// <returns>최종 판매 금액 (int)</returns>
     public int Calculate(RamenType ramenType, Dictionary<IngredientType, int> targetRecipe, Dictionary<IngredientType, int> submittedRecipe)
@@ -54,44 +133,77 @@ public class RamenCalculator : MonoBehaviour
         if (targetRecipe == null) targetRecipe = new Dictionary<IngredientType, int>();
         if (submittedRecipe == null) submittedRecipe = new Dictionary<IngredientType, int>();
 
-        int totalTargetCount = 0;
-        int totalErrorCount = 0;
+        int basePrice = BASE_PRICE;
 
-        // 1. 모든 재료에 대해 정답 수량과 제공 수량 비교 (많아도 깎이고 적어도 깎임)
-        foreach (IngredientType ingredient in Enum.GetValues(typeof(IngredientType)))
+        // 1. 핵심 3요소(베이스, 육수, 면) 필수 조건 검증 (Fail-Fast: 탈락 시 0% 및 0원)
+        if (!ValidateCoreIngredients(ramenType, targetRecipe, submittedRecipe, out string failReason))
         {
-            int targetAmount = targetRecipe.TryGetValue(ingredient, out int target) ? target : 0;
-            int submittedAmount = submittedRecipe.TryGetValue(ingredient, out int submitted) ? submitted : 0;
+            lastAccuracy = 0f;
+            lastSellingPrice = 0;
+            lastTotalErrorCount = 0;
+            lastTotalTargetCount = 0;
 
-            totalTargetCount += targetAmount;
-            totalErrorCount += Mathf.Abs(targetAmount - submittedAmount);
+            todayTotalProfit += 0;
+            todayTotalAccuracy += 0f;
+            todayServedCount++;
+
+            Debug.Log($"<color=#FF3333><b>[라멘 평가: 탈락]</b> 종류: {ramenType} | 사유: {failReason} ➔ 정답률: 0.0% | 판매 금액: 0원 (정가: {basePrice:N0}원)</color>");
+            return 0;
         }
 
-        // 2. 정확도(%) 계산
+        // 2. 핵심 3요소를 제외한 나머지 재료(토핑/조미료)에 대한 정밀 채점
+        int toppingTargetCount = 0;
+        int toppingErrorCount = 0;
+
+        IngredientType[] toppingTypes = new IngredientType[]
+        {
+            IngredientType.Chashu,
+            IngredientType.Menma,
+            IngredientType.GreenOnion,
+            IngredientType.Egg,
+            IngredientType.Nori,
+            IngredientType.BeanSprout,
+            IngredientType.WoodEar,
+            IngredientType.FlavorOil,
+            IngredientType.ChiliPowder
+        };
+
+        foreach (IngredientType topping in toppingTypes)
+        {
+            int targetAmount = targetRecipe.TryGetValue(topping, out int target) ? target : 0;
+            int submittedAmount = submittedRecipe.TryGetValue(topping, out int submitted) ? submitted : 0;
+
+            toppingTargetCount += targetAmount;
+            toppingErrorCount += Mathf.Abs(targetAmount - submittedAmount);
+        }
+
+        // 3. 토핑 기준 정확도(%) 계산 (분모: 토핑 정답 총합, 분자: 토핑 오차 총합)
         float accuracy = 0f;
-        if (totalTargetCount > 0)
+        if (toppingTargetCount > 0)
         {
-            accuracy = Mathf.Max(0f, 100f - ((float)totalErrorCount / totalTargetCount) * 100f);
+            accuracy = Mathf.Max(0f, 100f - ((float)toppingErrorCount / toppingTargetCount) * 100f);
+        }
+        else
+        {
+            // 토핑이 전혀 없는 특수 주문인 경우: 오차가 없으면 100%, 있으면 0%
+            accuracy = (toppingErrorCount == 0) ? 100f : 0f;
         }
 
-        // 3. 라멘 정가 확인
-        int basePrice = GetRamenBasePrice(ramenType);
-
-        // 4. 정가에 정확도를 곱한 값을 판매 금액으로 책정
+        // 4. 판매 금액 책정 (정가 * 정확도%)
         int sellingPrice = Mathf.RoundToInt(basePrice * (accuracy / 100f));
 
         // 5. 최근 결과 저장 및 당일 통계에 누적
         lastAccuracy = accuracy;
         lastSellingPrice = sellingPrice;
-        lastTotalErrorCount = totalErrorCount;
-        lastTotalTargetCount = totalTargetCount;
+        lastTotalErrorCount = toppingErrorCount;
+        lastTotalTargetCount = toppingTargetCount;
 
         todayTotalProfit += sellingPrice;
         todayTotalAccuracy += accuracy;
         todayServedCount++;
 
-        Debug.Log($"[라멘 평가] 종류: {ramenType} | 정가: {basePrice:N0}원 | " +
-                  $"오차: {totalErrorCount}/{totalTargetCount}개 | " +
+        Debug.Log($"[라멘 평가: 정상 통과] 종류: {ramenType} | 정가: {basePrice:N0}원 | " +
+                  $"토핑 오차: {toppingErrorCount}/{toppingTargetCount}개 | " +
                   $"정답률: {accuracy:F1}% | " +
                   $"판매 금액: {sellingPrice:N0}원 | 당일 누적 총 이익: {todayTotalProfit:N0}원 (당일 평균 정답률: {TodayAverageAccuracy:F1}%)");
 

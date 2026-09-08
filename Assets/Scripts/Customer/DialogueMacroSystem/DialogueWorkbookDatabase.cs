@@ -66,7 +66,8 @@ public sealed class DialogueWorkbookDatabase
 
         if (fallback.Count == 0)
             return amountCode == -1 ? "{ing} {remove}." :
-                   amountCode == -2 ? "{ing} {less}." : "{ing} {amt} {give}.";
+                   amountCode == -2 ? "{ing} {less}." :
+                   amountCode == -3 ? "면은 {ing}로 변경해{give}." : "{ing} {amt} {give}.";
         return Pick(fallback);
     }
 

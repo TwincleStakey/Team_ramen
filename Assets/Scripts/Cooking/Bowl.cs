@@ -240,6 +240,22 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         return true;
     }
 
+    /// <summary>굵은면·얇은면 어느 쪽이든 면인가.</summary>
+    private static bool IsNoodle(IngredientType type)
+    {
+        return type == IngredientType.ThickNoodles || type == IngredientType.ThinNoodles;
+    }
+
+    /// <summary>그릇에 든 면의 총 개수. 굵기가 달라도 합쳐서 센다.</summary>
+    private int NoodleCount
+    {
+        get
+        {
+            return CountIn(bowl, IngredientType.ThickNoodles)
+                 + CountIn(bowl, IngredientType.ThinNoodles);
+        }
+    }
+
     /// <summary>타래가 하나라도 들어가 있는가.</summary>
     private bool HasTare
     {
@@ -266,10 +282,12 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
             return CountIn(bowl, type) < MaxBroth;
         }
 
-        if (type == IngredientType.Noodles)
+        if (IsNoodle(type))
         {
             if (!bowl.ContainsKey(IngredientType.Broth)) return false;
-            return CountIn(bowl, type) < MaxNoodles;
+
+            // 굵은면과 얇은면을 합쳐 한 번만 들어간다. 종류를 바꾸려면 폐기해야 한다.
+            return NoodleCount < MaxNoodles;
         }
 
         // 토핑과 조미료는 순서를 따지지 않는다.
@@ -287,7 +305,7 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     {
         string reason;
         if (type == IngredientType.Broth && !HasTare) reason = "타래를 먼저 넣어야 합니다.";
-        else if (type == IngredientType.Noodles && !bowl.ContainsKey(IngredientType.Broth)) reason = "육수를 먼저 부어야 합니다.";
+        else if (IsNoodle(type) && !bowl.ContainsKey(IngredientType.Broth)) reason = "육수를 먼저 부어야 합니다.";
         else reason = "이미 넣었거나 지금 넣을 수 없는 재료입니다.";
 
         Debug.Log("[투입 거부] " + type + " — " + reason);
@@ -455,7 +473,7 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         }
 
         int frame = TareLastFrame;
-        if (bowl.ContainsKey(IngredientType.Noodles)) frame = NoodleFrame;
+        if (NoodleCount > 0) frame = NoodleFrame;
         else if (bowl.ContainsKey(IngredientType.Broth)) frame = BrothLastFrame;
 
         if (sheet[frame] != null) image.sprite = sheet[frame];
@@ -468,7 +486,7 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         // 타래·육수·면은 그릇 그림 자체가 바뀌므로 따로 얹을 게 없다.
         // 면은 시트 마지막 프레임에 이미 그려져 있어서, 따로 얹으면 두 번 겹친다.
         // 굵은면과 얇은면은 그릇 안에서 같은 그림을 쓴다.
-        if (IsTare(type) || type == IngredientType.Broth || type == IngredientType.Noodles) return;
+        if (IsTare(type) || type == IngredientType.Broth || IsNoodle(type)) return;
 
         // 조미료는 그릇용 그림이 없다. 수량만 세고 화면에는 안 나온다.
         if (icon == null) return;

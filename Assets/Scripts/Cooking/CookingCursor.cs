@@ -64,7 +64,7 @@ public class CookingCursor : MonoBehaviour
 
     private Mode mode = Mode.Chopsticks;
     private bool gripping;    // 젓가락으로 고체를 집고 있는 중
-    private float pinch;      // 0 = 벌림, 1 = 집음
+    private float pinch = 1f; // 0 = 벌림, 1 = 다뭄. 평소에는 다물고 있다.
     private float dip;        // 국자가 아래로 내려간 정도
     private float tilt;
     private Coroutine motion;
@@ -109,8 +109,9 @@ public class CookingCursor : MonoBehaviour
     {
         if (mode != Mode.Chopsticks) return;   // 국자·병 그림은 동작 코루틴이 정한다
 
-        // 재료를 집고 있으면 계속 다물고, 아니면 버튼에 따라 벌렸다 다문다.
-        float target = (gripping || Mouse.current.leftButton.isPressed) ? 1f : 0f;
+        // 평소에는 다물고 있는다. 벌린 그림을 기본으로 두면 커서 끝이 두 갈래로 보여
+        // 어디를 가리키는지 알기 어렵다. 집으려고 누르는 순간에만 잠깐 벌린다.
+        float target = (Mouse.current.leftButton.isPressed && !gripping) ? 0f : 1f;
 
         // 집는 순간은 보간하지 않는다. 천천히 다물면 재료를 든 뒤에 한 번 더 움직이는 것처럼 보인다.
         if (gripping) pinch = 1f;
@@ -336,7 +337,7 @@ public class CookingCursor : MonoBehaviour
         mode = Mode.Chopsticks;
         dip = 0f;
         tilt = 0f;
-        pinch = 0f;
+        pinch = 1f;
     }
 
     private void StopMotion()

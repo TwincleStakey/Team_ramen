@@ -14,7 +14,8 @@ public enum IngredientType
 
     // 공통 재료
     Broth,           // 육수
-    Noodles,         // 면
+    ThickNoodles, // 면
+    ThinNoodles,
 
     Chashu,          // 차슈
     Menma,           // 멘마

@@ -99,7 +99,8 @@ public class GameFlowDebugTester : MonoBehaviour
                 int baseAmt = scenario.baseRecipe.TryGetValue(ch.ingredient, out int b) ? b : 0;
                 int targetAmt = scenario.targetRecipe.TryGetValue(ch.ingredient, out int t) ? t : 0;
                 string kindStr = ch.kind == IngredientChangeKind.Add ? "추가(Add)" :
-                                 ch.kind == IngredientChangeKind.Remove ? "완전제거(Remove)" : "감소(Less)";
+                                 ch.kind == IngredientChangeKind.Remove ? "완전제거(Remove)" :
+                                 ch.kind == IngredientChangeKind.Less ? "감소(Less)" : "면교체(Swap)";
                 sb.AppendLine($"   • <b>{GetKoreanIngredientName(ch.ingredient)}</b> : 기존 {baseAmt}개 ➔ <color=#FFCC00>{kindStr} ({ch.recipeDelta:+0;-0;0})</color> ➔ 최종 <b>{targetAmt}개</b>");
             }
         }
@@ -139,7 +140,7 @@ public class GameFlowDebugTester : MonoBehaviour
         Debug.Log($"<color=#66FF66><b>[라멘 제출 결과]</b> 완벽 일치! | 오차: {ramenCalculator.LastTotalErrorCount}개 | 정답률: {ramenCalculator.LastAccuracy:F0}% | 판매 금액: +{profit:N0}원</color>");
     }
 
-    [ContextMenu("3. [테스트] 현재 손님에게 오차 라멘 제출 (정답률 깎임)")]
+    [ContextMenu("3. [테스트] 현재 손님에게 오차 라멘 제출 (토핑 오차로 정답률 깎임)")]
     public void TestSubmitWithErrors()
     {
         EnsureComponentsExist();
@@ -150,16 +151,35 @@ public class GameFlowDebugTester : MonoBehaviour
 
         DialogueScenario scenario = orderManager.CurrentScenario;
         Dictionary<IngredientType, int> imperfect = new Dictionary<IngredientType, int>(scenario.targetRecipe);
-        // 면과 파 수량을 1개씩 틀리게 제출
-        imperfect[IngredientType.Noodles] = imperfect.TryGetValue(IngredientType.Noodles, out int n) ? n + 1 : 1;
+        // 차슈와 파 수량을 1개씩 틀리게 제출 (핵심 베이스/육수/면은 정상 유지)
+        imperfect[IngredientType.Chashu] = imperfect.TryGetValue(IngredientType.Chashu, out int c) ? c + 1 : 1;
         imperfect[IngredientType.GreenOnion] = imperfect.TryGetValue(IngredientType.GreenOnion, out int g) ? Mathf.Max(0, g - 1) : 0;
 
         RamenState submitted = new RamenState(imperfect, new Dictionary<IngredientType, int>());
         int profit = orderManager.SubmitAndEvaluate(submitted, notifyDayManager: true);
-        Debug.Log($"<color=#FF9933><b>[라멘 제출 결과]</b> 오차 발생! | 오차: {ramenCalculator.LastTotalErrorCount}개 | 정답률: {ramenCalculator.LastAccuracy:F0}% | 판매 금액: +{profit:N0}원</color>");
+        Debug.Log($"<color=#FF9933><b>[라멘 제출 결과]</b> 토핑 오차 발생! | 토핑 오차: {ramenCalculator.LastTotalErrorCount}개 | 정답률: {ramenCalculator.LastAccuracy:F0}% | 판매 금액: +{profit:N0}원</color>");
     }
 
-    [ContextMenu("4. [테스트] 5일 전체 영업 사이클 일괄 시뮬레이션")]
+    [ContextMenu("4. [테스트] 현재 손님에게 핵심 요소 탈락 라멘 제출 (정확도 0% & 0원)")]
+    public void TestSubmitCoreFail()
+    {
+        EnsureComponentsExist();
+        if (orderManager.CurrentScenario == null)
+        {
+            TestSingleOrder();
+        }
+
+        DialogueScenario scenario = orderManager.CurrentScenario;
+        Dictionary<IngredientType, int> failed = new Dictionary<IngredientType, int>(scenario.targetRecipe);
+        // 육수를 빼서 핵심 요소 탈락 유도
+        failed[IngredientType.Broth] = 0;
+
+        RamenState submitted = new RamenState(failed, new Dictionary<IngredientType, int>());
+        int profit = orderManager.SubmitAndEvaluate(submitted, notifyDayManager: true);
+        Debug.Log($"<color=#FF3333><b>[라멘 제출 결과]</b> 핵심 3요소(육수) 탈락 검증! | 정답률: {ramenCalculator.LastAccuracy:F0}% | 판매 금액: +{profit:N0}원</color>");
+    }
+
+    [ContextMenu("5. [테스트] 5일 전체 영업 사이클 일괄 시뮬레이션")]
     public void SimulateFull5Days()
     {
         EnsureComponentsExist();
@@ -167,16 +187,16 @@ public class GameFlowDebugTester : MonoBehaviour
         StringBuilder totalLog = new StringBuilder();
         totalLog.AppendLine("╔══════════════════════════════════════════════════════════════════════════════════════════════╗");
         totalLog.AppendLine("║                     🍜  [5일 전체 라멘 가게 영업 시뮬레이션 시작]  🍜                         ║");
-        totalLog.AppendLine("║  • 규칙: 1~3일차 당일 5명 / 4~5일차 당일 7명 | 5일차 마감 후 최종 영업 정산 및 완료         ║");
+        totalLog.AppendLine("║  • 규칙: 1~2일차 5명 / 3~4일차 6명 / 5일차 7명 | 5일차 마감 후 최종 영업 정산 및 완료         ║");
         totalLog.AppendLine("╚══════════════════════════════════════════════════════════════════════════════════════════════╝\n");
 
         int cumulativeProfit = 0;
 
         for (int day = 1; day <= DayManager.MAX_DAYS; day++)
         {
-            int targetCustomers = (day <= 3) ? 5 : 7;
+            int targetCustomers = (dayManager != null) ? dayManager.GetTargetCustomerCount(day) : ((day <= 2) ? 5 : (day <= 4 ? 6 : 7));
             totalLog.AppendLine($"\n┌──────────────────────────────────────────────────────────────────────────────────────────────┐");
-            totalLog.AppendLine($"│ ☀️  [DAY {day} 영업 시작] - 오늘 목표 손님 수: {targetCustomers}명 (1~3일차: 5명 / 4~5일차: 7명)");
+            totalLog.AppendLine($"│ ☀️  [DAY {day} 영업 시작] - 오늘 목표 손님 수: {targetCustomers}명 (1~2일차: 5명 / 3~4일차: 6명 / 5일차: 7명)");
             totalLog.AppendLine($"└──────────────────────────────────────────────────────────────────────────────────────────────┘");
 
             ramenCalculator.ResetDailyProfit();
@@ -186,12 +206,12 @@ public class GameFlowDebugTester : MonoBehaviour
                 orderManager.CreateOrder();
                 DialogueScenario scenario = orderManager.CurrentScenario;
 
-                // 80% 확률로 완벽 정답, 20% 확률로 오차 1개 제출
+                // 80% 확률로 완벽 정답, 20% 확률로 토핑 오차 1개 제출
                 bool perfect = (c % 4 != 0);
                 Dictionary<IngredientType, int> servedIngredients = new Dictionary<IngredientType, int>(scenario.targetRecipe);
                 if (!perfect)
                 {
-                    servedIngredients[IngredientType.Noodles] = servedIngredients.TryGetValue(IngredientType.Noodles, out int n) ? n + 1 : 2;
+                    servedIngredients[IngredientType.GreenOnion] = servedIngredients.TryGetValue(IngredientType.GreenOnion, out int g) ? g + 1 : 1;
                 }
 
                 RamenState submittedRamen = new RamenState(servedIngredients, new Dictionary<IngredientType, int>());
@@ -217,7 +237,8 @@ public class GameFlowDebugTester : MonoBehaviour
                         int bAmt = scenario.baseRecipe.TryGetValue(ch.ingredient, out int b) ? b : 0;
                         int tAmt = scenario.targetRecipe.TryGetValue(ch.ingredient, out int t) ? t : 0;
                         string kName = ch.kind == IngredientChangeKind.Add ? "추가" :
-                                       ch.kind == IngredientChangeKind.Remove ? "제거" : "감소";
+                                       ch.kind == IngredientChangeKind.Remove ? "제거" :
+                                       ch.kind == IngredientChangeKind.Less ? "감소" : "면교체";
                         changeDetails.Add($"{GetKoreanIngredientName(ch.ingredient)}(기본 {bAmt}개➔{kName}{ch.recipeDelta:+0;-0;0}➔최종 {tAmt}개)");
                     }
                     totalLog.AppendLine($"    📝 <b>변경 재료 ({scenario.changes.Count}종류):</b> {string.Join(", ", changeDetails)}");
@@ -236,8 +257,8 @@ public class GameFlowDebugTester : MonoBehaviour
                 totalLog.AppendLine($"    📋 <b>[최종 정답 레시피]:</b> <color=#00FFFF>[ {string.Join(", ", recipeStrs)} ]</color>");
 
                 // 4. 제출 결과
-                string resultColor = (ramenCalculator.LastTotalErrorCount == 0) ? "#66FF66" : "#FFAA33";
-                totalLog.AppendLine($"    🥣 <b>제출 결과:</b> <color={resultColor}>오차 {ramenCalculator.LastTotalErrorCount}개 | 정답률 {ramenCalculator.LastAccuracy:F0}% | 판매 금액: +{price:N0}원</color>");
+                string resultColor = (ramenCalculator.LastTotalErrorCount == 0 && ramenCalculator.LastAccuracy > 0) ? "#66FF66" : "#FFAA33";
+                totalLog.AppendLine($"    🥣 <b>제출 결과:</b> <color={resultColor}>토핑 오차 {ramenCalculator.LastTotalErrorCount}개 | 정답률 {ramenCalculator.LastAccuracy:F0}% | 판매 금액: +{price:N0}원</color>");
             }
 
             int dayProfit = ramenCalculator.TodayTotalProfit;
@@ -286,7 +307,8 @@ public class GameFlowDebugTester : MonoBehaviour
             case IngredientType.ShoyuTare: return "간장타래";
             case IngredientType.TonkotsuBase: return "돈코츠베이스";
             case IngredientType.Broth: return "육수";
-            case IngredientType.Noodles: return "면";
+            case IngredientType.ThinNoodles: return "얇은면";
+            case IngredientType.ThickNoodles: return "굵은면";
             case IngredientType.Chashu: return "차슈";
             case IngredientType.Menma: return "멘마";
             case IngredientType.GreenOnion: return "파";

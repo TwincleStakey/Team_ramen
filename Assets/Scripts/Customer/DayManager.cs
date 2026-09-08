@@ -3,9 +3,11 @@ using UnityEngine;
 
 public class DayManager : MonoBehaviour
 {
-    // 1~3일차 목표 손님 수
+    // 1~2일차 목표 손님 수
     private const int CUSTOMER_COUNT_EARLY = 5;
-    // 4~5일차 목표 손님 수
+    // 3~4일차 목표 손님 수
+    private const int CUSTOMER_COUNT_MIDDLE = 6;
+    // 5일차 목표 손님 수
     private const int CUSTOMER_COUNT_LATE = 7;
     // 최대 진행 일수
     public const int MAX_DAYS = 5;
@@ -50,12 +52,16 @@ public class DayManager : MonoBehaviour
         }
     }
 
-    // 해당 일차의 목표 손님 수를 반환합니다. (1~3일차: 5명, 4~5일차: 7명)
+    // 해당 일차의 목표 손님 수를 반환합니다. (1~2일차: 5명, 3~4일차: 6명, 5일차: 7명)
     public int GetTargetCustomerCount(int day)
     {
-        if (day <= 3)
+        if (day <= 2)
         {
             return CUSTOMER_COUNT_EARLY;
+        }
+        else if (day <= 4)
+        {
+            return CUSTOMER_COUNT_MIDDLE;
         }
 
         return CUSTOMER_COUNT_LATE;
@@ -109,9 +115,7 @@ public class DayManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// 하루 영업을 마감하고 당일 정산 UI 팝업을 띄웁니다.
-    /// </summary>
+    // 하루 영업을 마감하고 당일 정산 UI 팝업을 띄웁니다.
     private void EndDay()
     {
         int todayProfit = (ramenCalculator != null) ? ramenCalculator.TodayTotalProfit : 0;
@@ -131,9 +135,7 @@ public class DayManager : MonoBehaviour
         OnDayEnded?.Invoke(currentDay, todayProfit);
     }
 
-    /// <summary>
-    /// 정산 팝업의 [확인] 버튼을 눌렀을 때 호출되어 다음 날짜로 넘어갑니다.
-    /// </summary>
+    // 정산 팝업의 [확인] 버튼을 눌렀을 때 호출되어 다음 날짜로 넘어갑니다.
     public void NextDay()
     {
         if (dailyResultUI != null)

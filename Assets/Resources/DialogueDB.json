@@ -573,7 +573,7 @@
         "팍팍"
       ],
       "amt3": [
-        "겁나게 많이",
+        "겁나게",
         "허벌나게"
       ],
       "terminal": [
@@ -2087,22 +2087,6 @@
         "WoodEar",
         "FlavorOil"
       ]
-    },
-    {
-      "ramenType": "Miso",
-      "addable": [
-        "Chashu",
-        "GreenOnion",
-        "Egg",
-        "Nori",
-        "FlavorOil",
-        "ChiliPowder"
-      ],
-      "baseIngredients": [
-        "Chashu",
-        "GreenOnion",
-        "FlavorOil"
-      ]
     }
   ],
   "openers": [
@@ -2625,41 +2609,6 @@
       "excludePersona": [
         "Child"
       ]
-    },
-    {
-      "ramenType": "Miso",
-      "difficulty": 2,
-      "template": "된장 맛 나는 구수한 국물이 {crave}.",
-      "excludePersona": []
-    },
-    {
-      "ramenType": "Miso",
-      "difficulty": 2,
-      "template": "오늘은 좀 진하고 구수한 게 {crave}.",
-      "excludePersona": []
-    },
-    {
-      "ramenType": "Miso",
-      "difficulty": 3,
-      "template": "추운 날에는 된장찌개 같은 진한 국물이 {good}.",
-      "excludePersona": []
-    },
-    {
-      "ramenType": "Miso",
-      "difficulty": 3,
-      "template": "밥 말아먹어도 어울릴 것 같은 국물이 {crave}.",
-      "excludePersona": []
-    },
-    {
-      "ramenType": "Miso",
-      "difficulty": 3,
-      "template": "야근하고 와서 든든하게 먹고 {want}.",
-      "excludePersona": [
-        "Sageuk",
-        "Grandma",
-        "Grandpa",
-        "Child"
-      ]
     }
   ],
   "templates": [
@@ -3094,9 +3043,85 @@
       "amount": -2,
       "difficulty": 2,
       "template": "{ing} 향이 강하면 싫으니 {less}."
+    },
+    {
+      "ingredient": "Any",
+      "amount": -3,
+      "difficulty": 1,
+      "template": "면은 {ing}로 변경해{give}."
+    },
+    {
+      "ingredient": "Any",
+      "amount": -3,
+      "difficulty": 1,
+      "template": "{ing}로 바꿔{give}."
+    },
+    {
+      "ingredient": "Any",
+      "amount": -3,
+      "difficulty": 2,
+      "template": "면은 {ing}가 {good}."
+    },
+    {
+      "ingredient": "Any",
+      "amount": -3,
+      "difficulty": 2,
+      "template": "면을 {ing}로 변경해{give}."
+    },
+    {
+      "ingredient": "Any",
+      "amount": -3,
+      "difficulty": 3,
+      "template": "{ing_desc}으로 말아{give}."
+    },
+    {
+      "ingredient": "Any",
+      "amount": -3,
+      "difficulty": 3,
+      "template": "{ing} 식감이 {crave}."
     }
   ],
   "keywords": [
+    {
+      "type": "Ingredient",
+      "enumName": "ThinNoodles",
+      "value": "얇은 면"
+    },
+    {
+      "type": "Ingredient",
+      "enumName": "ThinNoodles",
+      "value": "가느다란 면"
+    },
+    {
+      "type": "Ingredient",
+      "enumName": "ThickNoodles",
+      "value": "굵은 면"
+    },
+    {
+      "type": "Ingredient",
+      "enumName": "ThickNoodles",
+      "value": "통통한 면"
+    },
+    {
+      "type": "IngDesc",
+      "enumName": "ThinNoodles",
+      "value": "가느다란 면발"
+    },
+    {
+      "type": "IngDesc",
+      "enumName": "ThinNoodles",
+      "value": "얇고 매끄러운 면"
+    },
+    {
+      "type": "IngDesc",
+      "enumName": "ThickNoodles",
+      "value": "통통하고 굵은 면발"
+    },
+    {
+      "type": "IngDesc",
+      "enumName": "ThickNoodles",
+      "value": "쫄깃한 굵은 면"
+    },
     {
       "type": "Ingredient",
       "enumName": "Chashu",
@@ -3266,26 +3291,6 @@
       "type": "Ramen",
       "enumName": "Tonkotsu",
       "value": "돈코츠 라멘"
-    },
-    {
-      "type": "Ramen",
-      "enumName": "Miso",
-      "value": "미소 라멘"
-    },
-    {
-      "type": "RamenDesc",
-      "enumName": "Miso",
-      "value": "된장 맛 나는 라면"
-    },
-    {
-      "type": "RamenDesc",
-      "enumName": "Miso",
-      "value": "구수하고 진한 라면"
-    },
-    {
-      "type": "RamenDesc",
-      "enumName": "Miso",
-      "value": "된장 풀어 진하게 끓인 라면"
     },
     {
       "type": "Label",

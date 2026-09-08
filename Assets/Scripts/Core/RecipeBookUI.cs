@@ -111,15 +111,11 @@ public class RecipeBookUI : MonoBehaviour
         ingredientAttrs.text = attrs.ToString();
     }
 
-    /// <summary>
-    /// 기본 레시피는 B의 RecipeGenerator에서 읽는다.
-    /// 변경 요청이 비어 있는 주문을 넘기면 기본 레시피가 그대로 돌아온다.
-    /// </summary>
+    /// <summary>기본 레시피는 B의 RecipeGenerator에서 그대로 읽는다. 사본을 두지 않는다.</summary>
     private void FillRecipeTable()
     {
         if (recipeNames == null || recipeValues == null) return;
 
-        var generator = new RecipeGenerator();
         var names = new StringBuilder();
         var values = new StringBuilder();
 
@@ -128,8 +124,7 @@ public class RecipeBookUI : MonoBehaviour
             if (i > 0) { names.Append('\n'); values.Append('\n'); }
             names.Append(MenuNames[i]);
 
-            Dictionary<IngredientType, int> recipe =
-                generator.GenerateTargetRecipe(new CustomerOrder { ramenType = Menus[i] });
+            Dictionary<IngredientType, int> recipe = RecipeGenerator.GetBaseRecipe(Menus[i]);
 
             bool first = true;
             foreach (IngredientType topping in Toppings)

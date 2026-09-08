@@ -5,7 +5,8 @@ public enum IngredientChangeKind
 {
     Add,
     Remove,
-    Less
+    Less,
+    Swap
 }
 
 [Serializable]

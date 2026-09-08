@@ -36,8 +36,16 @@ public class DialogueScenarioDebugTester : MonoBehaviour
         {
             DialogueScenario result = generator.GenerateScenario(currentDay);
 
-            if (result.changes.Count < 1 || result.changes.Count > 3)
+            if (result.changes.Count < 1 || result.changes.Count > 4)
                 Debug.LogError("변경 재료 종류 수 오류: " + result.changes.Count);
+
+            // 면의 배타적 단일성 제약 조건 검증 (ThinNoodles + ThickNoodles == 1)
+            int thinCount = result.targetRecipe.TryGetValue(IngredientType.ThinNoodles, out int tn) ? tn : 0;
+            int thickCount = result.targetRecipe.TryGetValue(IngredientType.ThickNoodles, out int tk) ? tk : 0;
+            if (thinCount + thickCount != 1)
+            {
+                Debug.LogError($"[오류] 면 단일성 제약 위반: 얇은면({thinCount}) + 굵은면({thickCount}) = {thinCount + thickCount}개");
+            }
 
             foreach (DialogueScenarioRequest change in result.changes)
             {
@@ -51,6 +59,8 @@ public class DialogueScenarioDebugTester : MonoBehaviour
                 if (change.kind == IngredientChangeKind.Add &&
                     (change.recipeDelta < 1 || change.recipeDelta > 3))
                     Debug.LogError("추가 수량 범위 오류: " + change.recipeDelta);
+                if (change.kind == IngredientChangeKind.Swap && finalAmount != 1)
+                    Debug.LogError("면 교체 실패 (수량 1이 아님): " + change.ingredient + " = " + finalAmount);
             }
 
             string dialogue = result.Dialogue;
@@ -59,7 +69,7 @@ public class DialogueScenarioDebugTester : MonoBehaviour
                 Debug.LogError("대사에 금지된 정확 수량 표현이 노출됨:\n" + dialogue);
         }
 
-        Debug.Log("주문 시나리오 100회 자동 검증 완료");
+        Debug.Log("주문 시나리오 100회 자동 검증 완료 (면 단일성 및 1~4개 변경 제약 통과)");
     }
 
     private static void AppendRecipe(StringBuilder log, string title,

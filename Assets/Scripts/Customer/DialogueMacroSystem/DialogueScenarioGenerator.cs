@@ -11,7 +11,7 @@ public class DialogueScenarioGenerator : MonoBehaviour
     [SerializeField] private bool includeRemoveAndLess = true;
     [SerializeField, Range(0f, 1f)] private float fillerChance = 0.5f;
 
-    private const int MAX_REQUEST_COUNT = 3; // 엑셀 매크로 규칙: 1~3개
+    private const int MAX_REQUEST_COUNT = 4; // 최대 4개 변경 가능
     private readonly RecipeGenerator recipeGenerator = new RecipeGenerator();
     private DialogueWorkbookDatabase database;
 
@@ -68,8 +68,41 @@ public class DialogueScenarioGenerator : MonoBehaviour
         candidates.RemoveAll(x => conflicts.Contains(x));
         Shuffle(candidates);
 
-        int count = UnityEngine.Random.Range(1, Mathf.Min(MAX_REQUEST_COUNT, candidates.Count) + 1);
-        for (int i = 0; i < count; i++)
+        // 기본 면 및 교체 대상 면 식별 (돈코츠: 기본 ThickNoodles ➔ ThinNoodles 교체, 시오/쇼유: 기본 ThinNoodles ➔ ThickNoodles 교체)
+        IngredientType defaultNoodle = (scenario.order.ramenType == RamenType.Tonkotsu)
+            ? IngredientType.ThickNoodles
+            : IngredientType.ThinNoodles;
+        IngredientType swappedNoodle = (scenario.order.ramenType == RamenType.Tonkotsu)
+            ? IngredientType.ThinNoodles
+            : IngredientType.ThickNoodles;
+
+        // 50% 확률로 면 교체 요청 발생 (자주 등장하여 체감 및 테스트 가능)
+        bool swapNoodle = UnityEngine.Random.value < 0.5f;
+
+        // 변경할 총 개수 (최대 4개)
+        int maxChanges = Mathf.Min(MAX_REQUEST_COUNT, candidates.Count + (swapNoodle ? 1 : 0));
+        int totalChanges = UnityEngine.Random.Range(1, maxChanges + 1);
+
+        int toppingSlots = swapNoodle ? (totalChanges - 1) : totalChanges;
+
+        if (swapNoodle)
+        {
+            // 면 교체는 1개의 독립적인 변경 요소로 카운팅
+            DialogueScenarioRequest noodleChange = new DialogueScenarioRequest
+            {
+                ingredient = swappedNoodle,
+                kind = IngredientChangeKind.Swap,
+                recipeDelta = 1,
+                expressionAmount = 1
+            };
+            scenario.changes.Add(noodleChange);
+
+            // 기본 면 1개 제거(-1), 교체 면 1개 추가(+1)하여 targetRecipe에서 합이 정확히 1 유지되도록 함
+            scenario.order.requests.Add(new IngredientRequest(defaultNoodle, -1));
+            scenario.order.requests.Add(new IngredientRequest(swappedNoodle, 1));
+        }
+
+        for (int i = 0; i < toppingSlots && i < candidates.Count; i++)
         {
             IngredientType ingredient = candidates[i];
             int baseAmount = GetAmount(scenario.baseRecipe, ingredient);
@@ -119,14 +152,24 @@ public class DialogueScenarioGenerator : MonoBehaviour
         {
             DialogueScenarioRequest change = scenario.changes[i];
             int amountCode = change.kind == IngredientChangeKind.Remove ? -1 :
-                             change.kind == IngredientChangeKind.Less ? -2 : change.expressionAmount;
+                             change.kind == IngredientChangeKind.Less ? -2 :
+                             change.kind == IngredientChangeKind.Swap ? -3 : change.expressionAmount;
             string template = database.RandomTemplate(change.ingredient.ToString(), amountCode, scenario.difficulty);
             bool connecting = i < scenario.changes.Count - 1 && UnityEngine.Random.value < 0.55f;
             AddIfNotEmpty(scenario.lines, Render(template, scenario, persona, change, connecting));
         }
 
         if (UnityEngine.Random.value < fillerChance)
-            AddIfNotEmpty(scenario.lines, Render(database.RandomFiller(), scenario, persona, null, false));
+        {
+            string filler = database.RandomFiller();
+            bool hasNoodleChange = scenario.changes.Exists(c => c.kind == IngredientChangeKind.Swap);
+            // 면이 변경되었는데 filler에서 "면은 기본으로 해주세요"가 나오는 모순 방지
+            if (!hasNoodleChange || !filler.Contains("면"))
+            {
+                AddIfNotEmpty(scenario.lines, Render(filler, scenario, persona, null, false));
+            }
+        }
+
         AddIfNotEmpty(scenario.lines, database.RandomCloser(persona.personaId));
     }
 
@@ -154,8 +197,7 @@ public class DialogueScenarioGenerator : MonoBehaviour
 
     private Dictionary<IngredientType, int> GetBaseRecipe(RamenType ramenType)
     {
-        CustomerOrder emptyOrder = new CustomerOrder { ramenType = ramenType };
-        return recipeGenerator.GenerateTargetRecipe(emptyOrder);
+        return RecipeGenerator.GetBaseRecipe(ramenType);
     }
 
     private static RamenType GetRandomRamen(int currentDay)
