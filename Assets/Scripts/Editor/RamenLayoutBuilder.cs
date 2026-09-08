@@ -27,6 +27,7 @@ public static class RamenLayoutBuilder
     private const string BowlDir = "Assets/Art/그릇/";
     private const string EtcDir = "Assets/Art/나머지/";
     private const string IngredientDir = "Assets/Art/재료/";
+    private const string UiDir = "Assets/Art/UI/";
 
     private static readonly Vector2 RefResolution = new Vector2(1920f, 1080f);
 
@@ -57,6 +58,10 @@ public static class RamenLayoutBuilder
     private static readonly Color TextOutlineColor = Color.black;
     private static readonly Vector2 TextOutlineDistance = new Vector2(2f, -2f);
     private const int SlotLabelSize = 25;
+
+    // 이름표 판. 글자가 가장 긴 "목이버섯"이 들어가는 크기로 고정한다.
+    private const float LabelBoxWidth = 150f;
+    private const float LabelBoxHeight = 46f;
 
     /// <summary>상단 바에서 만들어 두고 나중에 다른 것과 연결해야 하는 것들.</summary>
     private class TopBarRefs
@@ -332,26 +337,29 @@ public static class RamenLayoutBuilder
         Transform bar = CreateGroup("TopBar", canvas);
         Sprite panel = PanelSprite();
 
-        // 주문 확인 ? 버튼 (자리만)
-        Image help = CreateImage("OrderCheckButton", bar, TopLeft, new Vector2(70f, -55f), new Vector2(60f, 60f), Hex("#FFFFFF"), panel);
-        CreateLabel(help.transform, "?", 35, InkColor, font);
+        IconSprites icons = LoadIconSprites();
+
+        // 주문 확인 ? 버튼. 그림에 물음표가 들어 있어 글자를 따로 얹지 않는다.
+        Image help = CreateImage("OrderCheckButton", bar, TopLeft, new Vector2(70f, -55f), new Vector2(64f, 64f),
+                                 Color.white, icons.Help);
 
         // 날짜 (자리만)
         Image day = CreateImage("DayPanel", bar, TopLeft, new Vector2(215f, -55f), new Vector2(190f, 60f), Hex("#FFFFFF"), panel);
-        Text dayText = CreateLabel(day.transform, "1일차", 31, InkColor, font);
+        Text dayText = CreateLabel(day.transform, "1일차", 31, PopupInkColor, font);
 
         // 제출 영역. 와이어프레임의 회색 가로 바.
-        Image submit = CreateImage("SubmitZone", bar, TopCenter, new Vector2(0f, -55f), new Vector2(560f, 80f), Hex("#C9C9C9"), panel);
+        Image submit = CreateImage("SubmitZone", bar, TopCenter, new Vector2(0f, -55f), new Vector2(560f, 80f),
+                                   Color.white, icons.SubmitBar);
         Undo.AddComponent<SubmitZone>(submit.gameObject);
-        CreateLabel(submit.transform, "제출하기", 33, InkColor, font);
+        CreateLabel(submit.transform, "제출하기", 33, PopupInkColor, font);
 
         // 누적 매출. 재료비와 자본은 기획 확정으로 제거되어 누적 매출만 표시한다.
         Image revenue = CreateImage("RevenuePanel", bar, TopRight, new Vector2(-320f, -55f), new Vector2(380f, 60f), Hex("#FFFFFF"), panel);
-        Text revenueText = CreateLabel(revenue.transform, "누적 수익 : 0₩", 27, InkColor, font);
+        Text revenueText = CreateLabel(revenue.transform, "누적 수익 : 0₩", 27, PopupInkColor, font);
 
         // 폐기 버튼. onClick은 그릇이 생긴 뒤 WireDiscardButton에서 붙인다.
-        Image discard = CreateImage("DiscardButton", bar, TopRight, new Vector2(-60f, -55f), new Vector2(90f, 70f), Hex("#7BB661"), panel);
-        CreateLabel(discard.transform, "폐기", 29, InkColor, font);
+        Image discard = CreateImage("DiscardButton", bar, TopRight, new Vector2(-60f, -55f), new Vector2(72f, 72f),
+                                    Color.white, icons.Trash);
 
         // 손님 대사 줄. 주문 화면(B)이 아직 없어서 조리 화면 위에 글자로만 띄운다.
         return new TopBarRefs { Discard = discard, Help = help, DayText = dayText, RevenueText = revenueText };
@@ -415,6 +423,7 @@ public static class RamenLayoutBuilder
     private static OrderResultRefs BuildOrderResult(Transform canvas)
     {
         TMP_FontAsset tmpFont = EnsureTmpFont();
+        IconSprites icons = LoadIconSprites();
 
         Transform root = CreateGroup("OrderResult", canvas);
 
@@ -424,11 +433,13 @@ public static class RamenLayoutBuilder
         Image panel = CreateImage("Panel", root, Center, Vector2.zero, new Vector2(900f, 560f),
                                   Hex("#FFF8E7"), PanelSprite());
 
-        var accuracy = CreateTmpText("AccuracyText", panel.transform, Center, new Vector2(0f, 190f),
-                                     new Vector2(820f, 80f), "정확도 : 0%", 54f, tmpFont);
+        Image accuracyBar = CreateImage("AccuracyBar", panel.transform, Center, new Vector2(0f, 190f),
+                                        new Vector2(660f, 90f), Color.white, icons.AccuracyBar);
+        var accuracy = CreateTmpText("AccuracyText", accuracyBar.transform, Center, Vector2.zero,
+                                     new Vector2(620f, 80f), "정확도 : 0%", 50f, tmpFont);
 
         // 이모지는 아이콘 아틀라스에서 잘라 쓴다. 표정은 OrderResultUI가 정확도로 고른다.
-        Sprite[] faces = LoadEmojiSprites();
+        Sprite[] faces = icons.Faces;
         Image emoji = CreateImage("Emoji", panel.transform, Center, new Vector2(0f, 60f),
                                   new Vector2(128f, 128f), Color.white,
                                   faces != null && faces.Length > 0 ? faces[0] : null);
@@ -466,34 +477,64 @@ public static class RamenLayoutBuilder
         };
     }
 
-    /// <summary>
-    /// Icon.png에서 표정 3종을 잘라 온다. 웃음 · 무표정 · 화남 순.
-    /// 아틀라스가 균일 격자가 아니라(줄 간격이 17px) 필요한 칸만 직접 지정한다.
-    /// </summary>
-    private static Sprite[] LoadEmojiSprites()
+    /// <summary>Icon.png에서 잘라 낸 조각들.</summary>
+    private class IconSprites
     {
-        const string path = "Assets/Art/UI/Icon.png";
+        public Sprite SubmitBar;    // 초록 바 — 제출하기 영역
+        public Sprite Trash;        // 휴지통 — 폐기 버튼
+        public Sprite AccuracyBar;  // 살색 바 — 정확도 표시
+        public Sprite Help;         // 물음표 — 주문 확인 버튼
+        public Sprite[] Faces;      // 웃음 · 무표정 · 화남
+        public Sprite Wood;         // 나무 바 — 시작 버튼
+        public Sprite WoodPressed;  // 나무 바(눌린 모양)
+    }
+
+    /// <summary>
+    /// Icon.png를 잘라 온다. 균일 격자가 아니라 칸을 하나씩 지정한다.
+    /// 그림 좌표는 위에서 아래, 유니티 텍스처 좌표는 아래에서 위라 y를 뒤집어 적었다.
+    /// 가로로 늘어나는 바에는 9-슬라이스 테두리를 줘서 끝 모양이 뭉개지지 않게 한다.
+    /// </summary>
+    private static IconSprites LoadIconSprites()
+    {
+        const string path = UiDir + "Icon.png";
 
         var importer = AssetImporter.GetAtPath(path) as TextureImporter;
         var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
         if (importer == null || texture == null)
         {
             Debug.LogWarning("[RamenLayoutBuilder] 아이콘 아틀라스를 찾지 못했습니다: " + path);
-            return new Sprite[0];
+            return new IconSprites { Faces = new Sprite[3] };
         }
 
-        // 그림 좌표는 위에서 아래, 유니티 텍스처 좌표는 아래에서 위라 y를 뒤집는다.
-        const int cell = 16;
-        const int topDownY = 34;   // 표정 줄의 위쪽 y. 아틀라스 셋째 줄이다.
-        const int pitchX = 17;     // 칸 사이에 1px 간격이 있어 16이 아니라 17이다.
-        int y = texture.height - topDownY - cell;
+        int h = texture.height;
+        Vector4 barBorder = new Vector4(8f, 5f, 8f, 5f);
+
+        string[] names = { "Icon_Submit", "Icon_Trash", "Icon_Accuracy", "Icon_Help",
+                           "Face_0", "Face_1", "Face_2", "Icon_Wood", "Icon_WoodDown" };
+        Rect[] rects =
+        {
+            new Rect(0f,  h - 16f,  48f, 16f),   // 초록 바
+            new Rect(49f, h - 16f,  16f, 16f),   // 휴지통
+            new Rect(0f,  h - 33f,  48f, 16f),   // 살색 바
+            new Rect(49f, h - 33f,  16f, 16f),   // 물음표
+            new Rect(0f,  h - 50f,  16f, 16f),   // 웃음
+            new Rect(17f, h - 50f,  16f, 16f),   // 무표정
+            new Rect(34f, h - 50f,  16f, 16f),   // 화남
+            new Rect(0f,  h - 67f,  46f, 16f),   // 나무 바
+            new Rect(0f,  h - 84f,  46f, 16f)    // 나무 바(눌림)
+        };
+        Vector4[] borders =
+        {
+            barBorder, Vector4.zero, barBorder, Vector4.zero,
+            Vector4.zero, Vector4.zero, Vector4.zero,
+            barBorder, barBorder
+        };
 
         // 칸 좌표까지 비교해야 한다. 개수만 보면 좌표를 고쳐도 다시 자르지 않는다.
-        Rect expected = new Rect(0f, y, cell, cell);
         bool needsSlice = importer.spriteImportMode != SpriteImportMode.Multiple
                           || importer.spritesheet == null
-                          || importer.spritesheet.Length != 3
-                          || importer.spritesheet[0].rect != expected;
+                          || importer.spritesheet.Length != names.Length
+                          || importer.spritesheet[0].rect != rects[0];
 
         if (needsSlice
             || importer.filterMode != FilterMode.Point
@@ -506,13 +547,14 @@ public static class RamenLayoutBuilder
             importer.filterMode = FilterMode.Point;
             importer.textureCompression = TextureImporterCompression.Uncompressed;
 
-            var slices = new SpriteMetaData[3];
-            for (int i = 0; i < 3; i++)
+            var slices = new SpriteMetaData[names.Length];
+            for (int i = 0; i < names.Length; i++)
             {
                 slices[i] = new SpriteMetaData
                 {
-                    name = "Face_" + i,
-                    rect = new Rect(i * pitchX, y, cell, cell),
+                    name = names[i],
+                    rect = rects[i],
+                    border = borders[i],
                     alignment = (int)SpriteAlignment.Center,
                     pivot = new Vector2(0.5f, 0.5f)
                 };
@@ -522,19 +564,59 @@ public static class RamenLayoutBuilder
             importer.SaveAndReimport();
         }
 
-        var faces = new Sprite[3];
+        var found = new System.Collections.Generic.Dictionary<string, Sprite>();
         foreach (Object asset in AssetDatabase.LoadAllAssetsAtPath(path))
         {
             var sprite = asset as Sprite;
-            if (sprite == null) continue;
-
-            int index;
-            int underscore = sprite.name.LastIndexOf('_');
-            if (underscore < 0 || !int.TryParse(sprite.name.Substring(underscore + 1), out index)) continue;
-            if (index >= 0 && index < 3) faces[index] = sprite;
+            if (sprite != null) found[sprite.name] = sprite;
         }
 
-        return faces;
+        System.Func<string, Sprite> pick = n =>
+        {
+            Sprite v;
+            return found.TryGetValue(n, out v) ? v : null;
+        };
+
+        return new IconSprites
+        {
+            SubmitBar = pick("Icon_Submit"),
+            Trash = pick("Icon_Trash"),
+            AccuracyBar = pick("Icon_Accuracy"),
+            Help = pick("Icon_Help"),
+            Faces = new[] { pick("Face_0"), pick("Face_1"), pick("Face_2") },
+            Wood = pick("Icon_Wood"),
+            WoodPressed = pick("Icon_WoodDown")
+        };
+    }
+
+    /// <summary>
+    /// 늘려 쓰는 낱장 그림. 9-슬라이스 테두리를 줘서 크기를 바꿔도 모서리가 뭉개지지 않는다.
+    /// </summary>
+    private static Sprite LoadSlicedSprite(string path, Vector4 border)
+    {
+        var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+        if (importer == null)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] 그림을 찾지 못했습니다: " + path);
+            return null;
+        }
+
+        if (importer.spriteImportMode != SpriteImportMode.Single
+            || importer.spriteBorder != border
+            || importer.filterMode != FilterMode.Point
+            || importer.textureCompression != TextureImporterCompression.Uncompressed)
+        {
+            importer.textureType = TextureImporterType.Sprite;
+            importer.spriteImportMode = SpriteImportMode.Single;
+            importer.spriteBorder = border;
+            importer.alphaIsTransparency = true;
+            importer.mipmapEnabled = false;
+            importer.filterMode = FilterMode.Point;
+            importer.textureCompression = TextureImporterCompression.Uncompressed;
+            importer.SaveAndReimport();
+        }
+
+        return AssetDatabase.LoadAssetAtPath<Sprite>(path);
     }
 
     /// <summary>
@@ -653,8 +735,10 @@ public static class RamenLayoutBuilder
         dialogue.fontSizeMin = 14f;
         dialogue.fontSizeMax = 30f;
 
+        // 재료 이름표와 같은 판을 쓰되 색으로 구분한다.
         Image startImage = CreateImage("StartButton", bubble.transform, Center, new Vector2(180f, -210f),
-                                       new Vector2(300f, 80f), Hex("#C0392B"), PanelSprite());
+                                       new Vector2(300f, 80f), Hex("#E8896B"),
+                                       LoadSlicedSprite(UiDir + "TextBox.png", new Vector4(8f, 8f, 8f, 8f)));
         var start = Undo.AddComponent<Button>(startImage.gameObject);
         start.targetGraphic = startImage;
         StyleButton(start);
@@ -1194,16 +1278,22 @@ public static class RamenLayoutBuilder
     /// </summary>
     private static void CreateSlotLabel(Transform parent, SlotDef def, Font font)
     {
-        bool beside = !Mathf.Approximately(def.LabelOffset.x, 0f);
-
         Vector2 pos = def.LabelOffset == Vector2.zero
-            ? new Vector2(0f, -def.Size.y * 0.5f - 14f)
+            ? new Vector2(0f, -def.Size.y * 0.5f - 8f)
             : def.LabelOffset;
 
-        Vector2 size = beside ? new Vector2(175f, 40f) : new Vector2(def.Size.x + 80f, 30f);
-        TextAnchor align = beside ? TextAnchor.MiddleRight : TextAnchor.MiddleCenter;
+        // 판 크기는 글자에 맞춰 고정한다. 통 크기를 따라가면 통마다 판 길이가 달라지고
+        // 아래쪽 이름표끼리 겹쳐서 한 줄로 이어져 보인다.
+        Vector2 size = new Vector2(LabelBoxWidth, LabelBoxHeight);
 
-        CreateText("Label", parent, Center, pos, size, def.Label, SlotLabelSize, InkColor, font, align);
+        // 판을 깔았으니 글자는 가운데로 두는 편이 낫다. 오른쪽 정렬이면 판 안에서 치우쳐 보인다.
+        // 판 위치만 통의 왼쪽이나 아래로 간다.
+        Image box = CreateImage("LabelBox", parent, Center, pos, size, Hex("#FFF8E7"),
+                                LoadSlicedSprite(UiDir + "TextBox.png", new Vector4(8f, 8f, 8f, 8f)));
+        box.raycastTarget = false;
+
+        CreateText("Label", box.transform, Center, Vector2.zero, size, def.Label, SlotLabelSize,
+                   PopupInkColor, font, TextAnchor.MiddleCenter);
     }
 
     private static Text CreateText(string name, Transform parent, Vector2 anchor, Vector2 pos, Vector2 size,

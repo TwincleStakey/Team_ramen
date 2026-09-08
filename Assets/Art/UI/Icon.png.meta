@@ -38,6 +38,24 @@ TextureImporter:
   - first:
       213: 7611973313624473454
     second: Face_2
+  - first:
+      213: -6737084964230814711
+    second: Icon_Submit
+  - first:
+      213: -6661469201654846227
+    second: Icon_Trash
+  - first:
+      213: -2320127114535775243
+    second: Icon_Accuracy
+  - first:
+      213: -643360840058247804
+    second: Icon_Help
+  - first:
+      213: -9142351004171575366
+    second: Icon_Wood
+  - first:
+      213: 3590477452099602968
+    second: Icon_WoodDown
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -172,6 +190,94 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
+      name: Icon_Submit
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 68
+        width: 48
+        height: 16
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 8, y: 5, z: 8, w: 5}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 904a56d6be01182a0800000000000000
+      internalID: -6737084964230814711
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Icon_Trash
+      rect:
+        serializedVersion: 2
+        x: 49
+        y: 68
+        width: 16
+        height: 16
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: dec68291e05bd83a0800000000000000
+      internalID: -6661469201654846227
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Icon_Accuracy
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 51
+        width: 48
+        height: 16
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 8, y: 5, z: 8, w: 5}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 5f3d7509ea04dcfd0800000000000000
+      internalID: -2320127114535775243
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Icon_Help
+      rect:
+        serializedVersion: 2
+        x: 49
+        y: 51
+        width: 16
+        height: 16
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 4856ee189b25217f0800000000000000
+      internalID: -643360840058247804
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
       name: Face_0
       rect:
         serializedVersion: 2
@@ -237,6 +343,50 @@ TextureImporter:
       indices: 
       edges: []
       weights: []
+    - serializedVersion: 2
+      name: Icon_Wood
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 17
+        width: 46
+        height: 16
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 8, y: 5, z: 8, w: 5}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: abfda603338df1180800000000000000
+      internalID: -9142351004171575366
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Icon_WoodDown
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 0
+        width: 46
+        height: 16
+      alignment: 0
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 8, y: 5, z: 8, w: 5}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 81a42723830f3d130800000000000000
+      internalID: 3590477452099602968
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
     outline: []
     customData: 
     physicsShape: []
@@ -263,6 +413,12 @@ TextureImporter:
       Icon_6: 3922105346314008136
       Icon_7: 644233744522929174
       Icon_8: 695619550174596879
+      Icon_Accuracy: -2320127114535775243
+      Icon_Help: -643360840058247804
+      Icon_Submit: -6737084964230814711
+      Icon_Trash: -6661469201654846227
+      Icon_Wood: -9142351004171575366
+      Icon_WoodDown: 3590477452099602968
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 
