@@ -57,6 +57,9 @@ public static class RamenLayoutBuilder
     private static readonly Color InkColor = Color.white;
     private static readonly Color TextOutlineColor = Color.black;
     private static readonly Vector2 TextOutlineDistance = new Vector2(2f, -2f);
+    /// <summary>픽셀아트를 몇 배로 띄우는지. 9-슬라이스 테두리도 여기에 맞춘다.</summary>
+    private const float PixelArtScale = 3f;
+
     private const int SlotLabelSize = 25;
 
     // 이름표 판. 글자가 가장 긴 "목이버섯"이 들어가는 크기로 고정한다.
@@ -1268,6 +1271,10 @@ public static class RamenLayoutBuilder
         {
             img.sprite = sprite;
             img.type = sprite.border == Vector4.zero ? Image.Type.Simple : Image.Type.Sliced;
+
+            // 9-슬라이스 모서리는 원본 픽셀 그대로 그려진다. 주변 아트가 3배라
+            // 그냥 두면 판 테두리만 1픽셀로 가늘어 겉돈다. 배수를 낮춰 같은 3배로 맞춘다.
+            if (img.type == Image.Type.Sliced) img.pixelsPerUnitMultiplier = 1f / PixelArtScale;
         }
         return img;
     }
@@ -1338,10 +1345,16 @@ public static class RamenLayoutBuilder
         // 라벨이 레이캐스트를 먹으면 슬롯의 드래그가 시작되지 않는다.
         text.raycastTarget = false;
 
-        // 흰 글자를 배경 위에서 읽히게 하는 검은 테두리.
-        var outline = text.gameObject.AddComponent<Outline>();
-        outline.effectColor = TextOutlineColor;
-        outline.effectDistance = TextOutlineDistance;
+        // 검은 테두리는 밝은 글자에만 두른다.
+        // 어두운 글자에 두르면 획 사이가 메워져 흐릿하게 뭉개진다.
+        // 판 위에 얹는 글자는 이미 배경과 대비가 있어 테두리가 필요 없다.
+        float brightness = (color.r + color.g + color.b) / 3f;
+        if (brightness > 0.5f)
+        {
+            var outline = text.gameObject.AddComponent<Outline>();
+            outline.effectColor = TextOutlineColor;
+            outline.effectDistance = TextOutlineDistance;
+        }
 
         return text;
     }

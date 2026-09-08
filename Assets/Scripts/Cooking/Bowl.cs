@@ -33,6 +33,13 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     /// </summary>
     public float pourFps = 10f;
 
+    /// <summary>육수는 앞에서 몇 장까지 쓸지. 시트에는 더 있지만 뒤쪽은 안 쓴다.</summary>
+    public int brothFrameCount = 5;
+
+    /// <summary>타래는 앞에서 몇 장까지 쓸지. 이미 국물이 있으니 짧게 스친다.</summary>
+    public int tareFrameCount = 2;
+
+
     private Coroutine brothPour;
 
     /// <summary>드래그 전 그리기 순서. 끝나면 여기로 돌려놓는다.</summary>
@@ -220,11 +227,15 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         bowl[type] = count;
         AddIcon(type, icon, count);
 
+        // 앞의 연출이 남아 있으면 새 상태를 덮어쓴다. 여기서 확실히 끊는다.
+        StopBrothPour();
+
         // 육수와 타래는 그릇 그림을 바로 갈아 끼우지 않고 부어지는 장면을 보여 준다.
         Sprite[] frames = PourFramesFor(type);
         if (frames != null && frames.Length > 0)
         {
-            PlayPour(frames);
+            int frameCount = IsTare(type) ? tareFrameCount : brothFrameCount;
+            PlayPour(frames, frameCount);
         }
         else
         {
@@ -401,10 +412,10 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     }
 
     /// <summary>붓는 장면을 한 번 재생하고 평소 그릇 그림으로 안착한다.</summary>
-    private void PlayPour(Sprite[] frames)
+    private void PlayPour(Sprite[] frames, int count)
     {
         StopBrothPour();
-        brothPour = StartCoroutine(PourRoutine(frames));
+        brothPour = StartCoroutine(PourRoutine(frames, count));
     }
 
     private void StopBrothPour()
@@ -416,26 +427,25 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         }
     }
 
-    private IEnumerator PourRoutine(Sprite[] frames)
+    private IEnumerator PourRoutine(Sprite[] frames, int count)
     {
         // fps가 0이나 음수면 아예 안 넘어가므로 최소값을 둔다.
         float perFrame = 1f / Mathf.Max(0.1f, pourFps);
+        int last = Mathf.Clamp(count, 1, frames.Length);
 
-        for (int i = 0; i < frames.Length; i++)
+        for (int i = 0; i < last; i++)
         {
             if (frames[i] != null) image.sprite = frames[i];
             yield return new WaitForSeconds(perFrame);
         }
 
-        brothPour = null;
         RefreshBowlSprite();
+        brothPour = null;
     }
 
     /// <summary>국물 상태에 맞는 그릇 그림을 고른다. 타래가 있으면 타래 색이 이긴다.</summary>
     private void RefreshBowlSprite()
     {
-        // 붓는 도중에 타래를 붓거나 폐기하면 최신 상태가 이겨야 한다.
-        StopBrothPour();
 
         Sprite next = emptyBowlSprite;
 
@@ -502,6 +512,8 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
 
     private void ClearBowl()
     {
+        StopBrothPour();
+
         bowl.Clear();
         backInsertIndex = 0;
         RefreshBowlSprite();
