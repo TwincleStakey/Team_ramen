@@ -1,4 +1,4 @@
-using TMPro;
+﻿using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -37,12 +37,12 @@ public class OrderScreenUI : MonoBehaviour
     }
 
     /// <summary>새 손님이 왔을 때 연다.</summary>
-    public void Open(int day, string dialogue, int totalRevenue)
+    public void Open(int day, int hour, string dialogue, int totalRevenue)
     {
         if (screenRoot != null) screenRoot.SetActive(true);
 
-        // 영업 시간은 아직 시스템이 없어 고정 표시다. 기획서 5.4에서 시간 제한은 이번 범위 밖이다.
-        if (dayTimeText != null) dayTimeText.text = "영업 시간 " + day + "일차 / 19 : 00";
+        // 시각은 손님이 갈 때마다 한 시간씩 흐른다. 시간 제한은 없다(기획서 5.4).
+        if (dayTimeText != null) dayTimeText.text = "영업 시간 " + day + "일차 / " + hour + " : 00";
         if (revenueText != null) revenueText.text = "누적 수익 : " + totalRevenue.ToString("N0") + "₩";
         if (dialogueText != null) dialogueText.text = dialogue;
     }

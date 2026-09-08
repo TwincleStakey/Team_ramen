@@ -28,6 +28,11 @@ public class GameManager : MonoBehaviour
 
     // 최종 성적표용 누계.
     // RamenCalculator도 정확도를 모으지만 NextDay가 하루마다 지우므로 5일치를 여기서 따로 쌓는다.
+    // 영업 시각. 17시에 열고 손님이 한 명 갈 때마다 한 시간씩 흐른다.
+    // 시간 제한은 없다(기획서 5.4). 진행이 눈에 보이게 하는 표시일 뿐이다.
+    private const int OpenHour = 17;
+    private int currentHour = OpenHour;
+
     private int servedCount;
     private float accuracySum;
     private int perfectCount;
@@ -80,8 +85,14 @@ public class GameManager : MonoBehaviour
     /// </summary>
     private void HandleDayStarted(int day)
     {
-        if (dayText != null) dayText.text = day + "일차";
+        currentHour = OpenHour;
+        RefreshDayLabel(day);
         OpenOrderScreen(day);
+    }
+
+    private void RefreshDayLabel(int day)
+    {
+        if (dayText != null) dayText.text = day + "일차  " + currentHour + ":00";
     }
 
     /// <summary>
@@ -102,7 +113,7 @@ public class GameManager : MonoBehaviour
         string dialogue = orderManager.CurrentDialogue;
         if (string.IsNullOrEmpty(dialogue)) return;
 
-        orderScreenUI.Open(day, dialogue, totalRevenue);
+        orderScreenUI.Open(day, currentHour, dialogue, totalRevenue);
     }
 
     /// <summary>5일차까지 다 팔면 온다. 하루 정산과 달리 전체 누계를 보여 준다.</summary>
@@ -176,6 +187,10 @@ public class GameManager : MonoBehaviour
     public void AdvanceCustomer()
     {
         if (!EnsureDayManager()) return;
+
+        // 손님 한 명이 갔으니 한 시간 흐른다. 다음 주문 화면에 새 시각이 뜨도록 먼저 올린다.
+        currentHour++;
+        RefreshDayLabel(dayManager.CurrentDay);
 
         dayManager.OnCustomerServed();
 
