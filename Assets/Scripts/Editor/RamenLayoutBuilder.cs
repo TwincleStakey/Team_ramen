@@ -74,6 +74,18 @@ public static class RamenLayoutBuilder
         public DayManager Day;       // 일차·손님 수 진행
     }
 
+    /// <summary>정보 패널(? 버튼)에서 RecipeBookUI에 꽂아 줘야 하는 것들.</summary>
+    private class RecipeBookRefs
+    {
+        public GameObject Root;
+        public TextMeshProUGUI Order;
+        public TextMeshProUGUI RecipeNames;
+        public TextMeshProUGUI RecipeValues;
+        public TextMeshProUGUI IngredientNames;
+        public TextMeshProUGUI IngredientAttrs;
+        public Button Close;
+    }
+
     /// <summary>주문 화면에서 OrderScreenUI에 꽂아 줘야 하는 것들.</summary>
     private class OrderScreenRefs
     {
@@ -245,9 +257,10 @@ public static class RamenLayoutBuilder
 
         // 주문 화면. 조리 화면을 통째로 덮으므로 팝업들보다 뒤에 만든다.
         OrderScreenRefs orderScreen = BuildOrderScreen(canvas);
+        RecipeBookRefs recipeBook = BuildRecipeBook(canvas);
 
         // 주문을 만들어 줄 B의 컴포넌트들을 씬에 올리고 GameManager와 잇는다.
-        OrderSystemRefs orderSystem = EnsureOrderSystem(popup, finalPopup, orderScreen);
+        OrderSystemRefs orderSystem = EnsureOrderSystem(popup, finalPopup, orderScreen, recipeBook);
         WireGameManager(orderSystem, topBar);
 
         // DragLayer는 반드시 마지막. 그래야 드래그 고스트와 커서가 항상 모든 UI 위에 그려진다.
@@ -378,6 +391,78 @@ public static class RamenLayoutBuilder
             Profit = profit,
             Accuracy = accuracy,
             Confirm = confirm
+        };
+    }
+
+    /// <summary>
+    /// ? 버튼이 여는 정보 패널. 주문 원문·기본 레시피·재료 속성표를 한 화면에 놓는다.
+    /// 표는 이름 열과 내용 열을 따로 둔다. 한글은 글자 폭이 제각각이라 한 덩이 텍스트로는 줄이 안 맞는다.
+    /// </summary>
+    private static RecipeBookRefs BuildRecipeBook(Transform canvas)
+    {
+        TMP_FontAsset tmpFont = EnsureTmpFont();
+
+        Transform root = CreateGroup("RecipeBook", canvas);
+
+        var backdrop = CreateImage("Backdrop", root, Center, Vector2.zero, RefResolution, new Color(0f, 0f, 0f, 0.75f));
+        backdrop.raycastTarget = true;
+
+        Image panel = CreateImage("Panel", root, Center, Vector2.zero, new Vector2(1660f, 900f),
+                                  Hex("#FFF8E7"), PanelSprite());
+
+        CreateTmpText("Title", panel.transform, Center, new Vector2(0f, 390f),
+                      new Vector2(800f, 70f), "주문 확인", 46f, tmpFont);
+
+        // 왼쪽: 손님 주문 원문
+        CreateTmpText("OrderHeader", panel.transform, Center, new Vector2(-540f, 300f),
+                      new Vector2(480f, 50f), "손님 주문", 34f, tmpFont);
+        var order = CreateTmpText("OrderText", panel.transform, Center, new Vector2(-540f, 70f),
+                                  new Vector2(480f, 420f), "", 28f, tmpFont);
+        order.alignment = TextAlignmentOptions.TopLeft;
+
+        // 오른쪽 위: 기본 레시피
+        CreateTmpText("RecipeHeader", panel.transform, Center, new Vector2(120f, 300f),
+                      new Vector2(700f, 50f), "기본 레시피", 34f, tmpFont);
+        var recipeNames = CreateTmpText("RecipeNames", panel.transform, Center, new Vector2(-90f, 160f),
+                                        new Vector2(160f, 200f), "", 24f, tmpFont);
+        recipeNames.alignment = TextAlignmentOptions.TopRight;
+        var recipeValues = CreateTmpText("RecipeValues", panel.transform, Center, new Vector2(405f, 160f),
+                                         new Vector2(790f, 200f), "", 24f, tmpFont);
+        recipeValues.alignment = TextAlignmentOptions.TopLeft;
+
+        // 줄바꿈이 생기면 왼쪽 이름 열과 줄이 어긋난다. 한 메뉴는 반드시 한 줄이어야 한다.
+        recipeValues.textWrappingMode = TextWrappingModes.NoWrap;
+
+        // 오른쪽 아래: 재료 속성표
+        CreateTmpText("IngredientHeader", panel.transform, Center, new Vector2(120f, 60f),
+                      new Vector2(700f, 50f), "재료 속성", 34f, tmpFont);
+        var ingNames = CreateTmpText("IngredientNames", panel.transform, Center, new Vector2(-90f, -170f),
+                                     new Vector2(160f, 380f), "", 24f, tmpFont);
+        ingNames.alignment = TextAlignmentOptions.TopRight;
+        var ingAttrs = CreateTmpText("IngredientAttrs", panel.transform, Center, new Vector2(405f, -170f),
+                                     new Vector2(790f, 380f), "", 24f, tmpFont);
+        ingAttrs.alignment = TextAlignmentOptions.TopLeft;
+        ingAttrs.textWrappingMode = TextWrappingModes.NoWrap;
+
+        Image closeImage = CreateImage("CloseButton", panel.transform, Center, new Vector2(0f, -390f),
+                                       new Vector2(260f, 76f), Hex("#7BB661"), PanelSprite());
+        var close = Undo.AddComponent<Button>(closeImage.gameObject);
+        close.targetGraphic = closeImage;
+        var closeLabel = CreateTmpText("Label", closeImage.transform, Center, Vector2.zero,
+                                       new Vector2(240f, 60f), "닫기", 34f, tmpFont);
+        closeLabel.color = Color.white;
+
+        root.gameObject.SetActive(false);
+
+        return new RecipeBookRefs
+        {
+            Root = root.gameObject,
+            Order = order,
+            RecipeNames = recipeNames,
+            RecipeValues = recipeValues,
+            IngredientNames = ingNames,
+            IngredientAttrs = ingAttrs,
+            Close = close
         };
     }
 
@@ -727,7 +812,7 @@ public static class RamenLayoutBuilder
     /// 이미 있으면 인스펙터에서 손댄 값이 날아가지 않도록 그대로 둔다.
     /// </summary>
     private static OrderSystemRefs EnsureOrderSystem(ResultPopupRefs popup, FinalPopupRefs finalPopup,
-                                                     OrderScreenRefs orderScreen)
+                                                     OrderScreenRefs orderScreen, RecipeBookRefs recipeBook)
     {
         // 예전 빌드로 만든 OrderSystem에는 DayManager가 없다. 남겨 두고 컴포넌트만 덧붙이면
         // 배선이 반쯤 빈 채로 남을 수 있어서, 캔버스와 같은 방식으로 지우고 새로 만든다.
@@ -741,6 +826,7 @@ public static class RamenLayoutBuilder
                                 typeof(DailyResultUI),
                                 typeof(FinalResultUI),
                                 typeof(OrderScreenUI),
+                                typeof(RecipeBookUI),
                                 typeof(OrderManager));
         Undo.RegisterCreatedObjectUndo(go, UndoLabel);
 
@@ -799,6 +885,19 @@ public static class RamenLayoutBuilder
             SetPrivateReference(orderScreenUI, "startButton", orderScreen.Start);
         }
 
+        // 정보 패널(? 버튼). 이것도 root를 끄는 쪽이라 패널 바깥에 붙여야 한다.
+        var book = go.GetComponent<RecipeBookUI>();
+        if (recipeBook != null)
+        {
+            SetPrivateReference(book, "root", recipeBook.Root);
+            SetPrivateReference(book, "orderText", recipeBook.Order);
+            SetPrivateReference(book, "recipeNames", recipeBook.RecipeNames);
+            SetPrivateReference(book, "recipeValues", recipeBook.RecipeValues);
+            SetPrivateReference(book, "ingredientNames", recipeBook.IngredientNames);
+            SetPrivateReference(book, "ingredientAttrs", recipeBook.IngredientAttrs);
+            SetPrivateReference(book, "closeButton", recipeBook.Close);
+        }
+
         return new OrderSystemRefs { Order = manager, Day = dayManager };
     }
 
@@ -815,11 +914,13 @@ public static class RamenLayoutBuilder
         SetPrivateReference(gameManager, "ramenCalculator", Object.FindFirstObjectByType<RamenCalculator>());
         SetPrivateReference(gameManager, "finalResultUI", Object.FindFirstObjectByType<FinalResultUI>());
         SetPrivateReference(gameManager, "orderScreenUI", Object.FindFirstObjectByType<OrderScreenUI>());
+        SetPrivateReference(gameManager, "recipeBookUI", Object.FindFirstObjectByType<RecipeBookUI>());
 
-        // ? 버튼: 주문 원문 다시 보기. 조리 화면에는 대사줄이 없으므로 이게 유일한 확인 수단이다.
+        // ? 버튼: 주문 원문 + 기본 레시피 + 재료 속성표 (기획서 6.1).
+        // 조리 화면에는 대사줄이 없으므로 이게 유일한 확인 수단이다.
         var help = Undo.AddComponent<Button>(topBar.Help.gameObject);
         help.targetGraphic = topBar.Help;
-        UnityEventTools.AddPersistentListener(help.onClick, gameManager.ShowOrderAgain);
+        UnityEventTools.AddPersistentListener(help.onClick, gameManager.ShowOrderInfo);
     }
 
     /// <summary>private [SerializeField] 칸에 값을 넣는다. 인스펙터로 꽂는 것과 같은 결과.</summary>

@@ -20,6 +20,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] private RamenCalculator ramenCalculator;
     [SerializeField] private FinalResultUI finalResultUI;
     [SerializeField] private OrderScreenUI orderScreenUI;
+    [SerializeField] private RecipeBookUI recipeBookUI;
 
     /// <summary>지금까지 판 금액의 합. 재료비가 없어져서 매출이 곧 성적표다. (기획 확정)</summary>
     private int totalRevenue;
@@ -83,12 +84,13 @@ public class GameManager : MonoBehaviour
     }
 
     /// <summary>
-    /// 조리 화면의 ? 버튼이 부른다. 주문 화면을 그대로 다시 띄워 원문을 확인시킨다.
-    /// 기획서 6.1대로 페널티는 없고, [조리 시작]을 누르면 다시 닫힌다.
+    /// 조리 화면의 ? 버튼이 부른다. 주문 원문·기본 레시피·재료 속성표를 함께 띄운다.
+    /// 기획서 6.1대로 페널티는 없고 최종 정답은 보여 주지 않는다.
     /// </summary>
-    public void ShowOrderAgain()
+    public void ShowOrderInfo()
     {
-        if (EnsureDayManager()) OpenOrderScreen(dayManager.CurrentDay);
+        if (recipeBookUI == null || !EnsureOrderManager()) return;
+        recipeBookUI.Open(orderManager.CurrentDialogue);
     }
 
     /// <summary>손님을 맞는 화면을 연다. 조리 화면은 그 아래에서 계속 살아 있다.</summary>
