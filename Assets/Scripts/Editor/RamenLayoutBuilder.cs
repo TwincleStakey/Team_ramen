@@ -58,13 +58,14 @@ public static class RamenLayoutBuilder
     private static readonly Color TextOutlineColor = Color.black;
     private static readonly Vector2 TextOutlineDistance = new Vector2(2f, -2f);
     /// <summary>픽셀아트를 몇 배로 띄우는지. 9-슬라이스 테두리도 여기에 맞춘다.</summary>
-    private const float PixelArtScale = 3f;
+    /// <remarks>3배로는 테두리가 가늘어 판이 배경에 묻혔다. 4배로 올려 윤곽을 세운다.</remarks>
+    private const float PixelArtScale = 4f;
 
     private const int SlotLabelSize = 25;
 
     // 이름표 판. 글자가 가장 긴 "목이버섯"이 들어가는 크기로 고정한다.
     // 막대는 아이콘이 빠져 있어 마음껏 늘려도 된다. 높이는 두 판을 같게 맞춘다.
-    private const float PanelScale = 3f;
+    private const float PanelScale = 4f;
     private const float PanelBarHeight = 58f;
 
     private const float LabelBoxWidth = 150f;
@@ -361,7 +362,7 @@ public static class RamenLayoutBuilder
         // 날짜와 영업 시각. 왼쪽에 시계 아이콘이 붙은 판이라 글자를 그만큼 오른쪽으로 민다.
         Image day = CreateImage("DayPanel", bar, TopLeft, new Vector2(380f, -58f), new Vector2(300f, PanelBarHeight),
                                 Color.white, TimeBarSprite(), PanelScale);
-        AttachPanelIcon(day, TimeIconSprite(), new Vector2(84f, 93f));
+        AttachPanelIcon(day, TimeIconSprite(), new Vector2(110f, 90f));
         Text dayText = CreateText("Label", day.transform, Center, Vector2.zero,
                                   new Vector2(300f - 40f, 46f), "1일차", 27, PopupInkColor, font,
                                   TextAnchor.MiddleCenter);
@@ -375,7 +376,7 @@ public static class RamenLayoutBuilder
         // 누적 매출. 재료비와 자본은 기획 확정으로 제거되어 누적 매출만 표시한다.
         Image revenue = CreateImage("RevenuePanel", bar, TopRight, new Vector2(-330f, -58f), new Vector2(340f, PanelBarHeight),
                                     Color.white, MoneyBarSprite(), PanelScale);
-        AttachPanelIcon(revenue, MoneyIconSprite(), new Vector2(84f, 84f));
+        AttachPanelIcon(revenue, MoneyIconSprite(), new Vector2(120f, 84f));
         Text revenueText = CreateText("Label", revenue.transform, Center, Vector2.zero,
                                       new Vector2(340f - 40f, 46f), "누적 수익 : 0₩", 26, PopupInkColor, font,
                                       TextAnchor.MiddleCenter);
@@ -697,10 +698,14 @@ public static class RamenLayoutBuilder
                                  new Rect(19f, 27f, 37f, 16f), new Vector4(6f, 5f, 6f, 5f));
     }
 
+    /// <summary>
+    /// 시계 아이콘만. 아래로 한 줄이라도 더 잡으면 뒤에 있는 흰 막대가 딸려 들어와
+    /// 아이콘 밑에 흰 덩어리가 붙는다. 그림 좌표로 x8~18, y17~25가 아이콘의 끝이다.
+    /// </summary>
     private static Sprite TimeIconSprite()
     {
         return LoadCroppedSprite(UiDir + "Time.png", "TimeIcon",
-                                 new Rect(10f, 37f, 9f, 10f), Vector4.zero);
+                                 new Rect(8f, 38f, 11f, 9f), Vector4.zero);
     }
 
     private static Sprite MoneyBarSprite()
@@ -709,10 +714,11 @@ public static class RamenLayoutBuilder
                                  new Rect(17f, 16f, 40f, 20f), new Vector4(6f, 6f, 6f, 6f));
     }
 
+    /// <summary>원 표시 배지만. 그림 좌표로 x7~16, y25~31이고 그 아래는 전부 흰 막대다.</summary>
     private static Sprite MoneyIconSprite()
     {
         return LoadCroppedSprite(UiDir + "Money_UI2.png", "MoneyIcon",
-                                 new Rect(8f, 30f, 9f, 9f), Vector4.zero);
+                                 new Rect(7f, 32f, 10f, 7f), Vector4.zero);
     }
 
     /// <summary>
@@ -734,12 +740,12 @@ public static class RamenLayoutBuilder
     /// <summary>
     /// 손님 대화창. 오른쪽에 꼬리가 달려 있어 따로 그리지 않는다.
     /// 9-슬라이스는 쓰지 않는다. 꼬리가 위쪽 테두리에 갇혀 구석에 작게 박힌다.
-    /// 원본 비율(53:38)을 지킨 채 통째로 확대해야 꼬리가 제 위치에 제 크기로 나온다.
+    /// 원본 비율(53:28)을 지킨 채 통째로 확대해야 꼬리가 제 위치에 제 크기로 나온다.
     /// </summary>
     private static Sprite SpeechBubbleSprite()
     {
         return LoadCroppedSprite(UiDir + "Order UI.png", "SpeechBubble",
-                                 new Rect(7f, 9f, 53f, 38f), Vector4.zero);
+                                 new Rect(7f, 19f, 53f, 28f), Vector4.zero);
     }
 
     /// <summary>
@@ -893,16 +899,16 @@ public static class RamenLayoutBuilder
         CreateImage("CustomerSlot", root, Center, new Vector2(0f, 105f), new Vector2(380f, 570f), Hex("#E8B98F"));
 
         // 손님 대화창. 그림에 꼬리가 붙어 있어 따로 그리지 않는다.
-        // 53:38 비율을 지킨다. 꼬리가 오른쪽으로 약 7/53만큼 튀어나와 있어 글자 자리는 그만큼 좁다.
+        // 53:28 비율을 지킨다. 꼬리가 오른쪽으로 약 7/53만큼 튀어나와 있어 글자 자리는 그만큼 좁다.
         // 대사를 한 줄씩 넘기므로 상자는 한두 줄만 들어가면 된다.
-        Image bubble = CreateImage("Bubble", root, Center, new Vector2(-560f, 190f), new Vector2(560f, 402f),
+        Image bubble = CreateImage("Bubble", root, Center, new Vector2(-560f, 190f), new Vector2(560f, 296f),
                                    Color.white, SpeechBubbleSprite());
         bubble.preserveAspect = true;
 
         // 대사는 페르소나·난이도에 따라 6~8줄까지 간다. 글자 크기를 자동으로 줄여
         // 상자를 넘지 않게 하고, 버튼 자리는 따로 비워 둔다.
-        var dialogue = CreateTmpText("DialogueText", bubble.transform, Center, new Vector2(-35f, 45f),
-                                     new Vector2(400f, 150f), "손님을 기다리는 중...", 28f, tmpFont);
+        var dialogue = CreateTmpText("DialogueText", bubble.transform, Center, new Vector2(-35f, 48f),
+                                     new Vector2(400f, 120f), "손님을 기다리는 중...", 28f, tmpFont);
         dialogue.alignment = TextAlignmentOptions.Center;
         dialogue.enableAutoSizing = true;
         dialogue.fontSizeMin = 16f;
@@ -910,7 +916,7 @@ public static class RamenLayoutBuilder
 
         // 재료 이름표와 같은 판을 쓰되 색으로 구분한다.
         // 색과 글자는 OrderScreenUI가 남은 줄 수에 따라 [다음]과 [조리 시작]으로 바꾼다.
-        Image startImage = CreateImage("StartButton", bubble.transform, Center, new Vector2(-30f, -110f),
+        Image startImage = CreateImage("StartButton", bubble.transform, Center, new Vector2(-30f, -85f),
                                        new Vector2(240f, 66f), Hex("#7BA7C7"),
                                        LoadSlicedSprite(UiDir + "TextBox.png", new Vector4(8f, 8f, 8f, 8f)));
         var start = Undo.AddComponent<Button>(startImage.gameObject);
@@ -922,13 +928,13 @@ public static class RamenLayoutBuilder
 
         Image dayPanel = CreateImage("DayTimePanel", root, TopLeft, new Vector2(420f, -62f),
                                      new Vector2(600f, PanelBarHeight), Color.white, TimeBarSprite(), PanelScale);
-        AttachPanelIcon(dayPanel, TimeIconSprite(), new Vector2(84f, 93f));
+        AttachPanelIcon(dayPanel, TimeIconSprite(), new Vector2(110f, 90f));
         var dayTime = CreateTmpText("DayTimeText", dayPanel.transform, Center, Vector2.zero,
                                     new Vector2(560f, 56f), "영업 시간 1일차 / 17 : 00", 30f, tmpFont);
 
         Image revenuePanel = CreateImage("RevenuePanel", root, TopRight, new Vector2(-260f, -62f),
                                          new Vector2(420f, PanelBarHeight), Color.white, MoneyBarSprite(), PanelScale);
-        AttachPanelIcon(revenuePanel, MoneyIconSprite(), new Vector2(84f, 84f));
+        AttachPanelIcon(revenuePanel, MoneyIconSprite(), new Vector2(120f, 84f));
         var revenue = CreateTmpText("RevenueText", revenuePanel.transform, Center, Vector2.zero,
                                     new Vector2(380f, 56f), "누적 수익 : 0₩", 30f, tmpFont);
 
@@ -1053,6 +1059,7 @@ public static class RamenLayoutBuilder
         text.fontSize = fontSize;
         text.color = PopupInkColor;
         text.alignment = TextAlignmentOptions.Center;
+        text.fontStyle = FontStyles.Bold;   // 얇은 폰트라 그냥 두면 픽셀아트 사이에서 묻힌다
         text.raycastTarget = false;
         return text;
     }
@@ -1531,6 +1538,7 @@ public static class RamenLayoutBuilder
         text.fontSize = fontSize;
         text.color = color;
         text.alignment = align;
+        text.fontStyle = FontStyle.Bold;   // TMP 글자와 굵기를 맞춘다
         text.horizontalOverflow = HorizontalWrapMode.Overflow;
         text.verticalOverflow = VerticalWrapMode.Overflow;
 

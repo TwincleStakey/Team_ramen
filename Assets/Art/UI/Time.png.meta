@@ -170,10 +170,10 @@ TextureImporter:
       name: TimeIcon
       rect:
         serializedVersion: 2
-        x: 10
-        y: 37
-        width: 9
-        height: 10
+        x: 8
+        y: 38
+        width: 11
+        height: 9
       alignment: 0
       pivot: {x: 0.5, y: 0.5}
       border: {x: 0, y: 0, z: 0, w: 0}
