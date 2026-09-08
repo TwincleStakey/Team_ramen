@@ -15,11 +15,20 @@ public class GameManager : MonoBehaviour
     // 아래 넷은 RamenLayoutBuilder가 씬을 만들 때 꽂아 준다.
     [SerializeField] private OrderManager orderManager;
     [SerializeField] private DayManager dayManager;
-    [SerializeField] private Text orderText;
     [SerializeField] private Text revenueText;
+    [SerializeField] private Text dayText;
+    [SerializeField] private RamenCalculator ramenCalculator;
+    [SerializeField] private FinalResultUI finalResultUI;
+    [SerializeField] private OrderScreenUI orderScreenUI;
 
     /// <summary>지금까지 판 금액의 합. 재료비가 없어져서 매출이 곧 성적표다. (기획 확정)</summary>
     private int totalRevenue;
+
+    // 최종 성적표용 누계.
+    // RamenCalculator도 정확도를 모으지만 NextDay가 하루마다 지우므로 5일치를 여기서 따로 쌓는다.
+    private int servedCount;
+    private float accuracySum;
+    private int perfectCount;
 
     private void Awake()
     {
@@ -33,7 +42,11 @@ public class GameManager : MonoBehaviour
         // 구독은 반드시 Awake에서 한다. 실행 순서가 정해져 있지 않아 DayManager.Start()가
         // 이쪽 Start()보다 먼저 돌 수 있고, 그러면 1일차 첫 주문 신호를 놓친다.
         // 유니티는 모든 Awake를 끝낸 뒤에야 Start를 시작하므로 여기서 걸면 순서와 무관하게 안전하다.
-        if (EnsureDayManager()) dayManager.OnDayStarted += HandleDayStarted;
+        if (EnsureDayManager())
+        {
+            dayManager.OnDayStarted += HandleDayStarted;
+            dayManager.OnGameCompleted += HandleGameCompleted;
+        }
     }
 
     private void Start()
@@ -51,7 +64,11 @@ public class GameManager : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (dayManager != null) dayManager.OnDayStarted -= HandleDayStarted;
+        if (dayManager != null)
+        {
+            dayManager.OnDayStarted -= HandleDayStarted;
+            dayManager.OnGameCompleted -= HandleGameCompleted;
+        }
         if (Instance == this) Instance = null;
     }
 
@@ -61,7 +78,39 @@ public class GameManager : MonoBehaviour
     /// </summary>
     private void HandleDayStarted(int day)
     {
-        ShowCurrentOrder();
+        if (dayText != null) dayText.text = day + "일차";
+        OpenOrderScreen(day);
+    }
+
+    /// <summary>
+    /// 조리 화면의 ? 버튼이 부른다. 주문 화면을 그대로 다시 띄워 원문을 확인시킨다.
+    /// 기획서 6.1대로 페널티는 없고, [조리 시작]을 누르면 다시 닫힌다.
+    /// </summary>
+    public void ShowOrderAgain()
+    {
+        if (EnsureDayManager()) OpenOrderScreen(dayManager.CurrentDay);
+    }
+
+    /// <summary>손님을 맞는 화면을 연다. 조리 화면은 그 아래에서 계속 살아 있다.</summary>
+    private void OpenOrderScreen(int day)
+    {
+        if (orderScreenUI == null || !EnsureOrderManager()) return;
+
+        string dialogue = orderManager.CurrentDialogue;
+        if (string.IsNullOrEmpty(dialogue)) return;
+
+        orderScreenUI.Open(day, dialogue, totalRevenue);
+    }
+
+    /// <summary>5일차까지 다 팔면 온다. 하루 정산과 달리 전체 누계를 보여 준다.</summary>
+    private void HandleGameCompleted()
+    {
+        float average = servedCount > 0 ? accuracySum / servedCount : 0f;
+
+        Debug.Log("[영업 종료] 누적 매출 " + totalRevenue.ToString("N0") + "원 / 평균 정확도 "
+                  + average.ToString("F1") + "% / 완벽 " + perfectCount + "건 / 총 " + servedCount + "건");
+
+        if (finalResultUI != null) finalResultUI.Open(totalRevenue, average, perfectCount, servedCount);
     }
 
     /// <summary>
@@ -89,6 +138,16 @@ public class GameManager : MonoBehaviour
 
         int price = orderManager.EvaluateRamen(ramenState);
         totalRevenue += price;
+
+        // 채점 직후에만 읽을 수 있다. NextDay가 당일 집계를 지우기 전에 여기서 쌓아 둔다.
+        if (EnsureRamenCalculator())
+        {
+            float accuracy = ramenCalculator.LastAccuracy;
+            accuracySum += accuracy;
+            servedCount++;
+            if (accuracy >= 99.95f) perfectCount++;
+        }
+
         RefreshRevenue();
 
         Debug.Log("[정산] 판매 금액 " + price.ToString("N0") + "원 / 누적 매출 " + totalRevenue.ToString("N0") + "원");
@@ -98,20 +157,11 @@ public class GameManager : MonoBehaviour
         if (EnsureDayManager())
         {
             dayManager.OnCustomerServed();
-            ShowCurrentOrder();
-        }
-    }
 
-    /// <summary>지금 주문을 화면에 옮긴다. 주문을 만드는 것은 DayManager 몫이라 여기서는 읽기만 한다.</summary>
-    private void ShowCurrentOrder()
-    {
-        if (!EnsureOrderManager())
-        {
-            SetOrderText("(주문 시스템이 씬에 없습니다)");
-            return;
+            // 손님을 다 받았으면 다음 주문이 없다. 그때는 정산 팝업이 대신 뜬다.
+            bool dayContinues = dayManager.CurrentCustomerCount < dayManager.TargetCustomerCount;
+            if (dayContinues) OpenOrderScreen(dayManager.CurrentDay);
         }
-
-        SetOrderText(orderManager.CurrentDialogue);
     }
 
     /// <summary>인스펙터가 비어 있으면 씬에서 한 번 찾아 둔다.</summary>
@@ -127,14 +177,15 @@ public class GameManager : MonoBehaviour
         return dayManager != null;
     }
 
-    private void SetOrderText(string text)
+    private bool EnsureRamenCalculator()
     {
-        if (orderText != null) orderText.text = text;
+        if (ramenCalculator == null) ramenCalculator = FindFirstObjectByType<RamenCalculator>();
+        return ramenCalculator != null;
     }
 
     private void RefreshRevenue()
     {
-        if (revenueText != null) revenueText.text = "누적 매출 " + totalRevenue.ToString("N0") + "원";
+        if (revenueText != null) revenueText.text = "누적 수익 : " + totalRevenue.ToString("N0") + "₩";
     }
 
     private static string Describe(Dictionary<IngredientType, int> dict)
