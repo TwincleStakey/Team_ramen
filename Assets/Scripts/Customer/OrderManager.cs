@@ -12,12 +12,12 @@ public class OrderManager : MonoBehaviour
     [SerializeField]
     private CustomerDialogueGenerator dialogueGenerator;
 
-    [Header("현재 날짜")]
-    [SerializeField]
-    private int currentDay = 1;
-
-    // 현재 손님의 주문·정답 레시피·대사를 함께 보관한다.
+    // 현재 손님의 주문·정답 레시피·대사를 함께 보관
     private GeneratedCustomerOrder currentGeneratedOrder;
+
+    [Header("매니저 연결")]
+    [SerializeField]
+    private DayManager dayManager;
 
     public CustomerOrder CurrentOrder
     {
@@ -84,8 +84,6 @@ public class OrderManager : MonoBehaviour
         }
     }
 
-    public int CurrentDay => currentDay;
-
     // 새로운 손님의 주문을 생성한다.
     public CustomerOrder CreateOrder()
     {
@@ -96,8 +94,11 @@ public class OrderManager : MonoBehaviour
             return null;
         }
 
+        // DayManager가 연결되어 있으면 DayManager의 날짜를 사용하고, 없으면 기본 1일차 사용
+        int dayToUse = (dayManager != null) ? dayManager.CurrentDay : 1;
+
         // 이 호출 한 번으로 주문, 최종 레시피, 대사가 함께 생성된다.
-        currentGeneratedOrder = dialogueGenerator.Generate(currentDay);
+        currentGeneratedOrder = dialogueGenerator.Generate(dayToUse);
 
         if (dialogueText != null)
         {
@@ -109,20 +110,13 @@ public class OrderManager : MonoBehaviour
         return currentGeneratedOrder.order;
     }
 
-    // ── 여기부터 김기백(A) 추가 ────────────────────────────────────
-    // B 동의를 받고, 조리 화면과 정산 계산을 잇기 위해 넣은 진입점이다.
-    // 라멘 종류와 정답 레시피를 OrderManager만 들고 있어서, 조리 쪽에서
-    // RamenCalculator를 직접 부르려면 그 둘을 다 알아야 한다. 그래서 여기서 감쌌다.
-    // 이 블록 밖은 건드리지 않았다.
-
+    // 조리 화면과 정산 계산 연결
     [Header("정산 계산기 (A 추가)")]
     [SerializeField]
     private RamenCalculator ramenCalculator;
 
-    /// <summary>
-    /// 손님에게 낸 라멘을 채점하고 판매 금액을 돌려준다.
-    /// 조리 화면의 GameManager.SubmitRamen에서 부른다.
-    /// </summary>
+    // 손님에게 낸 라멘을 채점하고 판매 금액을 돌려준다.
+    // 조리 화면의 GameManager.SubmitRamen에서 부른다.
     public int EvaluateRamen(RamenState submitted)
     {
         if (currentGeneratedOrder == null)
@@ -139,20 +133,18 @@ public class OrderManager : MonoBehaviour
             return 0;
         }
 
-        return ramenCalculator.Calculate(currentGeneratedOrder.order.ramenType,
-                                         currentGeneratedOrder.targetRecipe,
-                                         submitted);
+        int sellingPrice = ramenCalculator.Calculate(currentGeneratedOrder.order.ramenType, currentGeneratedOrder.targetRecipe, submitted);
+
+        // 손님 대사창에 피드백 말풍선 연출 표시 ("정확도 90%! +8,000원")
+        if (dialogueText != null)
+        {
+            dialogueText.text = $"정확도 {ramenCalculator.LastAccuracy:F0}%! +{sellingPrice:N0}원";
+        }
+
+        return sellingPrice;
     }
 
-    // ── 김기백(A) 추가 끝 ──────────────────────────────────────────
-
-    // 날짜 진행이 필요할 때 호출한다.
-    public void SetCurrentDay(int day)
-    {
-        currentDay = Mathf.Max(1, day);
-    }
-
-    // 현재 주문이 끝났을 때 호출한다.
+    // 현재 주문이 끝났을 때(손님 퇴장 및 정산 완료 후) 호출하여 주문 상태와 대사창을 비운다.
     public void ClearCurrentOrder()
     {
         currentGeneratedOrder = null;

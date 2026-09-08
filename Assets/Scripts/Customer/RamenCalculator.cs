@@ -9,10 +9,21 @@ public class RamenCalculator : MonoBehaviour
     private const int SHOYU_PRICE = 10000;     // 소유라멘: 10,000원
     private const int TONKOTSU_PRICE = 13000;  // 돈꼬츠라멘: 13,000원
 
-    // 2. 당일 총 이익 변수
-    [Header("당일 총 이익")]
+    // 2. 당일 총 이익 및 정확도 변수
+    [Header("당일 통계")]
     [SerializeField] private int todayTotalProfit = 0;
+    [SerializeField] private float todayTotalAccuracy = 0f;
+    [SerializeField] private int todayServedCount = 0;
+
+    // 최근 서빙한 라멘의 정확도 및 판매가
+    private float lastAccuracy = 0f;
+    private int lastSellingPrice = 0;
+
     public int TodayTotalProfit => todayTotalProfit;
+    public int TodayServedCount => todayServedCount;
+    public float TodayAverageAccuracy => todayServedCount > 0 ? (todayTotalAccuracy / todayServedCount) : 0f;
+    public float LastAccuracy => lastAccuracy;
+    public int LastSellingPrice => lastSellingPrice;
 
     // 라멘 종류별 정가 반환
     public int GetRamenBasePrice(RamenType ramenType)
@@ -33,10 +44,7 @@ public class RamenCalculator : MonoBehaviour
     /// <summary>
     /// 정답 레시피와 손님에게 제공한 레시피를 비교하여 정확도 및 판매 금액을 계산하고 당일 총 이익에 누적합니다.
     /// </summary>
-    /// <param name="ramenType">라멘 종류 (시오/쇼유/돈코츠)</param>
-    /// <param name="targetRecipe">정답 레시피 (재료 및 정답 개수)</param>
-    /// <param name="submittedRecipe">손님에게 제공한 레시피 (재료 및 실제 개수)</param>
-    /// <returns>최종 판매 금액</returns>
+    /// <returns>최종 판매 금액 (int)</returns>
     public int Calculate(RamenType ramenType, Dictionary<IngredientType, int> targetRecipe, Dictionary<IngredientType, int> submittedRecipe)
     {
         if (targetRecipe == null) targetRecipe = new Dictionary<IngredientType, int>();
@@ -68,12 +76,17 @@ public class RamenCalculator : MonoBehaviour
         // 4. 정가에 정확도를 곱한 값을 판매 금액으로 책정
         int sellingPrice = Mathf.RoundToInt(basePrice * (accuracy / 100f));
 
-        // 5. 당일 총 이익에 누적
+        // 5. 최근 결과 저장 및 당일 통계에 누적
+        lastAccuracy = accuracy;
+        lastSellingPrice = sellingPrice;
+
         todayTotalProfit += sellingPrice;
+        todayTotalAccuracy += accuracy;
+        todayServedCount++;
 
         Debug.Log($"[라멘 평가] 종류: {ramenType} | 정가: {basePrice:N0}원 | " +
                   $"정확도: {accuracy:F1}% (오차: {totalErrorCount}/{totalTargetCount}) | " +
-                  $"판매 금액: {sellingPrice:N0}원 | 당일 누적 총 이익: {todayTotalProfit:N0}원");
+                  $"판매 금액: {sellingPrice:N0}원 | 당일 누적 총 이익: {todayTotalProfit:N0}원 (당일 평균 정확도: {TodayAverageAccuracy:F1}%)");
 
         return sellingPrice;
     }
@@ -85,10 +98,14 @@ public class RamenCalculator : MonoBehaviour
         return Calculate(ramenType, targetRecipe, submittedRecipe);
     }
 
-    // 새로운 날이 시작될 때 당일 총 이익을 초기화합니다.
+    // 새로운 날이 시작될 때 당일 통계(총 이익, 정확도, 서빙 수)를 초기화합니다.
     public void ResetDailyProfit()
     {
         todayTotalProfit = 0;
-        Debug.Log("[당일 총 이익 초기화 완료]");
+        todayTotalAccuracy = 0f;
+        todayServedCount = 0;
+        lastAccuracy = 0f;
+        lastSellingPrice = 0;
+        Debug.Log("[당일 총 이익 및 정확도 통계 초기화 완료]");
     }
 }
