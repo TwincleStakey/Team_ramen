@@ -15,15 +15,19 @@ public class RamenCalculator : MonoBehaviour
     [SerializeField] private float todayTotalAccuracy = 0f;
     [SerializeField] private int todayServedCount = 0;
 
-    // 최근 서빙한 라멘의 정확도 및 판매가
+    // 최근 서빙한 라멘의 정확도 및 판매가, 오차 개수
     private float lastAccuracy = 0f;
     private int lastSellingPrice = 0;
+    private int lastTotalErrorCount = 0;
+    private int lastTotalTargetCount = 0;
 
     public int TodayTotalProfit => todayTotalProfit;
     public int TodayServedCount => todayServedCount;
     public float TodayAverageAccuracy => todayServedCount > 0 ? (todayTotalAccuracy / todayServedCount) : 0f;
     public float LastAccuracy => lastAccuracy;
     public int LastSellingPrice => lastSellingPrice;
+    public int LastTotalErrorCount => lastTotalErrorCount;
+    public int LastTotalTargetCount => lastTotalTargetCount;
 
     // 라멘 종류별 정가 반환
     public int GetRamenBasePrice(RamenType ramenType)
@@ -79,14 +83,17 @@ public class RamenCalculator : MonoBehaviour
         // 5. 최근 결과 저장 및 당일 통계에 누적
         lastAccuracy = accuracy;
         lastSellingPrice = sellingPrice;
+        lastTotalErrorCount = totalErrorCount;
+        lastTotalTargetCount = totalTargetCount;
 
         todayTotalProfit += sellingPrice;
         todayTotalAccuracy += accuracy;
         todayServedCount++;
 
         Debug.Log($"[라멘 평가] 종류: {ramenType} | 정가: {basePrice:N0}원 | " +
-                  $"정확도: {accuracy:F1}% (오차: {totalErrorCount}/{totalTargetCount}) | " +
-                  $"판매 금액: {sellingPrice:N0}원 | 당일 누적 총 이익: {todayTotalProfit:N0}원 (당일 평균 정확도: {TodayAverageAccuracy:F1}%)");
+                  $"오차: {totalErrorCount}/{totalTargetCount}개 | " +
+                  $"정답률: {accuracy:F1}% | " +
+                  $"판매 금액: {sellingPrice:N0}원 | 당일 누적 총 이익: {todayTotalProfit:N0}원 (당일 평균 정답률: {TodayAverageAccuracy:F1}%)");
 
         return sellingPrice;
     }
@@ -106,6 +113,8 @@ public class RamenCalculator : MonoBehaviour
         todayServedCount = 0;
         lastAccuracy = 0f;
         lastSellingPrice = 0;
+        lastTotalErrorCount = 0;
+        lastTotalTargetCount = 0;
         Debug.Log("[당일 총 이익 및 정확도 통계 초기화 완료]");
     }
 }
