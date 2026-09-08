@@ -5,6 +5,9 @@ TextureImporter:
   - first:
       213: 8612409628767710613
     second: Order UI_0
+  - first:
+      213: 7061767279755277560
+    second: SpeechBubble
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -37,7 +40,7 @@ TextureImporter:
   maxTextureSize: 2048
   textureSettings:
     serializedVersion: 2
-    filterMode: 1
+    filterMode: 0
     aniso: 1
     mipBias: 0
     wrapU: 1
@@ -75,7 +78,7 @@ TextureImporter:
     maxTextureSize: 2048
     resizeAlgorithm: 0
     textureFormat: -1
-    textureCompression: 1
+    textureCompression: 0
     compressionQuality: 50
     crunchedCompression: 0
     allowsAlphaSplitting: 0
@@ -139,23 +142,23 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: Order UI_0
+      name: SpeechBubble
       rect:
         serializedVersion: 2
-        x: 6
-        y: 8
-        width: 55
-        height: 40
+        x: 7
+        y: 9
+        width: 53
+        height: 38
       alignment: 0
-      pivot: {x: 0, y: 0}
-      border: {x: 0, y: 0, z: 0, w: 0}
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 8, y: 8, z: 10, w: 13}
       customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 59d6ad64dec658770800000000000000
-      internalID: 8612409628767710613
+      spriteID: 8f43a441def600260800000000000000
+      internalID: 7061767279755277560
       vertices: []
       indices: 
       edges: []
@@ -175,6 +178,7 @@ TextureImporter:
       entries: []
     nameFileIdTable:
       Order UI_0: 8612409628767710613
+      SpeechBubble: 7061767279755277560
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 
