@@ -6,7 +6,7 @@ using UnityEngine.EventSystems;
 /// 액체(타래·육수)는 국자를 거쳐야 하므로 LiquidSlot이 따로 맡는다.
 /// 실제 투입 판정은 Bowl.OnDrop이 한다. 슬롯은 고스트를 따라다니게 하는 것까지만 책임진다.
 /// </summary>
-public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerEnterHandler
 {
     // 아래 셋 다 RamenLayoutBuilder가 생성 시 넣어 준다.
     public IngredientType type;
@@ -32,6 +32,14 @@ public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
     private const float FallbackGhostSide = 128f;
 
     private GameObject ghost;
+
+    /// <summary>
+    /// 고체 재료 위에서는 젓가락이어야 한다. 국자나 병을 들고 있었다면 여기서 내려놓는다.
+    /// </summary>
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        if (CookingCursor.Instance != null) CookingCursor.Instance.UseChopsticks();
+    }
 
     public void OnBeginDrag(PointerEventData eventData)
     {

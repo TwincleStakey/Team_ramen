@@ -69,6 +69,9 @@ public class CookingCursor : MonoBehaviour
     private float tilt;
     private Coroutine motion;
 
+    /// <summary>참이면 마우스를 따라가지 않는다. 뿌리는 동작 중에만 켠다.</summary>
+    private bool frozen;
+
     /// <summary>드래그 고스트가 커서에 비례한 크기로 나오도록 알려 준다.</summary>
     public float Size
     {
@@ -108,7 +111,10 @@ public class CookingCursor : MonoBehaviour
 
         // 재료를 집고 있으면 계속 다물고, 아니면 버튼에 따라 벌렸다 다문다.
         float target = (gripping || Mouse.current.leftButton.isPressed) ? 1f : 0f;
-        pinch = Mathf.MoveTowards(pinch, target, PinchSpeed * Time.unscaledDeltaTime);
+
+        // 집는 순간은 보간하지 않는다. 천천히 다물면 재료를 든 뒤에 한 번 더 움직이는 것처럼 보인다.
+        if (gripping) pinch = 1f;
+        else pinch = Mathf.MoveTowards(pinch, target, PinchSpeed * Time.unscaledDeltaTime);
 
         if (chopstickFrames == null || chopstickFrames.Length == 0) return;
 
@@ -119,11 +125,13 @@ public class CookingCursor : MonoBehaviour
 
     private void Follow()
     {
+        // 뿌리는 동안에는 병이 그 자리에 머물러야 한다. 끝나면 다시 마우스를 따라간다.
+        if (frozen) return;
+
         float scale = canvas != null ? canvas.scaleFactor : 1f;
         Vector2 screen = Mouse.current.position.ReadValue();
 
         Vector2 offset = HotspotOffset() + new Vector2(0f, -dip);
-        if (gripping && mode == Mode.Chopsticks) offset += GripDirection * (GripBackArt * PixelScale());
 
         rect.position = screen + offset * scale;
         rect.localRotation = Quaternion.Euler(0f, 0f, tilt);
@@ -159,6 +167,52 @@ public class CookingCursor : MonoBehaviour
     }
 
     // ── 액체·조미료 들기 ─────────────────────────────────────────
+
+    /// <summary>
+    /// 통 위에 마우스가 올라왔을 때. 내용물 없이 도구 모양만 그 통에 맞춘다.
+    /// 실제로 뜨는 것은 클릭(PickUp)이다.
+    /// </summary>
+    public void PreviewTool(IngredientType type)
+    {
+        if (frozen) return;
+
+        Sprite bottle = BottleFor(type);
+        if (bottle != null)
+        {
+            if (mode == Mode.Bottle && Held == type) return;   // 이미 그 병이면 그대로 둔다
+            StopMotion();
+            mode = Mode.Bottle;
+            IsHolding = false;
+            Held = type;
+            image.sprite = bottle;
+            tilt = 0f;
+            dip = 0f;
+            return;
+        }
+
+        Sprite ladle = LadleFor(type);
+        if (ladle == null) return;
+
+        // 국자는 비어 있는 모양으로 보여 준다. 담긴 그림은 실제로 펐을 때만 쓴다.
+        if (mode == Mode.Ladle && !IsHolding && Held == type) return;
+        StopMotion();
+        mode = Mode.Ladle;
+        IsHolding = false;
+        Held = type;
+        image.sprite = ladleEmpty;
+        tilt = 0f;
+        dip = 0f;
+    }
+
+    /// <summary>
+    /// 고체 재료 위에 마우스가 올라왔을 때. 젓가락으로 되돌린다.
+    /// 국자나 병에 담아 둔 것은 여기서 버려진다.
+    /// </summary>
+    public void UseChopsticks()
+    {
+        if (frozen || mode == Mode.Chopsticks) return;
+        Drop();
+    }
 
     /// <summary>통을 클릭했을 때. 액체는 국자로 뜨고, 조미료는 병째로 든다.</summary>
     public void PickUp(IngredientType type)
@@ -240,6 +294,7 @@ public class CookingCursor : MonoBehaviour
     private IEnumerator PourRoutine()
     {
         IsHolding = false;   // 붓는 동안 또 넣지 못하게
+        frozen = true;       // 병이 마우스를 따라다니면 뿌리는 동작이 읽히지 않는다
 
         for (float t = 0f; t < PourTiltSeconds; t += Time.unscaledDeltaTime)
         {
@@ -268,6 +323,7 @@ public class CookingCursor : MonoBehaviour
         }
 
         motion = null;
+        frozen = false;
         Drop();
     }
 
@@ -287,6 +343,9 @@ public class CookingCursor : MonoBehaviour
     {
         if (motion != null) StopCoroutine(motion);
         motion = null;
+
+        // 뿌리는 도중에 다른 동작이 끼어들어도 커서가 얼어붙은 채 남지 않게 한다.
+        frozen = false;
     }
 
     private Sprite LadleFor(IngredientType type)

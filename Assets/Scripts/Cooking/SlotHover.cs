@@ -1,5 +1,6 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
 /// <summary>
 /// 재료통 위에 마우스가 올라왔는지 알려 주는 표시.
@@ -11,26 +12,52 @@ public class SlotHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     /// <summary>올라왔을 때 커지는 비율. 크게 잡으면 옆 통과 겹친다.</summary>
     public float hoverScale = 1.08f;
 
+    /// <summary>
+    /// 거짓이면 크기 대신 밝기로 표시한다.
+    /// 면 튀김기는 두 통이 한 대로 이어져 있어서, 한쪽만 커지면 이음매가 벌어진다.
+    /// </summary>
+    public bool useScale = true;
+
+    /// <summary>밝기로 표시할 때 곱하는 값.</summary>
+    public float hoverBrightness = 1.25f;
+
     private Vector3 baseScale;
+    private Image image;
+    private Color baseColor;
 
     private void Awake()
     {
         baseScale = transform.localScale;
+        image = GetComponent<Image>();
+        if (image != null) baseColor = image.color;
     }
 
     private void OnDisable()
     {
-        // 커진 채로 꺼지면 다시 켤 때 그대로 남는다.
-        transform.localScale = baseScale;
+        // 강조된 채로 꺼지면 다시 켤 때 그대로 남는다.
+        ResetLook();
     }
 
     public void OnPointerEnter(PointerEventData eventData)
     {
-        transform.localScale = baseScale * hoverScale;
+        if (useScale)
+        {
+            transform.localScale = baseScale * hoverScale;
+        }
+        else if (image != null)
+        {
+            image.color = baseColor * hoverBrightness;
+        }
     }
 
     public void OnPointerExit(PointerEventData eventData)
     {
+        ResetLook();
+    }
+
+    private void ResetLook()
+    {
         transform.localScale = baseScale;
+        if (image != null) image.color = baseColor;
     }
 }

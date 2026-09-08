@@ -19,16 +19,19 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     public Sprite shoyuBowlSprite;
     public Sprite tonkotsuBowlSprite;
 
-    // ── 육수 붓기 애니메이션 ─────────────────────────────────────
-    /// <summary>국물이 차오르는 8프레임. RamenLayoutBuilder가 시트를 잘라 넣어 준다.</summary>
+    // ── 붓기 애니메이션 ──────────────────────────────────────────
+    // 국물이 차오르거나 타래 색이 물드는 장면. RamenLayoutBuilder가 시트를 잘라 넣어 준다.
     public Sprite[] brothPourFrames;
+    public Sprite[] shioPourFrames;
+    public Sprite[] shoyuPourFrames;
+    public Sprite[] tonkotsuPourFrames;
 
     /// <summary>
-    /// 붓기 애니메이션 속도(초당 프레임). 값이 작을수록 느리다.
+    /// 붓기 애니메이션 속도(초당 프레임). 값이 작을수록 느리다. 육수와 타래에 같이 쓴다.
     /// 인스펙터에서 바꾸면 바로 반영되지만 빌더를 다시 돌리면 이 기본값으로 되돌아간다.
     /// 속도를 굳히려면 아래 숫자를 고칠 것.
     /// </summary>
-    public float brothPourFps = 10f;
+    public float pourFps = 10f;
 
     private Coroutine brothPour;
 
@@ -217,10 +220,11 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         bowl[type] = count;
         AddIcon(type, icon, count);
 
-        // 육수는 그릇 그림을 바로 갈아 끼우지 않고 차오르는 장면을 보여 준다.
-        if (type == IngredientType.Broth && HasPourFrames())
+        // 육수와 타래는 그릇 그림을 바로 갈아 끼우지 않고 부어지는 장면을 보여 준다.
+        Sprite[] frames = PourFramesFor(type);
+        if (frames != null && frames.Length > 0)
         {
-            PlayBrothPour();
+            PlayPour(frames);
         }
         else
         {
@@ -383,16 +387,24 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
 
     // ── 표시와 도우미 ────────────────────────────────────────────
 
-    private bool HasPourFrames()
+    /// <summary>그 재료를 부을 때 보여 줄 장면. 없으면 null.</summary>
+    private Sprite[] PourFramesFor(IngredientType type)
     {
-        return brothPourFrames != null && brothPourFrames.Length > 0;
+        switch (type)
+        {
+            case IngredientType.Broth: return brothPourFrames;
+            case IngredientType.ShioTare: return shioPourFrames;
+            case IngredientType.ShoyuTare: return shoyuPourFrames;
+            case IngredientType.TonkotsuBase: return tonkotsuPourFrames;
+            default: return null;
+        }
     }
 
-    /// <summary>국물이 차오르는 장면을 한 번 재생하고 평소 그릇 그림으로 안착한다.</summary>
-    private void PlayBrothPour()
+    /// <summary>붓는 장면을 한 번 재생하고 평소 그릇 그림으로 안착한다.</summary>
+    private void PlayPour(Sprite[] frames)
     {
         StopBrothPour();
-        brothPour = StartCoroutine(BrothPourRoutine());
+        brothPour = StartCoroutine(PourRoutine(frames));
     }
 
     private void StopBrothPour()
@@ -404,14 +416,14 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         }
     }
 
-    private IEnumerator BrothPourRoutine()
+    private IEnumerator PourRoutine(Sprite[] frames)
     {
         // fps가 0이나 음수면 아예 안 넘어가므로 최소값을 둔다.
-        float perFrame = 1f / Mathf.Max(0.1f, brothPourFps);
+        float perFrame = 1f / Mathf.Max(0.1f, pourFps);
 
-        for (int i = 0; i < brothPourFrames.Length; i++)
+        for (int i = 0; i < frames.Length; i++)
         {
-            if (brothPourFrames[i] != null) image.sprite = brothPourFrames[i];
+            if (frames[i] != null) image.sprite = frames[i];
             yield return new WaitForSeconds(perFrame);
         }
 

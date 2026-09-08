@@ -392,6 +392,7 @@ public static class RamenLayoutBuilder
                                          new Vector2(260f, 80f), Hex("#7BB661"), PanelSprite());
         var confirm = Undo.AddComponent<Button>(confirmImage.gameObject);
         confirm.targetGraphic = confirmImage;
+        StyleButton(confirm);
         CreateTmpText("Label", confirmImage.transform, Center, Vector2.zero,
                       new Vector2(240f, 60f), "확인", 36f, tmpFont);
 
@@ -445,6 +446,7 @@ public static class RamenLayoutBuilder
                                          new Vector2(260f, 74f), Hex("#7BB661"), PanelSprite());
         var confirm = Undo.AddComponent<Button>(confirmImage.gameObject);
         confirm.targetGraphic = confirmImage;
+        StyleButton(confirm);
         var confirmLabel = CreateTmpText("Label", confirmImage.transform, Center, Vector2.zero,
                                          new Vector2(240f, 60f), "확인", 34f, tmpFont);
         confirmLabel.color = Color.white;
@@ -589,6 +591,7 @@ public static class RamenLayoutBuilder
                                        new Vector2(260f, 76f), Hex("#7BB661"), PanelSprite());
         var close = Undo.AddComponent<Button>(closeImage.gameObject);
         close.targetGraphic = closeImage;
+        StyleButton(close);
         var closeLabel = CreateTmpText("Label", closeImage.transform, Center, Vector2.zero,
                                        new Vector2(240f, 60f), "닫기", 34f, tmpFont);
         closeLabel.color = Color.white;
@@ -654,6 +657,7 @@ public static class RamenLayoutBuilder
                                        new Vector2(300f, 80f), Hex("#C0392B"), PanelSprite());
         var start = Undo.AddComponent<Button>(startImage.gameObject);
         start.targetGraphic = startImage;
+        StyleButton(start);
         var startLabel = CreateTmpText("Label", startImage.transform, Center, Vector2.zero,
                                        new Vector2(280f, 60f), "조리 시작  →", 34f, tmpFont);
         startLabel.color = Color.white;
@@ -706,6 +710,7 @@ public static class RamenLayoutBuilder
                                          new Vector2(300f, 84f), Hex("#7BB661"), PanelSprite());
         var restart = Undo.AddComponent<Button>(restartImage.gameObject);
         restart.targetGraphic = restartImage;
+        StyleButton(restart);
         CreateTmpText("Label", restartImage.transform, Center, Vector2.zero,
                       new Vector2(280f, 60f), "다시 시작", 38f, tmpFont);
 
@@ -815,7 +820,11 @@ public static class RamenLayoutBuilder
             }
 
             // 커서가 젓가락 그림이라 어느 통을 가리키는지 알기 어렵다. 통이 직접 반응하게 한다.
-            Undo.AddComponent<SlotHover>(bin.gameObject);
+            var hover = Undo.AddComponent<SlotHover>(bin.gameObject);
+
+            // 면 두 통은 한 대를 반으로 자른 그림이라 한쪽만 커지면 이음매가 벌어진다.
+            // 대신 밝기로 표시하면 이어진 채로 어느 쪽을 가리키는지 구분된다.
+            if (def.Type == IngredientType.Noodles) hover.useScale = false;
 
             CreateSlotLabel(bin.transform, def, font);
         }
@@ -909,8 +918,12 @@ public static class RamenLayoutBuilder
         component.shoyuBowlSprite = LoadSprite(BowlDir + "쇼유그릇.png");
         component.tonkotsuBowlSprite = LoadSprite(BowlDir + "돈코츠그릇.png");
 
-        // 국물이 차오르는 8프레임(128px 4열 x 2행). 재생 속도는 Bowl.brothPourFps로 조절한다.
+        // 붓는 장면들. 재생 속도는 Bowl.pourFps로 한꺼번에 조절한다.
+        // 육수는 8프레임(4열 x 2행), 타래는 5프레임(가로 한 줄)이다.
         component.brothPourFrames = LoadSpriteSheet(BowlDir + "애니메이션_육수그릇.png", 128, 128);
+        component.shioPourFrames = LoadSpriteSheet(EtcDir + "시오 애니메이션.png", 128, 128);
+        component.shoyuPourFrames = LoadSpriteSheet(EtcDir + "쇼유 애니메이션.png", 128, 128);
+        component.tonkotsuPourFrames = LoadSpriteSheet(EtcDir + "돈코츠 애니메이션.png", 128, 128);
 
         // 드래그 중에 레이캐스트를 통과시키려면 CanvasGroup이 필요하다.
         // 없으면 그릇 자신이 SubmitZone을 가려서 제출이 영영 안 된다.
@@ -927,6 +940,7 @@ public static class RamenLayoutBuilder
     {
         var button = Undo.AddComponent<Button>(discard.gameObject);
         button.targetGraphic = discard;
+        StyleButton(button);
         UnityEventTools.AddPersistentListener(button.onClick, bowl.Discard);
     }
 
@@ -1093,7 +1107,24 @@ public static class RamenLayoutBuilder
         // 조리 화면에는 대사줄이 없으므로 이게 유일한 확인 수단이다.
         var help = Undo.AddComponent<Button>(topBar.Help.gameObject);
         help.targetGraphic = topBar.Help;
+        StyleButton(help);
         UnityEventTools.AddPersistentListener(help.onClick, gameManager.ShowOrderInfo);
+    }
+
+    /// <summary>
+    /// 버튼에 공통 강조색을 준다. 유니티 기본값은 차이가 거의 없어 눌러도 되는지 알기 어렵다.
+    /// 색을 1보다 크게 두면 원래 색을 그만큼 밝힌다. 버튼마다 바탕색이 달라도 같은 정도로 밝아진다.
+    /// </summary>
+    private static void StyleButton(Button button)
+    {
+        ColorBlock colors = button.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(1.3f, 1.3f, 1.3f, 1f);
+        colors.pressedColor = new Color(0.75f, 0.75f, 0.75f, 1f);
+        colors.selectedColor = Color.white;
+        colors.disabledColor = new Color(0.6f, 0.6f, 0.6f, 0.5f);
+        colors.fadeDuration = 0.08f;
+        button.colors = colors;
     }
 
     /// <summary>private [SerializeField] 칸에 값을 넣는다. 인스펙터로 꽂는 것과 같은 결과.</summary>

@@ -6,10 +6,19 @@ using UnityEngine.EventSystems;
 /// 액체는 국자로 뜨고, 조미료는 병째로 든다.
 /// 고체 재료 슬롯은 IngredientSlot이 따로 맡는다.
 /// </summary>
-public class LiquidSlot : MonoBehaviour, IPointerClickHandler
+public class LiquidSlot : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler
 {
     // 이 통이 담당하는 재료. RamenLayoutBuilder가 생성 시 지정한다.
     public IngredientType type;
+
+    /// <summary>
+    /// 올려놓기만 해도 도구가 그 통에 맞게 바뀐다. 무엇을 쥐게 될지 미리 보이게 하려는 것이다.
+    /// 실제로 뜨는 것은 클릭이다.
+    /// </summary>
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        if (CookingCursor.Instance != null) CookingCursor.Instance.PreviewTool(type);
+    }
 
     public void OnPointerClick(PointerEventData eventData)
     {
