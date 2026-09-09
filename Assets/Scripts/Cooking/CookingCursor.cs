@@ -24,8 +24,9 @@ public class CookingCursor : MonoBehaviour
     // 메뉴 화면에서는 조리 도구 대신 시스템 화살표를 쓴다.
     // 버튼을 누르는 화면에 젓가락이 떠 있으면 어디를 가리키는지 읽히지 않는다.
     public GameObject[] uiScreens;   // 하나라도 켜져 있으면 젓가락을 감춘다
-    public Texture2D arrowCursor;    // 그동안 띄울 픽셀 화살표
-    public Vector2 arrowHotspot;     // 화살표 끝이 가리키는 점 (그림 좌표)
+    public Texture2D arrowCursor;         // 그동안 띄울 픽셀 화살표
+    public Texture2D arrowCursorPressed;  // 누르고 있는 동안 바꿔 끼울 그림
+    public Vector2 arrowHotspot;          // 화살표 끝이 가리키는 점 (그림 좌표)
 
     /// <summary>국자나 병에 무언가 들려 있는가. 들려 있어야 그릇에 부을 수 있다.</summary>
     public bool IsHolding { get; private set; }
@@ -51,7 +52,7 @@ public class CookingCursor : MonoBehaviour
     // ── 국자로 뜨는 동작 ─────────────────────────────────────────
     private const float DipDownSeconds = 0.12f;
     private const float DipUpSeconds = 0.18f;
-    private const float DipDepth = 46f;
+    private const float DipDepth = 12f;
     private const float DipTilt = -22f;
 
     // ── 병으로 뿌리는 동작 ───────────────────────────────────────
@@ -70,7 +71,10 @@ public class CookingCursor : MonoBehaviour
 
     private Mode mode = Mode.Chopsticks;
     private bool gripping;    // 젓가락으로 고체를 집고 있는 중
-    private float pinch = 1f; // 0 = 벌림, 1 = 다뭄. 평소에는 다물고 있다.
+
+    /// <summary>젓가락으로 재료를 집고 있는 중인가. 집은 채로는 다른 통을 건드리면 안 된다.</summary>
+    public bool IsGripping { get { return gripping; } }
+    private float pinch;      // 0 = 벌림, 1 = 다뭄. 재료통 위에서는 벌린 채로 기다린다.
     private float dip;        // 국자가 아래로 내려간 정도
     private float tilt;
     private Coroutine motion;
@@ -78,8 +82,14 @@ public class CookingCursor : MonoBehaviour
     /// <summary>참이면 마우스를 따라가지 않는다. 뿌리는 동작 중에만 켠다.</summary>
     private bool frozen;
 
-    /// <summary>메뉴 화면이 떠 있는가. 참이면 젓가락을 끄고 화살표를 띄운다.</summary>
-    private bool uiOpen;
+    /// <summary>지금 시스템 화살표를 쓰고 있는가. 도구를 감춘 상태다.</summary>
+    private bool arrowMode = true;
+
+    /// <summary>마우스가 올라와 있는 재료통. 없으면 도구를 감추고 화살표로 돌아간다.</summary>
+    private GameObject hoveredSlot;
+
+    /// <summary>화살표가 눌린 그림으로 바뀌어 있는가.</summary>
+    private bool arrowPressed;
 
     /// <summary>드래그 고스트가 커서에 비례한 크기로 나오도록 알려 준다.</summary>
     public float Size
@@ -97,7 +107,7 @@ public class CookingCursor : MonoBehaviour
 
     private void OnEnable()
     {
-        uiOpen = AnyUiOpen();
+        arrowMode = AnyUiOpen() || !ToolVisible();
         ApplyCursorMode();
     }
 
@@ -121,24 +131,61 @@ public class CookingCursor : MonoBehaviour
         return false;
     }
 
+    /// <summary>재료통 위에 있는지 SlotHover가 알려 준다.</summary>
+    public void EnterSlot(GameObject slot)
+    {
+        hoveredSlot = slot;
+    }
+
+    public void ExitSlot(GameObject slot)
+    {
+        // 통에서 통으로 바로 넘어가면 나간 통의 이탈이 늦게 올 수 있다. 그때 새 통을 지우면 안 된다.
+        if (hoveredSlot == slot) hoveredSlot = null;
+    }
+
+    /// <summary>조리 도구를 띄울 때인가. 아니면 시스템 화살표를 쓴다.</summary>
+    private bool ToolVisible()
+    {
+        // 통 위에 있거나, 무언가를 들고 그릇으로 가는 중이거나, 뜨고 뿌리는 동작 중일 때.
+        return hoveredSlot != null || gripping || IsHolding || motion != null;
+    }
+
     private void ApplyCursorMode()
     {
-        if (image != null) image.enabled = !uiOpen;
-        Cursor.visible = uiOpen;
-        if (uiOpen && arrowCursor != null) Cursor.SetCursor(arrowCursor, arrowHotspot, CursorMode.Auto);
+        if (image != null) image.enabled = !arrowMode;
+        Cursor.visible = arrowMode;
+        arrowPressed = false;
+        if (arrowMode && arrowCursor != null) Cursor.SetCursor(arrowCursor, arrowHotspot, CursorMode.Auto);
+    }
+
+    /// <summary>누르고 있는 동안 화살표를 눌린 그림으로 바꾼다.</summary>
+    private void UpdateArrowPress()
+    {
+        bool down = Mouse.current.leftButton.isPressed;
+
+        // 바뀌는 순간에만 갈아 끼운다. 매 프레임 부르면 OS 커서를 계속 새로 만들어 깜빡인다.
+        if (down == arrowPressed) return;
+
+        arrowPressed = down;
+        Texture2D tex = (down && arrowCursorPressed != null) ? arrowCursorPressed : arrowCursor;
+        if (tex != null) Cursor.SetCursor(tex, arrowHotspot, CursorMode.Auto);
     }
 
     private void Update()
     {
         if (Mouse.current == null) return;
 
-        bool open = AnyUiOpen();
-        if (open != uiOpen)
+        bool arrow = AnyUiOpen() || !ToolVisible();
+        if (arrow != arrowMode)
         {
-            uiOpen = open;
+            arrowMode = arrow;
             ApplyCursorMode();
         }
-        if (uiOpen) return;   // 화살표가 도는 동안 젓가락은 멈춰 둔다
+        if (arrowMode)
+        {
+            UpdateArrowPress();
+            return;   // 화살표가 도는 동안 젓가락은 멈춰 둔다
+        }
 
         UpdateSprite();
         Follow();
@@ -148,9 +195,9 @@ public class CookingCursor : MonoBehaviour
     {
         if (mode != Mode.Chopsticks) return;   // 국자·병 그림은 동작 코루틴이 정한다
 
-        // 평소에는 다물고 있는다. 벌린 그림을 기본으로 두면 커서 끝이 두 갈래로 보여
-        // 어디를 가리키는지 알기 어렵다. 집으려고 누르는 순간에만 잠깐 벌린다.
-        float target = (Mouse.current.leftButton.isPressed && !gripping) ? 0f : 1f;
+        // 재료통 위에서는 벌린 채로 기다리고, 누르는 동안만 다문다.
+        // 젓가락은 통 위에 있을 때만 뜨므로, 벌린 모양이 곧 "여기서 집을 수 있다"는 표시가 된다.
+        float target = Mouse.current.leftButton.isPressed ? 1f : 0f;
 
         // 집는 순간은 보간하지 않는다. 천천히 다물면 재료를 든 뒤에 한 번 더 움직이는 것처럼 보인다.
         if (gripping) pinch = 1f;
@@ -376,7 +423,7 @@ public class CookingCursor : MonoBehaviour
         mode = Mode.Chopsticks;
         dip = 0f;
         tilt = 0f;
-        pinch = 1f;
+        pinch = 0f;
     }
 
     private void StopMotion()

@@ -5,6 +5,9 @@ TextureImporter:
   - first:
       213: 6598784947030672139
     second: "\uBA58\uB9C8 \uC7AC\uB8CC\uD1B5_0"
+  - first:
+      213: -6382156862803173568
+    second: MenmaBin
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -46,7 +49,7 @@ TextureImporter:
   nPOTScale: 0
   lightmap: 0
   compressionQuality: 50
-  spriteMode: 1
+  spriteMode: 2
   spriteExtrude: 1
   spriteMeshType: 1
   alignment: 0
@@ -139,23 +142,23 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: "\uBA58\uB9C8 \uC7AC\uB8CC\uD1B5_0"
+      name: MenmaBin
       rect:
         serializedVersion: 2
-        x: 1
+        x: 2
         y: 10
-        width: 62
+        width: 60
         height: 44
       alignment: 0
-      pivot: {x: 0, y: 0}
+      pivot: {x: 0.5, y: 0.5}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: b0345fc82f7939b50800000000000000
-      internalID: 6598784947030672139
+      spriteID: 04f9bcbb5260e67a0800000000000000
+      internalID: -6382156862803173568
       vertices: []
       indices: 
       edges: []
@@ -174,6 +177,7 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
+      MenmaBin: -6382156862803173568
       "\uBA58\uB9C8 \uC7AC\uB8CC\uD1B5_0": 6598784947030672139
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0

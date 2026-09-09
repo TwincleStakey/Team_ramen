@@ -5,6 +5,9 @@ TextureImporter:
   - first:
       213: -164213958072408675
     second: "\uCC28\uC288 \uC7AC\uB8CC\uD1B5_0"
+  - first:
+      213: -621631507828653340
+    second: ChashuBin
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -46,7 +49,7 @@ TextureImporter:
   nPOTScale: 0
   lightmap: 0
   compressionQuality: 50
-  spriteMode: 1
+  spriteMode: 2
   spriteExtrude: 1
   spriteMeshType: 1
   alignment: 0
@@ -139,23 +142,23 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: "\uCC28\uC288 \uC7AC\uB8CC\uD1B5_0"
+      name: ChashuBin
       rect:
         serializedVersion: 2
-        x: 1
+        x: 2
         y: 10
-        width: 62
+        width: 60
         height: 44
       alignment: 0
-      pivot: {x: 0, y: 0}
+      pivot: {x: 0.5, y: 0.5}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: d95eee1764898bdf0800000000000000
-      internalID: -164213958072408675
+      spriteID: 4e2ceaaef658f57f0800000000000000
+      internalID: -621631507828653340
       vertices: []
       indices: 
       edges: []
@@ -174,6 +177,7 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
+      ChashuBin: -621631507828653340
       "\uCC28\uC288 \uC7AC\uB8CC\uD1B5_0": -164213958072408675
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0

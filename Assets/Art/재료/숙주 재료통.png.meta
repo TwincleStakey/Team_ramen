@@ -5,6 +5,9 @@ TextureImporter:
   - first:
       213: -1947863868582923371
     second: "\uC219\uC8FC \uC7AC\uB8CC\uD1B5_0"
+  - first:
+      213: -5581928094554851231
+    second: BeanSproutBin
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -46,7 +49,7 @@ TextureImporter:
   nPOTScale: 0
   lightmap: 0
   compressionQuality: 50
-  spriteMode: 1
+  spriteMode: 2
   spriteExtrude: 1
   spriteMeshType: 1
   alignment: 0
@@ -139,23 +142,23 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: "\uC219\uC8FC \uC7AC\uB8CC\uD1B5_0"
+      name: BeanSproutBin
       rect:
         serializedVersion: 2
-        x: 1
+        x: 2
         y: 10
-        width: 62
+        width: 60
         height: 44
       alignment: 0
-      pivot: {x: 0, y: 0}
+      pivot: {x: 0.5, y: 0.5}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 593fb4ab12cc7f4e0800000000000000
-      internalID: -1947863868582923371
+      spriteID: 168f84ae8f10982b0800000000000000
+      internalID: -5581928094554851231
       vertices: []
       indices: 
       edges: []
@@ -174,6 +177,7 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
+      BeanSproutBin: -5581928094554851231
       "\uC219\uC8FC \uC7AC\uB8CC\uD1B5_0": -1947863868582923371
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0

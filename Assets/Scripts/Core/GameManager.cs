@@ -37,6 +37,9 @@ public class GameManager : MonoBehaviour
     private float accuracySum;
     private int perfectCount;
 
+    /// <summary>Awake에서 읽어 두고 Start에서 얹는다. 얹고 나면 비운다.</summary>
+    private SaveData pendingSave;
+
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -54,10 +57,57 @@ public class GameManager : MonoBehaviour
             dayManager.OnDayStarted += HandleDayStarted;
             dayManager.OnGameCompleted += HandleGameCompleted;
         }
+
+        PrepareResume();
+    }
+
+    /// <summary>
+    /// 저장·이어하기를 켤지. 지금은 꺼 둔다.
+    ///
+    /// 시스템은 다 만들어져 있고 동작도 확인했지만, 개발 중에는 켜 두면 방해가 된다.
+    /// 플레이할 때마다 지난번 그릇 내용물과 주문이 되살아나서, 조리 화면을 열면
+    /// 재료가 이미 담겨 있는 상태로 시작한다. 화면을 손보는 동안에는 늘 빈 그릇이어야 한다.
+    ///
+    /// 다시 켤 때는 이 값만 true 로 바꾸면 된다. 저장 코드는 하나도 지우지 않았다.
+    /// 켜기 전에 남아 있는 옛 저장 파일을 지우는 것이 좋다.
+    /// (Windows: AppData/LocalLow/DefaultCompany/Team_ramen/ramen_save.json)
+    /// </summary>
+    [Header("저장")]
+    [SerializeField]
+    [Tooltip("끄면 저장도 이어하기도 하지 않는다. 개발 중에는 꺼 두는 편이 편하다.")]
+    private bool saveEnabled = false;
+
+    /// <summary>
+    /// 이어할 저장이 있으면 DayManager가 하루를 새로 시작하지 못하게 막아 둔다.
+    /// DayManager.Start()는 autoStartFirstDay가 켜져 있으면 1일차 주문을 새로 만들어 버리는데,
+    /// 그러면 저장해 둔 주문 대신 무작위로 뽑은 새 주문이 뜬다(기획서 13.1 — 주문 재생성 금지).
+    ///
+    /// 유니티는 모든 Awake를 끝낸 뒤에 Start를 돌리므로, Awake에서 끄면 순서와 무관하게 안전하다.
+    /// 실제로 값을 되돌려 놓는 것은 Start에서 한다.
+    /// </summary>
+    private void PrepareResume()
+    {
+        // 꺼져 있으면 저장 파일을 읽지 않는다. pendingSave 가 null 이면 아래 이어하기 경로가
+        // 통째로 건너뛰어지고, autoStartFirstDay 도 그대로라 1일차가 정상으로 시작한다.
+        if (!saveEnabled) return;
+
+        pendingSave = SaveSystem.Read();
+        if (pendingSave == null) return;
+
+        if (dayManager != null)
+        {
+            var field = typeof(DayManager).GetField("autoStartFirstDay",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+            if (field != null) field.SetValue(dayManager, false);
+            else Debug.LogWarning("[이어하기] DayManager.autoStartFirstDay를 찾지 못해 새 주문이 생길 수 있습니다.");
+        }
     }
 
     private void Start()
     {
+        if (pendingSave != null) Resume();
+
         RefreshRevenue();
 
         // 첫 주문은 DayManager가 StartDay()에서 만든다.
@@ -67,6 +117,50 @@ public class GameManager : MonoBehaviour
             Debug.LogWarning("[GameManager] 씬에 DayManager가 없어 하루 진행이 시작되지 않습니다. " +
                              "Tools > Ramen > Build Cooking Layout을 다시 실행해 주세요.");
         }
+    }
+
+    /// <summary>저장을 씬에 얹고 화면을 그때 상태로 되돌린다.</summary>
+    private void Resume()
+    {
+        SaveData data = pendingSave;
+        pendingSave = null;
+
+        currentHour = data.hour;
+        totalRevenue = data.totalRevenue;
+        servedCount = data.servedCount;
+        accuracySum = data.accuracySum;
+        perfectCount = data.perfectCount;
+
+        EnsureOrderManager();
+        EnsureRamenCalculator();
+        SaveSystem.Apply(data, dayManager, orderManager, ramenCalculator, FindFirstObjectByType<Bowl>());
+
+        int day = dayManager != null ? dayManager.CurrentDay : data.day;
+        RefreshDayLabel(day);
+
+        // 주문 화면은 다시 띄운다. 대사를 처음부터 다시 듣게 되지만, 주문 자체는 저장된 그대로다.
+        OpenOrderScreen(day);
+
+        Debug.Log("[이어하기] " + day + "일차 " + (data.customerIndex + 1) + "번째 손님 / 누적 매출 "
+                  + totalRevenue.ToString("N0") + "원");
+    }
+
+    /// <summary>
+    /// 지금 상태를 파일에 남긴다. 상태가 바뀔 때마다 부른다
+    /// (주문을 받을 때, 재료를 넣거나 버릴 때, 제출할 때, 손님이 바뀔 때).
+    /// 파일이 작아서 자주 써도 부담이 없고, 언제 꺼도 그 자리에서 이어진다.
+    /// </summary>
+    public void SaveNow()
+    {
+        if (!saveEnabled) return;
+        if (!EnsureDayManager()) return;
+
+        EnsureOrderManager();
+        EnsureRamenCalculator();
+
+        SaveSystem.Write(SaveSystem.Capture(dayManager, orderManager, ramenCalculator,
+                                            FindFirstObjectByType<Bowl>(),
+                                            currentHour, totalRevenue, servedCount, accuracySum, perfectCount));
     }
 
     private void OnDestroy()
@@ -114,6 +208,9 @@ public class GameManager : MonoBehaviour
         if (string.IsNullOrEmpty(dialogue)) return;
 
         orderScreenUI.Open(day, currentHour, dialogue, totalRevenue);
+
+        // 새 주문이 떴다. 여기서 남겨야 이 손님부터 다시 시작할 수 있다.
+        SaveNow();
     }
 
     /// <summary>5일차까지 다 팔면 온다. 하루 정산과 달리 전체 누계를 보여 준다.</summary>
@@ -125,6 +222,9 @@ public class GameManager : MonoBehaviour
                   + average.ToString("F1") + "% / 완벽 " + perfectCount + "건 / 총 " + servedCount + "건");
 
         if (finalResultUI != null) finalResultUI.Open(totalRevenue, average, perfectCount, servedCount);
+
+        // 5일을 다 팔았으면 이어할 것이 없다. 남겨 두면 다음에 켰을 때 끝난 판이 되살아난다.
+        SaveSystem.Delete();
     }
 
     /// <summary>
@@ -196,7 +296,8 @@ public class GameManager : MonoBehaviour
 
         // 손님을 다 받았으면 다음 주문이 없다. 그때는 하루 마감 정산 팝업이 대신 뜬다.
         bool dayContinues = dayManager.CurrentCustomerCount < dayManager.TargetCustomerCount;
-        if (dayContinues) OpenOrderScreen(dayManager.CurrentDay);
+        if (dayContinues) OpenOrderScreen(dayManager.CurrentDay);   // 그 안에서 저장된다
+        else SaveNow();                                            // 하루가 끝난 자리도 남긴다
     }
 
     /// <summary>인스펙터가 비어 있으면 씬에서 한 번 찾아 둔다.</summary>

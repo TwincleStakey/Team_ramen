@@ -1,12 +1,14 @@
 ﻿using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 
 /// <summary>
 /// 고체 재료가 담긴 재료통. 여기서 그릇으로 드래그해 재료를 투입한다.
 /// 액체(타래·육수)는 국자를 거쳐야 하므로 LiquidSlot이 따로 맡는다.
 /// 실제 투입 판정은 Bowl.OnDrop이 한다. 슬롯은 고스트를 따라다니게 하는 것까지만 책임진다.
 /// </summary>
-public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IPointerEnterHandler
+public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler,
+                              IPointerEnterHandler, IPointerDownHandler, IPointerUpHandler
 {
     // 아래 셋 다 RamenLayoutBuilder가 생성 시 넣어 준다.
     public IngredientType type;
@@ -29,9 +31,38 @@ public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
     // 젓가락에 집힌 것처럼 보이도록 커서 크기의 절반으로 띄운다.
     // 그릇에 놓이면 Bowl이 훨씬 큰 크기로 다시 그린다.
     private const float GhostToCursorRatio = 0.5f;
-    private const float FallbackGhostSide = 128f;
+    private const float FallbackGhostSide = 64f;
 
     private GameObject ghost;
+
+    /// <summary>한 번 찾으면 계속 쓴다. 집을 때마다 계층을 훑으면 아깝다.</summary>
+    private Transform cachedDragLayer;
+
+    /// <summary>
+    /// 끌고 다니는 그림을 올릴 판을 찾는다.
+    ///
+    /// 예전에는 root 바로 밑에 있어서 root.Find로 충분했다. 화면을 640x360으로 옮기면서
+    /// 모든 UI가 Frame 아래로 한 단 내려갔고, Find는 바로 밑 자식만 보기 때문에 못 찾게 됐다.
+    /// 못 찾으면 재료가 젓가락에 안 달리고, 그 뒤에 있는 SetGripping도 건너뛰어져
+    /// 끄는 도중에 커서가 화살표로 돌아가 버린다. 그래서 깊이와 무관하게 찾는다.
+    /// </summary>
+    private Transform DragLayer
+    {
+        get
+        {
+            if (cachedDragLayer != null) return cachedDragLayer;
+
+            Transform root = transform.root;
+            cachedDragLayer = root.Find(DragLayerName);
+            if (cachedDragLayer != null) return cachedDragLayer;
+
+            foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name == DragLayerName) { cachedDragLayer = t; break; }
+            }
+            return cachedDragLayer;
+        }
+    }
 
     /// <summary>
     /// 고체 재료 위에서는 젓가락이어야 한다. 국자나 병을 들고 있었다면 여기서 내려놓는다.
@@ -41,17 +72,47 @@ public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
         if (CookingCursor.Instance != null) CookingCursor.Instance.UseChopsticks();
     }
 
+    /// <summary>
+    /// 젓가락이 다무는 순간에 재료가 손에 들려야 한다.
+    /// OnBeginDrag는 마우스가 몇 픽셀 움직여야 오므로, 그때까지 집었는데 아무것도 없어 보인다.
+    /// </summary>
+    public void OnPointerDown(PointerEventData eventData)
+    {
+        CreateGhost(eventData.position);
+    }
+
+    public void OnPointerUp(PointerEventData eventData)
+    {
+        // 끌지 않고 눌렀다 뗀 경우에는 OnEndDrag가 오지 않는다. 여기서 치워야 남지 않는다.
+        ClearGhost();
+    }
+
     public void OnBeginDrag(PointerEventData eventData)
     {
-        Transform dragLayer = transform.root.Find(DragLayerName);
+        // 누를 때 이미 만들어 뒀다. 눌림을 놓친 경우에만 여기서 만든다.
+        if (ghost == null) CreateGhost(eventData.position);
+    }
+
+    private void Update()
+    {
+        // 드래그로 인정되기 전 몇 픽셀 동안에도 재료가 마우스를 따라와야 한다.
+        if (ghost != null && Mouse.current != null) ghost.transform.position = Mouse.current.position.ReadValue();
+    }
+
+    private void CreateGhost(Vector2 position)
+    {
+        if (ghost != null) return;
+
+        // 국자나 병을 들고 있었다면 내려놓고 젓가락으로 돌아간다. 집는 모양도 여기서 켠다.
+        // 판을 못 찾아도 이건 먼저 해야 한다. 뒤에 두면 판을 못 찾은 날 커서까지 같이 망가진다.
+        if (CookingCursor.Instance != null) CookingCursor.Instance.SetGripping(true);
+
+        Transform dragLayer = DragLayer;
         if (dragLayer == null)
         {
             Debug.LogWarning("[IngredientSlot] DragLayer를 찾지 못했습니다. Tools > Ramen > Build Cooking Layout을 다시 실행해 주세요.");
             return;
         }
-
-        // 국자나 병을 들고 있었다면 내려놓고 젓가락으로 돌아간다. 집는 모양도 여기서 켠다.
-        if (CookingCursor.Instance != null) CookingCursor.Instance.SetGripping(true);
 
         ghost = new GameObject("DragGhost", typeof(RectTransform), typeof(UnityEngine.UI.Image));
         var rt = ghost.GetComponent<RectTransform>();
@@ -69,7 +130,7 @@ public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
         // 고스트가 레이캐스트를 먹으면 마우스 밑이 항상 고스트라 그릇의 OnDrop이 영영 안 불린다.
         img.raycastTarget = false;
 
-        rt.position = eventData.position;
+        rt.position = position;
     }
 
     public void OnDrag(PointerEventData eventData)
@@ -78,6 +139,11 @@ public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
     }
 
     public void OnEndDrag(PointerEventData eventData)
+    {
+        ClearGhost();
+    }
+
+    private void ClearGhost()
     {
         if (ghost != null) Destroy(ghost);
         ghost = null;

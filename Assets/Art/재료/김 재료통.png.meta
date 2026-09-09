@@ -5,6 +5,9 @@ TextureImporter:
   - first:
       213: 4744647648078533192
     second: "\uAE40 \uC7AC\uB8CC\uD1B5_0"
+  - first:
+      213: -5904531076621775433
+    second: NoriBin
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -46,7 +49,7 @@ TextureImporter:
   nPOTScale: 0
   lightmap: 0
   compressionQuality: 50
-  spriteMode: 1
+  spriteMode: 2
   spriteExtrude: 1
   spriteMeshType: 1
   alignment: 0
@@ -139,23 +142,23 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: "\uAE40 \uC7AC\uB8CC\uD1B5_0"
+      name: NoriBin
       rect:
         serializedVersion: 2
-        x: 1
-        y: 9
-        width: 62
-        height: 46
+        x: 2
+        y: 10
+        width: 60
+        height: 44
       alignment: 0
-      pivot: {x: 0, y: 0}
+      pivot: {x: 0.5, y: 0.5}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 8421d10d5ef58d140800000000000000
-      internalID: 4744647648078533192
+      spriteID: 7bd44b4f444ee0ea0800000000000000
+      internalID: -5904531076621775433
       vertices: []
       indices: 
       edges: []
@@ -174,6 +177,7 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
+      NoriBin: -5904531076621775433
       "\uAE40 \uC7AC\uB8CC\uD1B5_0": 4744647648078533192
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
