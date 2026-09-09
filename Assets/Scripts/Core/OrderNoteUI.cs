@@ -17,8 +17,11 @@ public class OrderNoteUI : MonoBehaviour
     /// <summary>미끄러져 들어오는 종이. 이것만 움직이고 root는 껐다 켜기만 한다.</summary>
     [SerializeField] private RectTransform panel;
 
-    /// <summary>다 나왔을 때 종이가 설 자리. 화면 한가운데보다 왼쪽으로 치우친다.</summary>
-    [SerializeField] private Vector2 shownPosition = new Vector2(-40f, 0f);
+    /// <summary>
+    /// 다 나왔을 때 종이가 설 자리. 화면 왼쪽에 여백 8칸만 두고 붙는다.
+    /// 종이 폭이 240 이라 왼쪽 끝이 8, 오른쪽 끝이 248 이다.
+    /// </summary>
+    [SerializeField] private Vector2 shownPosition = new Vector2(-192f, 0f);
 
     /// <summary>숨었을 때 자리. 화면 왼쪽 바깥이라 종이가 안 보인다.</summary>
     [SerializeField] private Vector2 hiddenPosition = new Vector2(-440f, 0f);

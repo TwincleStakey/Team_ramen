@@ -187,14 +187,14 @@ public class GameFlowDebugTester : MonoBehaviour
         StringBuilder totalLog = new StringBuilder();
         totalLog.AppendLine("╔══════════════════════════════════════════════════════════════════════════════════════════════╗");
         totalLog.AppendLine("║                     🍜  [5일 전체 라멘 가게 영업 시뮬레이션 시작]  🍜                         ║");
-        totalLog.AppendLine("║  • 규칙: 1~2일차 5명 / 3~4일차 6명 / 5일차 7명 | 5일차 마감 후 최종 영업 정산 및 완료         ║");
+        totalLog.AppendLine("║  • 규칙: 1~2일차 당일 5명 / 3~4일차 당일 6명 | 5일차(8명) 마감 후 최종 영업 정산 및 완료         ║");
         totalLog.AppendLine("╚══════════════════════════════════════════════════════════════════════════════════════════════╝\n");
 
         int cumulativeProfit = 0;
 
         for (int day = 1; day <= DayManager.MAX_DAYS; day++)
         {
-            int targetCustomers = (dayManager != null) ? dayManager.GetTargetCustomerCount(day) : ((day <= 2) ? 5 : (day <= 4 ? 6 : 7));
+            int targetCustomers = (day <= 3) ? 5 : 7;
             totalLog.AppendLine($"\n┌──────────────────────────────────────────────────────────────────────────────────────────────┐");
             totalLog.AppendLine($"│ ☀️  [DAY {day} 영업 시작] - 오늘 목표 손님 수: {targetCustomers}명 (1~2일차: 5명 / 3~4일차: 6명 / 5일차: 7명)");
             totalLog.AppendLine($"└──────────────────────────────────────────────────────────────────────────────────────────────┘");

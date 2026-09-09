@@ -1,11 +1,16 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections;
+using System.Collections.Generic;
 using System.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// B 키로 여닫는 레시피 책. 기본 레시피와 재료 속성표를 담는다.
+/// B 키를 누르고 있는 동안 아래에서 올라오는 기본 레시피표.
+///
+/// 기본 레시피만 담는다. 예전에는 재료 속성표(색·질감 같은 키워드)도 같이 실었는데,
+/// 그게 사실상 주문 해석의 정답지라 퍼즐이 성립하지 않았다. 지금은 뺐다.
+///
 /// 손님 주문 내역은 여기 없다. 그쪽은 Tab으로 여는 OrderNoteUI가 맡는다.
 /// 최종 정답은 보여 주지 않는다.
 ///
@@ -18,9 +23,21 @@ public class RecipeBookUI : MonoBehaviour
     [SerializeField] private GameObject root;
     [SerializeField] private TextMeshProUGUI recipeNames;
     [SerializeField] private TextMeshProUGUI recipeValues;
-    [SerializeField] private TextMeshProUGUI ingredientNames;
-    [SerializeField] private TextMeshProUGUI ingredientAttrs;
     [SerializeField] private Button closeButton;
+
+    /// <summary>아래에서 올라오는 판. 이것만 움직이고 root는 껐다 켜기만 한다.</summary>
+    [SerializeField] private RectTransform panel;
+
+    /// <summary>다 올라왔을 때 판이 설 자리.</summary>
+    [SerializeField] private Vector2 shownPosition = new Vector2(0f, -20f);
+
+    /// <summary>숨었을 때 자리. 화면 아래 바깥이라 판이 안 보인다.</summary>
+    [SerializeField] private Vector2 hiddenPosition = new Vector2(0f, -400f);
+
+    /// <summary>미끄러지는 데 걸리는 시간.</summary>
+    [SerializeField] private float slideSeconds = 0.18f;
+
+    private Coroutine sliding;
 
     /// <summary>표에 싣는 순서. 조리 화면 오른쪽 재료통 순서와 맞춰 두면 눈이 덜 헤맨다.</summary>
     private static readonly IngredientType[] Toppings =
@@ -39,20 +56,6 @@ public class RecipeBookUI : MonoBehaviour
         { IngredientType.ChiliPowder, "고춧가루" }
     };
 
-    /// <summary>기획서 4.2 재료 속성표 + 19.4 묘사. 퍼즐의 사전이라 문구를 임의로 바꾸면 안 된다.</summary>
-    private static readonly string[] Attributes =
-    {
-        "채소 고명   ·  갈색, 길쭉함  ·  아삭함",
-        "고기 고명   ·  갈색, 둥근    ·  고기, 묵직함",
-        "채소 고명   ·  초록색        ·  향이 강함",
-        "고명        ·  검은색        ·  바다 향",
-        "고명        ·  흰색, 노란색  ·  부드러움",
-        "채소 고명   ·  갈색          ·  쫄깃함",
-        "채소 고명   ·  흰색, 가늘음  ·  아삭함",
-        "조미료      ·  기름          ·  향, 기름짐",
-        "조미료      ·  빨간색        ·  매움"
-    };
-
     private static readonly RamenType[] Menus = { RamenType.Shio, RamenType.Shoyu, RamenType.Tonkotsu };
     private static readonly string[] MenuNames = { "시오", "쇼유", "돈코츠" };
 
@@ -65,11 +68,11 @@ public class RecipeBookUI : MonoBehaviour
     {
         if (closeButton != null) closeButton.onClick.AddListener(Close);
 
-        FillIngredientTable();
         FillRecipeTable();
 
         // 이 스크립트는 root 바깥에 붙어 있어야 한다. 안에 있으면 자기 자신을 꺼 버린다.
-        Close();
+        if (panel != null) panel.anchoredPosition = Snap(hiddenPosition);
+        if (root != null) root.SetActive(false);
     }
 
     private void OnDestroy()
@@ -77,38 +80,82 @@ public class RecipeBookUI : MonoBehaviour
         if (closeButton != null) closeButton.onClick.RemoveListener(Close);
     }
 
-    public void Open()
+    /// <summary>B를 누르고 있는 동안 아래에서 올라온다.</summary>
+    public void Show()
     {
         if (root != null) root.SetActive(true);
+        Slide(shownPosition, false);
     }
 
-    public void Toggle()
+    /// <summary>떼면 다시 아래로 내려간다. 다 내려간 뒤에 끈다.</summary>
+    public void Hide()
     {
-        if (IsOpen) Close();
-        else Open();
+        Slide(hiddenPosition, true);
+    }
+
+    public void Open()
+    {
+        Show();
     }
 
     public void Close()
     {
-        if (root != null) root.SetActive(false);
+        // 버튼으로 닫을 때도 미끄러져 내려간다.
+        Hide();
     }
 
-    private void FillIngredientTable()
+    /// <summary>
+    /// 판을 목표 자리로 미끄러뜨린다. 주문서(OrderNoteUI)와 같은 방식이다.
+    ///
+    /// 자리는 정수 칸으로 끊는다. 픽셀아트라 반 칸에 놓이면 테두리와 글자가 흐려진다.
+    /// 시간은 실시간으로 잰다. 팝업이 떠서 게임이 멈춰 있어도 여닫혀야 한다.
+    /// </summary>
+    private void Slide(Vector2 target, bool disableWhenDone)
     {
-        if (ingredientNames == null || ingredientAttrs == null) return;
-
-        var names = new StringBuilder();
-        var attrs = new StringBuilder();
-
-        for (int i = 0; i < Toppings.Length; i++)
+        if (panel == null)
         {
-            if (i > 0) { names.Append('\n'); attrs.Append('\n'); }
-            names.Append(KoreanNames[Toppings[i]]);
-            attrs.Append(Attributes[i]);
+            if (disableWhenDone && root != null) root.SetActive(false);
+            return;
         }
 
-        ingredientNames.text = names.ToString();
-        ingredientAttrs.text = attrs.ToString();
+        if (sliding != null) StopCoroutine(sliding);
+
+        if (!gameObject.activeInHierarchy)
+        {
+            panel.anchoredPosition = Snap(target);
+            if (disableWhenDone && root != null) root.SetActive(false);
+            return;
+        }
+
+        sliding = StartCoroutine(SlideTo(target, disableWhenDone));
+    }
+
+    private IEnumerator SlideTo(Vector2 target, bool disableWhenDone)
+    {
+        Vector2 from = panel.anchoredPosition;
+        float elapsed = 0f;
+
+        while (elapsed < slideSeconds)
+        {
+            float t = elapsed / slideSeconds;
+
+            // 끝에서 부드럽게 멈춘다. 등속이면 툭 하고 서는 느낌이 난다.
+            t = 1f - (1f - t) * (1f - t);
+
+            panel.anchoredPosition = Snap(Vector2.Lerp(from, target, t));
+            elapsed += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        panel.anchoredPosition = Snap(target);
+        sliding = null;
+
+        if (disableWhenDone && root != null) root.SetActive(false);
+    }
+
+    private static Vector2 Snap(Vector2 v)
+    {
+        return new Vector2(Mathf.Round(v.x), Mathf.Round(v.y));
     }
 
     /// <summary>기본 레시피는 B의 RecipeGenerator에서 그대로 읽는다. 사본을 두지 않는다.</summary>

@@ -24,6 +24,12 @@ public class OrderResultUI : MonoBehaviour
     [SerializeField] private Button confirmButton;
     [SerializeField] private GameManager gameManager;
 
+    /// <summary>결과창이 떠 있는가. 떠 있으면 이미 제출한 뒤라 조리 단축키가 막힌다.</summary>
+    public bool IsOpen
+    {
+        get { return root != null && root.activeSelf; }
+    }
+
     private void Awake()
     {
         if (confirmButton != null) confirmButton.onClick.AddListener(Confirm);

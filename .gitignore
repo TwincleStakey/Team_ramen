@@ -104,3 +104,9 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# 폰트/아트 원본 압축본. Unity가 20MB짜리 zip을 임포트하지 않도록 Assets 밖에 둔다.
+/_ArtSource/
+
+# 세션끼리 겹치지 않게 자동으로 쌓이는 작업 기록. 순전히 로컬 기록이라 커밋하지 않는다.
+/.claude/worklog.md

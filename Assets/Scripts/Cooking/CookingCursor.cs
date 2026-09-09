@@ -5,7 +5,7 @@ using UnityEngine.UI;
 
 /// <summary>
 /// 마우스 커서를 대신하는 조리 도구. 시스템 커서는 숨기고 이 그림이 마우스를 따라다닌다.
-/// 평소에는 젓가락, 타래·육수를 뜨면 국자, 조미료를 들면 병 자체가 된다.
+/// 평소에는 젓가락, 타래·육수·향미유를 뜨면 국자, 시치미를 들면 병 자체가 된다.
 /// </summary>
 public class CookingCursor : MonoBehaviour
 {
@@ -13,13 +13,21 @@ public class CookingCursor : MonoBehaviour
 
     // 아래 그림들은 RamenLayoutBuilder가 넣어 준다.
     public Sprite[] chopstickFrames;   // 0=벌림, 1=중간, 2=집음
-    public Sprite ladleEmpty;
-    public Sprite ladleShio;
-    public Sprite ladleShoyu;
-    public Sprite ladleTonkotsu;
-    public Sprite ladleBroth;
-    public Sprite flavorOilBottle;
-    public Sprite chiliPowderBottle;
+
+    /// <summary>
+    /// 국자 시트. 가로 5칸이 기울기(0 = 세운 채, 4 = 다 기운 상태)고,
+    /// 세로 6줄이 담긴 것(빈·시오·쇼유·돈코츠·육수·향미유)이다. 줄 순서는 LadleRow 와 맞춰야 한다.
+    ///
+    /// 기울기를 그림으로 갖고 있는 이유는, 커서를 코드로 돌리면 컵 테두리의 검은 윤곽이
+    /// 회전으로 부서지기 때문이다. 그림은 컵을 고정한 채 손잡이만 돌려서 구웠다.
+    /// </summary>
+    public Sprite[] ladleFrames;
+
+    /// <summary>
+    /// 시치미 병 시트 5칸. 0 = 세운 채, 3 = 붓는 자세, 4 = 터는 끝이다.
+    /// 국자와 같은 이유로 그림에 기울기를 구웠다. 코드로 돌리면 병 테두리와 뚜껑이 부서진다.
+    /// </summary>
+    public Sprite[] bottleFrames;
 
     // 메뉴 화면에서는 조리 도구 대신 시스템 화살표를 쓴다.
     // 버튼을 누르는 화면에 젓가락이 떠 있으면 어디를 가리키는지 읽히지 않는다.
@@ -38,8 +46,16 @@ public class CookingCursor : MonoBehaviour
     // 그림 한 변 길이로 나눠 쓰므로 커서 크기를 바꿔도 끝이 계속 마우스에 붙는다.
     private const float ArtFrameSize = 64f;
     private static readonly Vector2 ChopstickTipArt = new Vector2(-22f, 23f);
-    private static readonly Vector2 LadleTipArt = new Vector2(-30f, 25f);
     private static readonly Vector2 BottleTipArt = new Vector2(0f, -26f);
+
+    // 국자만 그림 한 칸이 80이다. 손잡이를 기울인 그림을 담으려면 64칸으로는 모자란다.
+    // 컵-손잡이 이음매에서 손잡이 끝까지가 56픽셀이라, 지금 각도에서 3도만 돌려도 칸 밖으로 나간다.
+    // 그림 자체는 그대로고 투명 여백만 늘렸으므로, 상자도 같은 비율로 키워야 화면에서 크기가 안 변한다.
+    private const float LadleArtFrameSize = 80f;
+    private static readonly Vector2 LadleTipArt = new Vector2(-36f, 25f);
+
+    /// <summary>국자 시트의 가로 칸 수. 0이 세운 채, 마지막이 다 기운 상태다.</summary>
+    private const int LadleTiltSteps = 5;
 
     // ── 젓가락 ───────────────────────────────────────────────────
     private const float PinchSpeed = 12f;   // 0(벌림)에서 1(집음)까지 가는 속도
@@ -53,15 +69,17 @@ public class CookingCursor : MonoBehaviour
     private const float DipDownSeconds = 0.12f;
     private const float DipUpSeconds = 0.18f;
     private const float DipDepth = 12f;
-    private const float DipTilt = -22f;
 
     // ── 병으로 뿌리는 동작 ───────────────────────────────────────
     private const float PourTiltSeconds = 0.14f;
     private const float PourHoldSeconds = 0.10f;
-    private const float PourTilt = 45f;        // 왼쪽으로 기울인다 (반시계)
     private const int ShakeCount = 3;
     private const float ShakeSeconds = 0.07f;
-    private const float ShakeAngle = 13f;
+
+    // 병 시트의 칸. 각도가 0·15·30·45·58도라 한 칸이 대략 15도다.
+    // 흔들기는 붓는 자세에서 한 칸 위아래로 오가는 것이고, 예전 ±13도와 같은 폭이다.
+    private const int BottleUprightStep = 0;
+    private const int BottlePourStep = 3;
 
     private enum Mode { Chopsticks, Ladle, Bottle }
 
@@ -76,7 +94,6 @@ public class CookingCursor : MonoBehaviour
     public bool IsGripping { get { return gripping; } }
     private float pinch;      // 0 = 벌림, 1 = 다뭄. 재료통 위에서는 벌린 채로 기다린다.
     private float dip;        // 국자가 아래로 내려간 정도
-    private float tilt;
     private Coroutine motion;
 
     /// <summary>참이면 마우스를 따라가지 않는다. 뿌리는 동작 중에만 켠다.</summary>
@@ -103,6 +120,22 @@ public class CookingCursor : MonoBehaviour
         rect = GetComponent<RectTransform>();
         image = GetComponent<Image>();
         canvas = GetComponentInParent<Canvas>();
+        baseSize = rect.sizeDelta;
+    }
+
+    /// <summary>빌더가 정해 준 상자 크기. 젓가락·병이 쓰는 값이고, 국자는 여기서 키워 쓴다.</summary>
+    private Vector2 baseSize;
+
+    /// <summary>
+    /// 모드를 바꾸면서 상자 크기도 같이 맞춘다.
+    /// 국자만 그림 칸이 80이라, 64짜리 상자에 넣으면 그림이 줄어들어 다른 도구보다 작아진다.
+    /// </summary>
+    private void SetMode(Mode value)
+    {
+        mode = value;
+
+        float ratio = value == Mode.Ladle ? LadleArtFrameSize / ArtFrameSize : 1f;
+        rect.sizeDelta = baseSize * ratio;
     }
 
     private void OnEnable()
@@ -221,12 +254,12 @@ public class CookingCursor : MonoBehaviour
         Vector2 offset = HotspotOffset() + new Vector2(0f, -dip);
 
         rect.position = screen + offset * scale;
-        rect.localRotation = Quaternion.Euler(0f, 0f, tilt);
     }
 
     private float PixelScale()
     {
-        return rect.sizeDelta.x / ArtFrameSize;
+        float art = mode == Mode.Ladle ? LadleArtFrameSize : ArtFrameSize;
+        return rect.sizeDelta.x / art;
     }
 
     /// <summary>그림의 끝이 마우스에 오도록 이미지 중심을 밀어 주는 양.</summary>
@@ -263,31 +296,27 @@ public class CookingCursor : MonoBehaviour
     {
         if (frozen) return;
 
-        Sprite bottle = BottleFor(type);
-        if (bottle != null)
+        if (IsBottle(type))
         {
             if (mode == Mode.Bottle && Held == type) return;   // 이미 그 병이면 그대로 둔다
             StopMotion();
-            mode = Mode.Bottle;
+            SetMode(Mode.Bottle);
             IsHolding = false;
             Held = type;
-            image.sprite = bottle;
-            tilt = 0f;
+            image.sprite = BottleSprite(BottleUprightStep);
             dip = 0f;
             return;
         }
 
-        Sprite ladle = LadleFor(type);
-        if (ladle == null) return;
+        if (LadleRow(type) < 0) return;
 
         // 국자는 비어 있는 모양으로 보여 준다. 담긴 그림은 실제로 펐을 때만 쓴다.
         if (mode == Mode.Ladle && !IsHolding && Held == type) return;
         StopMotion();
-        mode = Mode.Ladle;
+        SetMode(Mode.Ladle);
         IsHolding = false;
         Held = type;
-        image.sprite = ladleEmpty;
-        tilt = 0f;
+        image.sprite = LadleSprite(LadleEmptyRow, 0);
         dip = 0f;
     }
 
@@ -304,21 +333,19 @@ public class CookingCursor : MonoBehaviour
     /// <summary>통을 클릭했을 때. 액체는 국자로 뜨고, 조미료는 병째로 든다.</summary>
     public void PickUp(IngredientType type)
     {
-        Sprite bottle = BottleFor(type);
-        if (bottle != null)
+        if (IsBottle(type))
         {
             StopMotion();
-            mode = Mode.Bottle;
+            SetMode(Mode.Bottle);
             IsHolding = true;
             Held = type;
-            image.sprite = bottle;
-            tilt = 0f;
+            image.sprite = BottleSprite(BottleUprightStep);
             dip = 0f;
             Debug.Log("[커서] " + type + " 병을 들었습니다.");
             return;
         }
 
-        if (LadleFor(type) == null)
+        if (LadleRow(type) < 0)
         {
             Debug.LogWarning("[CookingCursor] 들 수 없는 재료입니다: " + type);
             return;
@@ -330,35 +357,39 @@ public class CookingCursor : MonoBehaviour
 
     private IEnumerator ScoopRoutine(IngredientType type)
     {
-        mode = Mode.Ladle;
+        SetMode(Mode.Ladle);
         IsHolding = false;
         Held = type;
-        image.sprite = ladleEmpty;
+
+        int filled = LadleRow(type);
+        int last = LadleTiltSteps - 1;
+
+        // 기울기는 회전이 아니라 그림으로 준다. 코드로 돌리면 컵 테두리가 부서진다.
+        image.sprite = LadleSprite(LadleEmptyRow, 0);
 
         for (float t = 0f; t < DipDownSeconds; t += Time.unscaledDeltaTime)
         {
             float k = t / DipDownSeconds;
             dip = Mathf.Lerp(0f, DipDepth, k);
-            tilt = Mathf.Lerp(0f, DipTilt, k);
+            image.sprite = LadleSprite(LadleEmptyRow, Mathf.RoundToInt(k * last));
             yield return null;
         }
 
         // 바닥에서 국물이 담긴다
         dip = DipDepth;
-        tilt = DipTilt;
-        image.sprite = LadleFor(type);
+        image.sprite = LadleSprite(filled, last);
         IsHolding = true;
 
         for (float t = 0f; t < DipUpSeconds; t += Time.unscaledDeltaTime)
         {
             float k = t / DipUpSeconds;
             dip = Mathf.Lerp(DipDepth, 0f, k);
-            tilt = Mathf.Lerp(DipTilt, 0f, k);
+            image.sprite = LadleSprite(filled, Mathf.RoundToInt((1f - k) * last));
             yield return null;
         }
 
         dip = 0f;
-        tilt = 0f;
+        image.sprite = LadleSprite(filled, 0);
         motion = null;
         Debug.Log("[국자] " + type + "을(를) 펐습니다.");
     }
@@ -383,29 +414,33 @@ public class CookingCursor : MonoBehaviour
         IsHolding = false;   // 붓는 동안 또 넣지 못하게
         frozen = true;       // 병이 마우스를 따라다니면 뿌리는 동작이 읽히지 않는다
 
+        // 세운 자세에서 붓는 자세까지 기울인다
         for (float t = 0f; t < PourTiltSeconds; t += Time.unscaledDeltaTime)
         {
-            tilt = Mathf.Lerp(0f, PourTilt, t / PourTiltSeconds);
+            float k = t / PourTiltSeconds;
+            image.sprite = BottleSprite(Mathf.RoundToInt(k * BottlePourStep));
             yield return null;
         }
-        tilt = PourTilt;
+        image.sprite = BottleSprite(BottlePourStep);
 
-        // 탈탈 턴다
+        // 탈탈 턴다. 사인 한 바퀴가 붓는 자세 → 한 칸 위 → 붓는 자세 → 한 칸 아래 → 붓는 자세다.
         for (int i = 0; i < ShakeCount; i++)
         {
             for (float t = 0f; t < ShakeSeconds; t += Time.unscaledDeltaTime)
             {
-                tilt = PourTilt + Mathf.Sin(t / ShakeSeconds * Mathf.PI * 2f) * ShakeAngle;
+                float swing = Mathf.Sin(t / ShakeSeconds * Mathf.PI * 2f);
+                image.sprite = BottleSprite(BottlePourStep + Mathf.RoundToInt(swing));
                 yield return null;
             }
         }
 
-        tilt = PourTilt;
+        image.sprite = BottleSprite(BottlePourStep);
         yield return new WaitForSecondsRealtime(PourHoldSeconds);
 
         for (float t = 0f; t < PourTiltSeconds; t += Time.unscaledDeltaTime)
         {
-            tilt = Mathf.Lerp(PourTilt, 0f, t / PourTiltSeconds);
+            float k = t / PourTiltSeconds;
+            image.sprite = BottleSprite(Mathf.RoundToInt((1f - k) * BottlePourStep));
             yield return null;
         }
 
@@ -420,9 +455,8 @@ public class CookingCursor : MonoBehaviour
         StopMotion();
 
         IsHolding = false;
-        mode = Mode.Chopsticks;
+        SetMode(Mode.Chopsticks);
         dip = 0f;
-        tilt = 0f;
         pinch = 0f;
     }
 
@@ -435,25 +469,44 @@ public class CookingCursor : MonoBehaviour
         frozen = false;
     }
 
-    private Sprite LadleFor(IngredientType type)
+    /// <summary>
+    /// 국자 시트에서 이 재료가 쓰는 줄. 국자로 뜰 수 없는 것은 -1이다.
+    /// 0번 줄은 빈 국자라 어떤 재료도 쓰지 않는다.
+    /// </summary>
+    private static int LadleRow(IngredientType type)
     {
         switch (type)
         {
-            case IngredientType.ShioTare: return ladleShio;
-            case IngredientType.ShoyuTare: return ladleShoyu;
-            case IngredientType.TonkotsuBase: return ladleTonkotsu;
-            case IngredientType.Broth: return ladleBroth;
-            default: return null;
+            case IngredientType.ShioTare: return 1;
+            case IngredientType.ShoyuTare: return 2;
+            case IngredientType.TonkotsuBase: return 3;
+            case IngredientType.Broth: return 4;
+            case IngredientType.FlavorOil: return 5;
+            default: return -1;
         }
     }
 
-    private Sprite BottleFor(IngredientType type)
+    private const int LadleEmptyRow = 0;
+
+    /// <summary>국자 시트에서 한 장을 꺼낸다. 시트가 없거나 짧으면 null이다.</summary>
+    private Sprite LadleSprite(int row, int step)
     {
-        switch (type)
-        {
-            case IngredientType.FlavorOil: return flavorOilBottle;
-            case IngredientType.ChiliPowder: return chiliPowderBottle;
-            default: return null;
-        }
+        if (ladleFrames == null) return null;
+
+        int index = row * LadleTiltSteps + Mathf.Clamp(step, 0, LadleTiltSteps - 1);
+        return index < ladleFrames.Length ? ladleFrames[index] : null;
+    }
+
+    /// <summary>병으로 드는 재료인가. 지금은 시치미뿐이고, 향미유는 국자로 옮겼다.</summary>
+    private static bool IsBottle(IngredientType type)
+    {
+        return type == IngredientType.ChiliPowder;
+    }
+
+    /// <summary>병 시트에서 한 장을 꺼낸다. 시트가 없거나 짧으면 null이다.</summary>
+    private Sprite BottleSprite(int step)
+    {
+        if (bottleFrames == null || bottleFrames.Length == 0) return null;
+        return bottleFrames[Mathf.Clamp(step, 0, bottleFrames.Length - 1)];
     }
 }

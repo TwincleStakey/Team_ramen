@@ -8,7 +8,7 @@ public class DayManager : MonoBehaviour
     // 3~4일차 목표 손님 수
     private const int CUSTOMER_COUNT_MIDDLE = 6;
     // 5일차 목표 손님 수
-    private const int CUSTOMER_COUNT_LATE = 7;
+    private const int CUSTOMER_COUNT_LATE = 8;
     // 최대 진행 일수
     public const int MAX_DAYS = 5;
 
@@ -52,7 +52,7 @@ public class DayManager : MonoBehaviour
         }
     }
 
-    // 해당 일차의 목표 손님 수를 반환합니다. (1~2일차: 5명, 3~4일차: 6명, 5일차: 7명)
+    // 해당 일차의 목표 손님 수를 반환합니다. (1~2일차: 5명, 3~4일차: 6명, 5일차: 8명)
     public int GetTargetCustomerCount(int day)
     {
         if (day <= 2)

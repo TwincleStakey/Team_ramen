@@ -1,19 +1,10 @@
 fileFormatVersion: 2
-guid: 31b0f2d54c1f4ad4997cc7c304c06966
+guid: 93fbabe2351cea444b23b760d38ced6e
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: 8612409628767710613
-    second: Order UI_0
-  - first:
-      213: 7061767279755277560
-    second: SpeechBubble
-  - first:
-      213: 6176844422295403346
-    second: SpeechBubbleBody
-  - first:
-      213: -765356795208663471
-    second: SpeechBubbleTail
+      213: 735872433244790257
+    second: head_0_0
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -55,7 +46,7 @@ TextureImporter:
   nPOTScale: 0
   lightmap: 0
   compressionQuality: 50
-  spriteMode: 2
+  spriteMode: 1
   spriteExtrude: 1
   spriteMeshType: 1
   alignment: 0
@@ -148,67 +139,23 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: SpeechBubble
+      name: head_0_0
       rect:
         serializedVersion: 2
-        x: 7
-        y: 19
-        width: 53
-        height: 28
+        x: 0
+        y: 0
+        width: 66
+        height: 76
       alignment: 0
-      pivot: {x: 0.5, y: 0.5}
+      pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 8f43a441def600260800000000000000
-      internalID: 7061767279755277560
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
-    - serializedVersion: 2
-      name: SpeechBubbleBody
-      rect:
-        serializedVersion: 2
-        x: 7
-        y: 19
-        width: 46
-        height: 28
-      alignment: 0
-      pivot: {x: 0.5, y: 0.5}
-      border: {x: 4, y: 4, z: 4, w: 4}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: 25b35c7964f88b550800000000000000
-      internalID: 6176844422295403346
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
-    - serializedVersion: 2
-      name: SpeechBubbleTail
-      rect:
-        serializedVersion: 2
-        x: 53
-        y: 34
-        width: 7
-        height: 5
-      alignment: 0
-      pivot: {x: 0.5, y: 0.5}
-      border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: 15ef72fbc08e065f0800000000000000
-      internalID: -765356795208663471
+      spriteID: 1fdde874418563a00800000000000000
+      internalID: 735872433244790257
       vertices: []
       indices: 
       edges: []
@@ -217,7 +164,7 @@ TextureImporter:
     customData: 
     physicsShape: []
     bones: []
-    spriteID: 
+    spriteID: 5e97eb03825dee720800000000000000
     internalID: 0
     vertices: []
     indices: 
@@ -227,10 +174,7 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      Order UI_0: 8612409628767710613
-      SpeechBubble: 7061767279755277560
-      SpeechBubbleBody: 6176844422295403346
-      SpeechBubbleTail: -765356795208663471
+      head_0_0: 735872433244790257
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 
