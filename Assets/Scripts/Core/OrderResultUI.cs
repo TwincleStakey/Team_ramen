@@ -51,11 +51,8 @@ public class OrderResultUI : MonoBehaviour
         if (rewardText != null) rewardText.text = "+ " + reward.ToString("N0") + "₩";
         if (revenueText != null) revenueText.text = "누적 수익 : " + totalRevenue.ToString("N0") + "₩";
 
-        // 기획서 7.5 — 80% 이상은 만족, 미만은 침묵에 가까운 반응
-        if (customerLine != null)
-        {
-            customerLine.text = accuracy >= 80f ? "잘 먹었습니다." : "제가 주문한 라멘이 아닌데요?";
-        }
+        // 말투와 표정에 맞는 한마디. 컷신에서 이미 뽑았으면 같은 말이 온다.
+        if (customerLine != null) customerLine.text = ReactionLines.For(accuracy);
 
         // 기획서 7.5 — 90% 이상 웃음 / 70~89% 무표정 / 69% 이하 화남
         if (emoji != null)
@@ -69,6 +66,9 @@ public class OrderResultUI : MonoBehaviour
 
     public void Close()
     {
+        // 손님이 갔다. 다음 손님은 반응을 새로 뽑는다.
+        ReactionLines.Clear();
+
         if (root != null) root.SetActive(false);
     }
 

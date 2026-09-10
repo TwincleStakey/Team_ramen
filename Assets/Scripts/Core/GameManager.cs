@@ -1,5 +1,7 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections;
+using System.Collections.Generic;
 using System.Text;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -15,13 +17,34 @@ public class GameManager : MonoBehaviour
     // 아래 넷은 RamenLayoutBuilder가 씬을 만들 때 꽂아 준다.
     [SerializeField] private OrderManager orderManager;
     [SerializeField] private DayManager dayManager;
-    [SerializeField] private Text revenueText;
-    [SerializeField] private Text dayText;
+    [SerializeField] private TextMeshProUGUI revenueText;
+    [SerializeField] private TextMeshProUGUI dayText;
     [SerializeField] private RamenCalculator ramenCalculator;
     [SerializeField] private FinalResultUI finalResultUI;
     [SerializeField] private OrderScreenUI orderScreenUI;
     [SerializeField] private OrderNoteUI orderNoteUI;
     [SerializeField] private OrderResultUI orderResultUI;
+
+    /// <summary>
+    /// 손님이 먹는 장면을 보여 주는 시간(초).
+    /// 지금은 얼굴 그림이 없어 손님이 가만히 서 있기만 한다. 표정이 붙으면 거기 맞춰 늘린다.
+    /// </summary>
+    [SerializeField] private float eatSeconds = 2.5f;
+
+    /// <summary>손님이 스러지는 데 걸리는 시간(초). 결과창이 뜨는 순간부터 센다.</summary>
+    [SerializeField] private float exitSeconds = 0.6f;
+
+    /// <summary>앞 손님이 나가고 다음 손님이 올 때까지 카운터가 비어 있는 시간(초).</summary>
+    [SerializeField] private float emptySeconds = 3f;
+
+    /// <summary>새 손님이 밝아지며 나타나는 데 걸리는 시간(초).</summary>
+    [SerializeField] private float enterSeconds = 0.6f;
+
+    /// <summary>손님이 걸어오는 소리. 빌더가 CustomerSlot 에 붙여 준다.</summary>
+    [SerializeField] private Footsteps footsteps;
+
+    /// <summary>먹는 네 컷 연출. 없으면 eatSeconds 만큼 그냥 기다린다.</summary>
+    [SerializeField] private EatingCutscene cutscene;
 
     /// <summary>지금까지 판 금액의 합. 재료비가 없어져서 매출이 곧 성적표다. (기획 확정)</summary>
     private int totalRevenue;
@@ -266,17 +289,117 @@ public class GameManager : MonoBehaviour
 
         Debug.Log("[정산] 판매 금액 " + price.ToString("N0") + "원 / 누적 매출 " + totalRevenue.ToString("N0") + "원");
 
-        // 결과창을 먼저 보여 주고, [확인]을 누르면 AdvanceCustomer가 진행을 이어받는다.
-        // 결과창이 없으면(빌더를 안 돌린 경우) 예전처럼 바로 넘어간다.
-        if (orderResultUI != null)
+        // 손님이 먹는 장면을 먼저 보여 주고, 그다음에 결과창을 올린다.
+        float shown = EnsureRamenCalculator() ? ramenCalculator.LastAccuracy : 0f;
+        StartCoroutine(ServeCustomer(shown, price));
+    }
+
+    /// <summary>
+    /// 라멘을 낸 뒤부터 결과창이 뜨기까지.
+    ///
+    /// 손님 화면을 다시 띄우되 손님은 그대로 둔다. 방금 주문한 사람이 먹어야지 다른 사람이
+    /// 먹으면 안 되므로 Open 이 아니라 OpenEating 을 부른다. Open 은 얼굴을 새로 뽑는다.
+    ///
+    /// 먹는 장면을 끄지 않고 그 위에 결과창을 올린다. 빌더가 결과창을 손님 화면보다 뒤에
+    /// 만들어서 위에 얹히기 때문이다. 끄면 조리 화면이 한 번 비쳤다 사라진다.
+    ///
+    /// 시간은 실시간으로 잰다. 팝업이 떠서 게임이 멈춰도 연출은 흘러야 한다.
+    /// </summary>
+    private IEnumerator ServeCustomer(float accuracy, int price)
+    {
+        if (orderScreenUI != null)
         {
-            float shown = EnsureRamenCalculator() ? ramenCalculator.LastAccuracy : 0f;
-            orderResultUI.Open(shown, price, totalRevenue);
+            int day = EnsureDayManager() ? dayManager.CurrentDay : 1;
+            orderScreenUI.OpenEating(day, currentHour, totalRevenue);
+
+            // 화면이 다 올라온 다음에 먹는 연출을 시작한다.
+            yield return orderScreenUI.WaitForSlide();
+
+            // 컷신이 없으면(빌더를 안 돌린 경우) 예전처럼 잠깐 기다리기만 한다.
+            if (EnsureCutscene()) yield return cutscene.Play(accuracy);
+            else yield return new WaitForSecondsRealtime(eatSeconds);
         }
-        else
+
+        // 결과창이 없으면(빌더를 안 돌린 경우) 예전처럼 바로 넘어간다.
+        if (orderResultUI == null)
         {
             AdvanceCustomer();
+            yield break;
         }
+
+        // 결과창을 올린다. 손님은 그대로 세워 둔다.
+        // 결과창이 손님을 가리므로 여기서 스러뜨리면 나가는 모습을 아무도 못 보고,
+        // [확인]을 눌렀을 때는 이미 사라진 뒤라 손님이 순간이동한 것처럼 보인다.
+        // 나가는 모습은 결과창이 걷힌 다음에 보여 준다(SwapCustomer).
+        orderResultUI.Open(accuracy, price, totalRevenue);
+
+        // 말풍선만 먼저 치운다. 지금은 결과창에 가려 있어 사라지는 티가 안 난다.
+        if (orderScreenUI != null) orderScreenUI.ShowBubble(false);
+    }
+
+    /// <summary>
+    /// 앞 손님이 나가고 다음 손님이 들어오기까지.
+    ///
+    /// 화면은 계속 켜 둔다. 껐다 켜면 카운터가 한 번 깜빡이고, 나가는 모습도 들어오는 모습도
+    /// 볼 수 없다.
+    ///
+    /// [확인]을 눌러 결과창이 걷힌 다음에 온다. 그래야 손님이 스러지는 것이 보인다.
+    /// </summary>
+    private IEnumerator SwapCustomer(int day)
+    {
+        CustomerAppearance look = orderScreenUI != null ? orderScreenUI.Appearance : null;
+
+        // 나간다. 어두워지다가 지워진다.
+        yield return FadeCustomer(0f, 1f, exitSeconds);
+
+        // 빈 카운터. 발소리가 이 사이를 채운다.
+        if (EnsureFootsteps()) footsteps.Walk(emptySeconds);
+        yield return new WaitForSecondsRealtime(emptySeconds);
+
+        // 새 손님을 세운다. Open 이 스러짐을 0으로 되돌리므로 같은 프레임에 다시 지운다.
+        // 코루틴은 그려지기 전에 도므로 이 사이에 손님이 번쩍이지 않는다.
+        OpenOrderScreen(day);
+        if (look != null) look.SetFade(1f);
+
+        // 밝아지며 나타난다.
+        yield return FadeCustomer(1f, 0f, enterSeconds);
+    }
+
+    /// <summary>손님을 from 에서 to 까지 스러뜨리거나 밝힌다. 시간은 실시간으로 잰다.</summary>
+    private IEnumerator FadeCustomer(float from, float to, float seconds)
+    {
+        CustomerAppearance look = orderScreenUI != null ? orderScreenUI.Appearance : null;
+        if (look == null) yield break;
+
+        if (seconds <= 0f)
+        {
+            look.SetFade(to);
+            yield break;
+        }
+
+        float elapsed = 0f;
+        while (elapsed < seconds)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            look.SetFade(Mathf.Lerp(from, to, Mathf.Clamp01(elapsed / seconds)));
+            yield return null;
+        }
+
+        look.SetFade(to);
+    }
+
+    /// <summary>인스펙터가 비어 있으면 씬에서 한 번 찾아 둔다.</summary>
+    private bool EnsureFootsteps()
+    {
+        if (footsteps == null) footsteps = FindFirstObjectByType<Footsteps>(FindObjectsInactive.Include);
+        return footsteps != null;
+    }
+
+    /// <summary>인스펙터가 비어 있으면 씬에서 한 번 찾아 둔다.</summary>
+    private bool EnsureCutscene()
+    {
+        if (cutscene == null) cutscene = FindFirstObjectByType<EatingCutscene>(FindObjectsInactive.Include);
+        return cutscene != null;
     }
 
     /// <summary>
@@ -296,8 +419,16 @@ public class GameManager : MonoBehaviour
 
         // 손님을 다 받았으면 다음 주문이 없다. 그때는 하루 마감 정산 팝업이 대신 뜬다.
         bool dayContinues = dayManager.CurrentCustomerCount < dayManager.TargetCustomerCount;
-        if (dayContinues) OpenOrderScreen(dayManager.CurrentDay);   // 그 안에서 저장된다
-        else SaveNow();                                            // 하루가 끝난 자리도 남긴다
+        if (dayContinues)
+        {
+            StartCoroutine(SwapCustomer(dayManager.CurrentDay));   // 그 안에서 저장된다
+        }
+        else
+        {
+            // 하루가 끝났다. 먹는 화면을 띄운 채로 여기까지 왔으므로 닫아야 정산 팝업만 남는다.
+            if (orderScreenUI != null) orderScreenUI.Close();
+            SaveNow();                                            // 하루가 끝난 자리도 남긴다
+        }
     }
 
     /// <summary>인스펙터가 비어 있으면 씬에서 한 번 찾아 둔다.</summary>

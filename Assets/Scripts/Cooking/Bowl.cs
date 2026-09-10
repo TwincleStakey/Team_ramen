@@ -35,6 +35,16 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     public Sprite[] shoyuToppingFrames;
     public Sprite[] tonkotsuToppingFrames;
 
+    /// <summary>
+    /// 그릇에 얹는 재료 그림 29칸(토핑배치.png). 자리마다 기울기와 국물에 잠긴 깊이가
+    /// 이미 구워져 있어서, 런타임에는 Layouts 가 가리키는 칸을 골라 놓기만 한다.
+    /// 칸 순서는 Layouts 의 SheetStart 와 맞춰야 한다.
+    /// </summary>
+    public Sprite[] toppingFrames;
+
+    /// <summary>구운 칸 한 변(원본 픽셀). 회전한 그림 중 가장 큰 것에 맞춰 잡았다.</summary>
+    private const float ToppingCellSize = 50f;
+
     /// <summary>투입을 거부했을 때 이유를 띄우는 안내. RamenLayoutBuilder가 꽂아 준다.</summary>
     public IngredientToast toast;
 
@@ -63,6 +73,9 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
 
 
     private Coroutine brothPour;
+
+    /// <summary>국물 위 기름이 계속 흘러다니게 도는 찰랑임. 면이 들어간 뒤로 늘 돈다.</summary>
+    private Coroutine rippleLoop;
 
     /// <summary>상한을 정하려면 지금 손님이 시킨 메뉴를 알아야 한다. 처음 쓸 때 한 번 찾아 둔다.</summary>
     private OrderManager orderManager;
@@ -125,19 +138,17 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     private class Placement
     {
         public readonly Vector2 Pos;
-        public readonly float Angle;
 
         /// <summary>
-        /// 그림 원본 크기에 곱하는 값. 기본은 1이고 그때가 1:1이라 가장 또렷하다.
-        /// 그림을 다시 찍기 전에 크기만 잠깐 보고 싶을 때만 쓴다.
+        /// 이 자리의 기울기. 런타임에는 쓰지 않는다 — 토핑배치.png에 이미 구워 넣었다.
+        /// 시트를 다시 구울 때 쓰는 값이라 여기 남겨 둔다. 이 값을 고치면 시트도 다시 구워야 한다.
         /// </summary>
-        public readonly float Scale;
+        public readonly float Angle;
 
-        public Placement(float x, float y, float angle, float scale = 1f)
+        public Placement(float x, float y, float angle)
         {
             Pos = new Vector2(x, y);
             Angle = angle;
-            Scale = scale;
         }
     }
 
@@ -150,85 +161,100 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         /// 넣은 순서대로 쌓으면 늦게 넣은 김이 차슈를 덮어 버린다.
         /// </summary>
         public readonly int Depth;
+
+        /// <summary>이 재료의 첫 자리가 토핑배치.png 에서 몇 번째 칸인지.</summary>
+        public readonly int SheetStart;
+
         public readonly Placement[] Spots;
 
-        public ToppingLayout(int depth, params Placement[] spots)
+        public ToppingLayout(int depth, int sheetStart, params Placement[] spots)
         {
             Depth = depth;
+            SheetStart = sheetStart;
             Spots = spots;
         }
     }
 
-    // 그릇 원본(128px)에서 국물 면은 x 20~108, y 47~83이다. 원본 크기로 띄우므로
-    // 그릇 중심 기준으로 가로 ±44, 세로 -19~+17이 국물 면이 된다.
-    // 자리는 이 안에 두는 것이 원칙이다. 김만 예외로, 테두리에 기대 세운 것이라 위로 솟는다.
+    // 자리는 미리보기 렌더러로 그려 가며 잡았다. 좌표는 그릇 원본(128px) 기준이고
+    // 그릇 한가운데가 (0,0), y는 위가 +다.
+    //
+    // 경계는 두 겹이다.
+    //   하드  그릇 실루엣을 5칸 안으로 민 선. 넘으면 그릇 밖 허공에 뜬 것처럼 보인다.
+    //         김만 예외로 위쪽으로 솟는다. 실제 라멘도 김은 테두리 위로 삐져나온다.
+    //   소프트 국물 면 타원(중심 0,+2 / 반지름 47 x 21.5). 떠 있는 파·숙주·목이버섯이 지킨다.
+    //
+    // 자리 수는 재료별 상한(그 메뉴 기본 수량 + 3)과 같게 맞췄다. 그래서 정상 플레이에서는
+    // 아래 lap 이 한 번도 돌지 않는다. lap 은 주문 없이 조리하는 디버그용 안전망이다.
+    // 상한: 차슈5 멘마5 계란4 숙주4 목이4 파4 김3.
     //
     // 실제 라멘 사진의 정석 구성을 따랐다.
-    //   김     뒤 왼쪽에 겹겹이 세우고
-    //   차슈   왼쪽에 부채처럼 겹쳐 눕히고
-    //   계란   뒤 가운데에 자른 면이 보이게
-    //   멘마   오른쪽에 비스듬히
+    //   김     뒤 왼쪽에 세워 테두리 위로 솟게
+    //   차슈   왼쪽 허리에 카드처럼 겹쳐 눕히고
+    //   계란   뒤 오른쪽에 넓게 펴서 자른 면이 보이게
+    //   멘마   오른쪽 바깥에 비스듬히
     //   숙주   가운데 봉긋하게
     //   목이버섯·파  앞쪽에 흩뿌려 마무리
     //
-    // 무엇을 몇 개 담든 재료는 그릇 실루엣 안에 있어야 한다. 밖으로 삐져나오면
-    // 허공에 뜬 것처럼 보인다. 그릇 윗변은 가운데가 y 40이고 왼쪽으로 갈수록 낮아져
-    // x -35에서 y 34, x -50에서 y 26이다. 자리를 옮길 때는 그 선을 넘지 않게 둘 것.
+    // 자리마다 기울기와 국물에 잠기는 깊이가 다른데, 둘 다 토핑배치.png 에 구워 넣었다.
+    // 런타임에는 회전도 자르기도 하지 않고 칸을 골라 놓기만 한다. 회전을 코드로 하면
+    // 픽셀아트가 반칸에 걸려 뭉개지고, 잠긴 부분을 색으로 덮으면 뒤에 있는 재료와
+    // 국물 찰랑임을 같이 가려 버린다. 구울 때 아예 지우면 그 자리에 그릇 국물이 그대로 비친다.
     //
-    // 좌표는 미리보기로 렌더해 가며 잡았다. 바꿀 때는 한 번에 한 재료씩 옮기고
-    // 많이 담았을 때(재료별 3~5개) 그릇 밖으로 넘치지 않는지 같이 확인할 것.
+    // 좌표를 고치면 시트를 다시 구워야 한다. 한 번에 한 재료씩 옮기고, 그 재료를 상한까지
+    // 담았을 때 그릇 밖으로 넘치지 않는지 같이 확인할 것.
     private static readonly Dictionary<IngredientType, ToppingLayout> Layouts =
         new Dictionary<IngredientType, ToppingLayout>
         {
-            // 김: 맨 뒤. 오른쪽으로 기울여 겹겹이 세운다.
-            // 넓게 펼치면 그릇 밖으로 나가므로 6px씩만 어긋나게 포갠다.
-            // 그래도 다섯 장 모두 자기 테두리가 보여 장수가 읽힌다.
-            { IngredientType.Nori, new ToppingLayout(0,
-                new Placement(-24f, 16f,  11f),
-                new Placement(-13f, 20f,   8f),
-                new Placement(-31f, 13f,  14f),
-                new Placement(-18f, 18f,  10f),
-                new Placement( -5f, 21f,   6f)) },
+            // 김: 맨 뒤. 뒤 왼쪽에 세우고 오른쪽으로 조금씩 어긋나게 포갠다.
+            // 밑동은 국물에 잠기고 윗부분이 테두리 위로 솟는다.
+            { IngredientType.Nori, new ToppingLayout(0, 0,
+                new Placement(-26f, 24f,  12f),
+                new Placement(-17f, 26f,   8f),
+                new Placement( -8f, 27f,   4f)) },
 
-            // 계란: 뒤 가운데에서 오른쪽. 노른자가 보이게 눕힌다
-            { IngredientType.Egg, new ToppingLayout(1,
-                new Placement( 16f, 12f,  -8f),
-                new Placement( 25f,  7f,   6f),
-                new Placement(  6f, 15f,   3f)) },
+            // 계란: 뒤 오른쪽. 넓게 펴야 개수가 읽힌다. 좁게 두면 넷이 둘로 보인다.
+            { IngredientType.Egg, new ToppingLayout(1, 3,
+                new Placement(  9f, 17f, -10f),
+                new Placement( 21f, 15f,  -4f),
+                new Placement( 31f, 10f,   3f),
+                new Placement( 26f,  1f, -12f)) },
 
-            // 멘마: 오른쪽 끝. 계란과 겹치지 않게 바깥으로 붙인다
-            { IngredientType.Menma, new ToppingLayout(2,
-                new Placement( 31f,  1f, -22f),
-                new Placement( 26f, -7f, -28f),
-                new Placement( 33f,  9f, -14f)) },
+            // 멘마: 오른쪽 끝. 계란 아래로 비스듬히 세운다
+            { IngredientType.Menma, new ToppingLayout(2, 7,
+                new Placement( 33f,  4f, -18f),
+                new Placement( 28f, -1f, -24f),
+                new Placement( 34f,  9f, -12f),
+                new Placement( 24f, -4f, -28f),
+                new Placement( 30f, 13f,  -8f)) },
 
-            // 차슈: 왼쪽에서 아래로 내려가는 대각선.
-            // 30도로 눕혀 자른 면이 4~5시 방향을 보게 한다. 일자로 두면 접시에 붙은 것처럼 보인다.
-            { IngredientType.Chashu, new ToppingLayout(3,
-                new Placement( -7f,  9f,  30f),
-                new Placement(-14f,  4f,  30f),
-                new Placement(-21f, -1f,  30f),
-                new Placement(-24f, -2f,  32f),
-                new Placement(  0f, 14f,  28f)) },
+            // 차슈: 왼쪽 허리에서 오른쪽 아래로 완만하게. 앞으로 더 내리면 그릇이 좁아져 안 들어간다.
+            { IngredientType.Chashu, new ToppingLayout(3, 12,
+                new Placement(-24f,  7f,  28f),
+                new Placement(-18f,  5f,  29f),
+                new Placement(-12f,  3f,  30f),
+                new Placement( -6f,  1f,  31f),
+                new Placement(  0f, -1f,  32f)) },
 
-            // 숙주: 계란 바로 아래 가운데
-            { IngredientType.BeanSprout, new ToppingLayout(4,
-                new Placement(  2f,  2f,   0f),
-                new Placement( -4f,  6f,   5f),
-                new Placement(  8f,  5f,  -6f)) },
+            // 숙주: 가운데
+            { IngredientType.BeanSprout, new ToppingLayout(4, 17,
+                new Placement(  0f,  5f,   0f),
+                new Placement( -7f,  8f,   4f),
+                new Placement(  7f,  7f,  -4f),
+                new Placement(  0f, 11f,   2f)) },
 
-            // 목이버섯: 숙주 아래, 가로로 퍼진다
-            { IngredientType.WoodEar, new ToppingLayout(5,
-                new Placement( -1f, -8f,   0f),
-                new Placement(-11f, -10f,  6f),
-                new Placement(  8f, -10f, -5f)) },
+            // 목이버섯: 숙주 앞, 가로로 퍼진다
+            { IngredientType.WoodEar, new ToppingLayout(5, 21,
+                new Placement( -4f, -5f,   0f),
+                new Placement(  6f, -7f,  -5f),
+                new Placement(-12f, -7f,   5f),
+                new Placement( 13f, -4f,  -8f)) },
 
-            // 파: 맨 앞. 오른쪽 앞에만 뭉쳐 놓는다
-            { IngredientType.GreenOnion, new ToppingLayout(6,
-                new Placement( 18f, -9f,   0f),
-                new Placement( 24f, -4f,   0f),
-                new Placement( 11f, -12f,  0f),
-                new Placement( 28f, -11f,  0f)) },
+            // 파: 맨 앞. 국물 위에 거의 떠 있다
+            { IngredientType.GreenOnion, new ToppingLayout(6, 25,
+                new Placement( 15f, -7f,   0f),
+                new Placement( 22f, -3f,   0f),
+                new Placement(  9f,-10f,   0f),
+                new Placement( 18f,-10f,   0f)) },
         };
 
     // ── 거부 표시 ────────────────────────────────────────────────
@@ -262,22 +288,66 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
 
     // ── 재료 받기 ────────────────────────────────────────────────
 
-    /// <summary>재료통에서 끌어온 고체를 놓았을 때. uGUI가 슬롯의 OnEndDrag보다 먼저 부른다.</summary>
+    /// <summary>
+    /// 재료통에서 끌어온 것을 놓았을 때. uGUI가 슬롯의 OnEndDrag보다 먼저 부른다.
+    ///
+    /// 고체는 슬롯이 무엇인지 들고 있고, 액체·조미료는 커서가 들고 있다.
+    /// 국자로 뜬 것을 도로 통에 놓았다가 끌어와도 되므로, 슬롯이 아니라 커서에게 묻는다.
+    /// </summary>
     public void OnDrop(PointerEventData eventData)
     {
         if (eventData.pointerDrag == null) return;
 
-        var slot = eventData.pointerDrag.GetComponent<IngredientSlot>();
-        if (slot != null) TryAdd(slot.type, slot.bowlSprite);
+        var solid = eventData.pointerDrag.GetComponent<IngredientSlot>();
+        if (solid != null)
+        {
+            TryAdd(solid.type, solid.bowlSprite);
+            return;
+        }
+
+        // 면 소쿠리. 국자·병과 판정 규칙이 같아서 아래 흐름을 그대로 탄다.
+        var noodle = eventData.pointerDrag.GetComponent<NoodleSlot>();
+        if (noodle != null)
+        {
+            CookingCursor holder = CookingCursor.Instance;
+            if (holder == null || !holder.IsHolding) return;
+
+            noodle.MarkDelivered();
+
+            IngredientType noodleType = holder.Held;
+            holder.Deliver(() => TryAdd(noodleType, null));
+            return;
+        }
+
+        var liquid = eventData.pointerDrag.GetComponent<LiquidSlot>();
+        if (liquid == null) return;
+
+        // 뜨는 동작이 아직 안 끝났으면 국자가 비어 있다. 그때는 아무것도 부어지지 않는다.
+        CookingCursor cursor = CookingCursor.Instance;
+        if (cursor == null || !cursor.IsHolding) return;
+
+        // 통 쪽이 또 내려놓지 않게 먼저 알린다.
+        // 병은 이제 뿌리는 동작에 들어가는데, 끊기면 자세가 기운 채로 멈춘다.
+        liquid.MarkDelivered();
+
+        // 넣어지는 판정은 동작이 다 끝난 뒤다. 병은 다 뿌린 다음, 국자는 이미 다 퍼 왔으니 곧바로.
+        IngredientType held = cursor.Held;
+        cursor.Deliver(() => TryAdd(held, null));
     }
 
-    /// <summary>국자나 병을 든 채로 그릇을 클릭하면 넣는다. 액체·조미료는 끌지 않고 클릭으로 옮긴다.</summary>
+    /// <summary>
+    /// 국자나 병을 든 채로 그릇을 클릭했을 때.
+    ///
+    /// 평소에는 올 일이 없다. 통에서 끌어다 놓는 것이 정식 손놀림이고, 끌기가 끝나면
+    /// 커서가 빈손으로 돌아가기 때문이다. 디버그로 커서에 직접 들려 놓은 경우를 위해 남겨 둔다.
+    /// </summary>
     public void OnPointerClick(PointerEventData eventData)
     {
         CookingCursor cursor = CookingCursor.Instance;
         if (cursor == null || !cursor.IsHolding) return;
 
-        if (TryAdd(cursor.Held, null)) cursor.Deliver();
+        IngredientType held = cursor.Held;
+        cursor.Deliver(() => TryAdd(held, null));
     }
 
     /// <summary>
@@ -323,7 +393,8 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         Sprite[] ripple = CurrentRippleSheet;
         if (ripple != null && !IsNoodle(type) && NoodleCount > 0)
         {
-            PlayPour(ripple, RippleFirstFrame, RippleLastFrame, rippleFps);
+            // 처음부터 다시 돌린다. 기름이 가운데에서 확 퍼지는 장이 첫머리라 그게 곧 "얹은" 표시가 된다.
+            StartRipple(ripple, true);
             return true;
         }
 
@@ -574,6 +645,10 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         Debug.Log("[폐기] " + Describe(bowl) + " → 누적 " + Describe(discarded));
         ClearBowl();
 
+        // 버리는 순간 화면이 한 번 거칠어지고 흔들린다. 그릇이 그냥 비워지기만 하면
+        // 방금 한 그릇을 통째로 날렸다는 게 손에 안 남는다.
+        if (ScreenGrain.Instance != null) ScreenGrain.Instance.Flash();
+
         // 비운 그릇과 늘어난 폐기 기록을 남긴다. 폐기는 제출할 때 함께 넘어간다.
         if (GameManager.Instance != null) GameManager.Instance.SaveNow();
     }
@@ -621,8 +696,50 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
 
     private void PlayPour(Sprite[] frames, int first, int last, float fps)
     {
+        StopRipple();
         StopBrothPour();
         brothPour = StartCoroutine(PourRoutine(frames, first, last, fps));
+    }
+
+    /// <summary>
+    /// 국물 찰랑임을 계속 돌린다. 움직이는 것은 국물 위에 뜬 기름 띠뿐이고 나머지는 고정이라,
+    /// 계속 돌아도 그릇이 흔들려 보이지 않는다.
+    ///
+    /// 예전에는 토핑을 얹을 때 한 바퀴만 돌고 멈췄다. 멈춰 있으면 기름이 굳어 사진처럼 보인다.
+    /// </summary>
+    private void StartRipple(Sprite[] frames, bool restart)
+    {
+        if (frames == null || frames.Length == 0) return;
+
+        if (rippleLoop != null)
+        {
+            if (!restart) return;   // 이미 돌고 있으면 그대로 둔다
+            StopCoroutine(rippleLoop);
+        }
+
+        StopBrothPour();
+        rippleLoop = StartCoroutine(RippleRoutine(frames));
+    }
+
+    private void StopRipple()
+    {
+        if (rippleLoop == null) return;
+
+        StopCoroutine(rippleLoop);
+        rippleLoop = null;
+    }
+
+    private IEnumerator RippleRoutine(Sprite[] frames)
+    {
+        float perFrame = 1f / Mathf.Max(0.1f, rippleFps);
+        int i = RippleFirstFrame;
+
+        while (true)
+        {
+            if (frames[i] != null) image.sprite = frames[i];
+            i = i + 1 > RippleLastFrame ? RippleFirstFrame : i + 1;
+            yield return new WaitForSeconds(perFrame);
+        }
     }
 
     private void StopBrothPour()
@@ -663,6 +780,27 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
             return;
         }
 
+        // 면까지 들어갔으면 붓기 시트가 아니라 찰랑임 시트의 첫 장에 안착한다.
+        //
+        // 붓기 시트의 면 프레임은 국물이 그릇 중턱까지만 차 있고, 찰랑임 시트는 턱 가까이 차 있다.
+        // 그대로 두면 토핑을 얹어 찰랑임이 도는 순간 수면이 껑충 뛰어 층이 진다.
+        // 쉬는 그림을 찰랑임 0번으로 맞춰 두면 그 층이 아예 안 생긴다.
+        //
+        // 기름만 떼어다 붓기 프레임에 얹는 것도 해 봤는데, 기름 띠가 높은 수면 기준으로
+        // 그려져 있어서 낮은 국물 위에서는 자리가 안 맞았다.
+        if (NoodleCount > 0)
+        {
+            Sprite[] ripple = CurrentRippleSheet;
+            if (ripple != null && ripple[RippleFirstFrame] != null)
+            {
+                StartRipple(ripple, false);
+                return;
+            }
+        }
+
+        // 면이 빠졌으면 찰랑임을 멈춘다. 안 멈추면 아래에서 고른 그림을 계속 덮어쓴다.
+        StopRipple();
+
         int frame = TareLastFrame;
         if (NoodleCount > 0) frame = NoodleFrame;
         else if (bowl.ContainsKey(IngredientType.Broth)) frame = BrothLastFrame;
@@ -692,17 +830,41 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         Placement spot = layout.Spots[nth % layout.Spots.Length];
 
         // 자리표를 한 바퀴 다 쓰면 같은 자리에 정확히 겹쳐 넣은 티가 안 난다.
-        // 바퀴마다 조금씩 밀고 돌려 쌓인 것처럼 보이게 한다.
+        // 바퀴마다 조금씩 밀어 쌓인 것처럼 보이게 한다.
+        //
+        // 자리 수를 재료별 상한과 같게 맞춰 두어서, 주문을 받고 조리하는 동안에는 여기까지 오지 않는다.
+        // 주문 없이 조리하는 디버그(상한이 없다)에서만 도는 안전망이다.
         int lap = nth / layout.Spots.Length;
         Vector2 pos = (spot.Pos + new Vector2(2f, -2f) * lap) * BowlPixelScale;
-        float angle = spot.Angle + 5f * lap;
 
-        // 그릇용 그림은 그릇을 1배로 띄웠을 때의 크기로 그려져 있다.
-        // 그릇이 2배면 재료도 2배여야 둘이 따로 놀지 않는다.
-        float side = Mathf.Round(icon.rect.width * spot.Scale) * BowlPixelScale;
+        Sprite baked = BakedSprite(layout, nth);
+        if (baked == null) return;
 
-        RectTransform placed = CreateIcon(type, icon, pos, new Vector2(side, side), angle);
+        // 구운 칸은 전부 같은 크기다. 기울인 그림이 잘리지 않게 잡은 값이라 여백이 들어 있고,
+        // 칸 한가운데가 곧 자리다. 그릇이 2배로 떠 있으므로 재료도 2배여야 따로 놀지 않는다.
+        float side = ToppingCellSize * BowlPixelScale;
+
+        RectTransform placed = CreateIcon(type, baked, pos, new Vector2(side, side), 0f);
         InsertByDepth(placed, layout.Depth);
+    }
+
+    /// <summary>이 재료의 nth 번째 자리에 해당하는 구운 그림.</summary>
+    private Sprite BakedSprite(ToppingLayout layout, int nth)
+    {
+        if (toppingFrames == null || toppingFrames.Length == 0)
+        {
+            Debug.LogWarning("[Bowl] 토핑배치 시트가 꽂혀 있지 않습니다. 빌더를 다시 실행해 주세요.");
+            return null;
+        }
+
+        int index = layout.SheetStart + nth % layout.Spots.Length;
+        if (index < 0 || index >= toppingFrames.Length)
+        {
+            Debug.LogWarning("[Bowl] 토핑배치 시트에 " + index + "번 칸이 없습니다.");
+            return null;
+        }
+
+        return toppingFrames[index];
     }
 
     /// <summary>

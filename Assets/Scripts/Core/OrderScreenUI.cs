@@ -34,6 +34,27 @@ public class OrderScreenUI : MonoBehaviour
     /// <summary>글자마다 나는 톤. 빌더가 꽂아 준다. 없으면 소리 없이 글자만 찍힌다.</summary>
     [SerializeField] private DialogueBlip blip;
 
+    /// <summary>손님 겉모습. 새 손님을 맞을 때만 다시 뽑는다.</summary>
+    [SerializeField] private CustomerAppearance customerAppearance;
+
+    /// <summary>
+    /// 밤 배경(뒷판). 밀려 올라갈 때 같이 걷힌다.
+    ///
+    /// 이 판은 화면(640x360)이 아니라 1920x1080 이다. 16:9 가 아닌 창에서 판 바깥이
+    /// 비어 보이지 않게 크게 잡아 둔 것이다. 그래서 화면 높이만큼 밀어 올려도 이 판은
+    /// 여전히 화면을 덮고 있다. 미끄러뜨리는 것만으로는 조리대가 안 드러나서 같이 지운다.
+    /// </summary>
+    [SerializeField] private Image backdrop;
+
+    /// <summary>
+    /// 시선이 내려가는 데 걸리는 시간.
+    /// 0.28 은 툭 떨어지는 느낌이었다. 스르르 흐르려면 이만큼 걸려야 한다.
+    /// </summary>
+    [SerializeField] private float slideSeconds = 0.6f;
+
+    /// <summary>먹는 동안 말풍선에 띄우는 말. 표정 그림이 들어오면 이 자리에 연출이 붙는다.</summary>
+    private const string EatingLine = "…";
+
     private string[] lines = new string[0];
     private int lineIndex;
 
@@ -48,8 +69,42 @@ public class OrderScreenUI : MonoBehaviour
         get { return screenRoot != null && screenRoot.activeSelf; }
     }
 
+    /// <summary>미끄러뜨릴 상자. 화면 전체가 이 안에 들어 있다.</summary>
+    private RectTransform SlideRect
+    {
+        get { return screenRoot != null ? screenRoot.transform as RectTransform : null; }
+    }
+
+    /// <summary>다 나왔을 때 서는 자리.</summary>
+    private Vector2 slideHome;
+
+    /// <summary>한 번에 얼마나 밀어 올릴지. 화면 높이만큼이다.</summary>
+    private float slideDistance = 360f;
+
+    private Coroutine sliding;
+
+    /// <summary>
+    /// 글이 접히기 시작하는 폭. 빌더가 잡아 준 처음 창 폭이 곧 최대치다.
+    /// 이보다 넓어지면 말풍선이 손님 그림을 파고든다.
+    /// </summary>
+    private float maxTextWidth;
+
+    /// <summary>말풍선 테두리와 글 사이 여백. 빌더가 창을 얼마나 안쪽으로 밀어 놨는지에서 읽는다.</summary>
+    private Vector2 bubblePadding;
+
     private void Awake()
     {
+        CaptureSlide();
+
+        // 글에 맞춰 상자를 늘이려면 처음 크기를 먼저 기억해 둬야 한다.
+        // 한 번 늘이고 나면 원래 값을 알 길이 없다.
+        if (dialogueViewport != null)
+        {
+            maxTextWidth = dialogueViewport.sizeDelta.x;
+            bubblePadding = new Vector2(dialogueViewport.anchoredPosition.x,
+                                        -dialogueViewport.anchoredPosition.y);
+        }
+
         if (startButton != null) startButton.onClick.AddListener(Advance);
 
         // 이 스크립트는 screenRoot 바깥에 붙어 있어야 한다.
@@ -62,10 +117,124 @@ public class OrderScreenUI : MonoBehaviour
         if (startButton != null) startButton.onClick.RemoveListener(Advance);
     }
 
+    /// <summary>
+    /// 서는 자리와 밀어 올릴 거리를 잡아 둔다.
+    ///
+    /// 거리는 화면 높이 그대로다. 한 화면만큼 밀면 보이던 것이 전부 위로 빠진다.
+    /// 고개를 숙이면 눈앞의 것이 위로 올라가 사라지는 것과 같다.
+    /// </summary>
+    private void CaptureSlide()
+    {
+        RectTransform rect = SlideRect;
+        if (rect == null) return;
+
+        slideHome = rect.anchoredPosition;
+
+        var area = rect.parent as RectTransform;
+        if (area != null && area.rect.height > 0f) slideDistance = area.rect.height;
+    }
+
+    /// <summary>밀려 올라가 있는 자리. 화면 위로 한 화면만큼.</summary>
+    private Vector2 SlideAway
+    {
+        get { return slideHome + new Vector2(0f, slideDistance); }
+    }
+
+    /// <summary>
+    /// 시선을 올리거나(주문 화면이 내려옴) 내린다(조리대가 드러남).
+    ///
+    /// 자리는 정수 칸으로 끊는다. 픽셀아트라 반 칸에 놓이면 화면 전체가 한꺼번에 흐려진다.
+    /// 시간은 실시간으로 잰다. 팝업이 떠서 게임이 멈춰 있어도 전환은 흘러야 한다.
+    /// </summary>
+    private IEnumerator SlideRoutine(bool opening)
+    {
+        RectTransform rect = SlideRect;
+        Vector2 from = opening ? SlideAway : slideHome;
+        Vector2 to = opening ? slideHome : SlideAway;
+
+        float elapsed = 0f;
+        while (elapsed < slideSeconds)
+        {
+            float t = elapsed / slideSeconds;
+
+            // 시작과 끝을 모두 부드럽게. 등속으로 움직이면 고개를 숙이는 게 아니라
+            // 판이 기계처럼 밀리는 느낌이 난다.
+            //
+            // smoothstep(3t^2-2t^3) 보다 한 단계 더 완만한 곡선을 쓴다. 시작과 끝에서
+            // 속도가 더 천천히 붙고 빠져서, 툭 멈추지 않고 스르르 흘러 선다.
+            t = t * t * t * (t * (t * 6f - 15f) + 10f);
+
+            SetSlide(Vector2.Lerp(from, to, t), opening ? t : 1f - t);
+            elapsed += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        SetSlide(to, opening ? 1f : 0f);
+        sliding = null;
+
+        if (!opening && screenRoot != null) screenRoot.SetActive(false);
+    }
+
+    /// <summary>상자를 옮기고 뒷판 진하기를 맞춘다.</summary>
+    private void SetSlide(Vector2 position, float backdropAlpha)
+    {
+        RectTransform rect = SlideRect;
+        if (rect != null)
+            rect.anchoredPosition = new Vector2(Mathf.Round(position.x), Mathf.Round(position.y));
+
+        if (backdrop != null)
+        {
+            Color c = backdrop.color;
+            c.a = backdropAlpha;
+            backdrop.color = c;
+        }
+    }
+
+    /// <summary>미끄러짐 없이 그 자리로. 켜지기 전이나 씬을 막 띄웠을 때 쓴다.</summary>
+    private void SnapSlide(bool opened)
+    {
+        if (sliding != null) { StopCoroutine(sliding); sliding = null; }
+        SetSlide(opened ? slideHome : SlideAway, opened ? 1f : 0f);
+    }
+
+    /// <summary>
+    /// 미끄러짐이 끝날 때까지 기다린다.
+    ///
+    /// 화면이 다 올라온 뒤에 먹는 연출이 시작되어야 한다. 안 기다리면 판이 흐르는 도중에
+    /// 검은 띠가 들어오고 얼굴이 커져, 두 움직임이 겹쳐 무슨 일이 일어나는지 안 보인다.
+    /// </summary>
+    public IEnumerator WaitForSlide()
+    {
+        while (sliding != null) yield return null;
+    }
+
     /// <summary>새 손님이 왔을 때 연다. 대사는 첫 줄부터 시작한다.</summary>
     public void Open(int day, int hour, string dialogue, int totalRevenue)
     {
+        // 이미 떠 있는 채로 다시 열리는 경우가 있다. 손님을 갈아 끼울 때(SwapCustomer)가 그렇다.
+        // 그때 또 미끄러뜨리면 화면이 한 번 솟았다 내려와, 손님만 조용히 바뀌는 연출이 깨진다.
+        bool wasOpen = screenRoot != null && screenRoot.activeSelf;
+
         if (screenRoot != null) screenRoot.SetActive(true);
+
+        // 새 손님이다. 얼굴을 다시 뽑는 곳은 여기 하나뿐이다.
+        // 스러짐도 여기서 되돌린다. 앞 손님이 사라진 채로 끝났어도 새 손님은 보여야 한다.
+        // 등장 연출을 붙일 때는 GameManager 가 이 직후(같은 프레임)에 다시 지운다.
+        EnsureAppearance();
+        if (customerAppearance != null)
+        {
+            customerAppearance.Randomize();
+            customerAppearance.SetFade(0f);
+        }
+
+        // 시선이 손님에게로 올라온다. 이미 떠 있었으면 그대로 둔다.
+        if (wasOpen) SnapSlide(true);
+        else StartSlide(true);
+
+        // 손님이 없는 동안 감춰 둔 것을 되돌린다.
+        // 버튼이 말풍선 안에 있으므로 말풍선을 먼저 켜야 버튼도 살아난다.
+        ShowBubble(true);
+        if (startButton != null) startButton.gameObject.SetActive(true);
 
         // 시각은 손님이 갈 때마다 한 시간씩 흐른다. 시간 제한은 없다(기획서 5.4).
         if (dayTimeText != null) dayTimeText.text = "영업 시간 " + day + "일차 / " + hour + " : 00";
@@ -80,12 +249,116 @@ public class OrderScreenUI : MonoBehaviour
         ShowLine();
     }
 
+    /// <summary>
+    /// 라멘을 낸 뒤 손님이 먹는 동안 보여 주는 화면.
+    ///
+    /// 주문 화면과 같은 자리를 쓰되 둘이 다르다. 얼굴을 다시 뽑지 않고(주문한 그 사람이
+    /// 그대로 먹어야 한다), 주문 대사를 처음부터 되감지 않는다.
+    /// 버튼은 감춘다 — 이 장면은 GameManager 가 시간을 재서 넘긴다.
+    /// </summary>
+    public void OpenEating(int day, int hour, int totalRevenue)
+    {
+        // 조리하다가 완성하기를 누르고 올라오는 길이다. 주문을 받을 때와 같은 움직임으로
+        // 시선이 다시 손님에게 올라간다.
+        //
+        // 이미 떠 있는 채로 다시 불릴 수 있다. 그때 또 미끄러뜨리면 화면이 한 번 솟았다 내려온다.
+        bool wasOpen = screenRoot != null && screenRoot.activeSelf;
+
+        if (screenRoot != null) screenRoot.SetActive(true);
+
+        if (wasOpen) SnapSlide(true);
+        else StartSlide(true);
+
+        if (dayTimeText != null) dayTimeText.text = "영업 시간 " + day + "일차 / " + hour + " : 00";
+        if (revenueText != null) revenueText.text = "누적 수익 : " + totalRevenue.ToString("N0") + "₩";
+
+        SetBubbleLine(EatingLine);
+
+        if (startButton != null) startButton.gameObject.SetActive(false);
+    }
+
+    /// <summary>
+    /// 말풍선에 한 줄만 통째로 띄운다. 타자기로 찍지 않는다 — 연출 박자에 맞춰
+    /// 컷마다 갈아 끼우는 용도라, 한 글자씩 찍으면 박자가 밀린다.
+    /// </summary>
+    public void SetBubbleLine(string line)
+    {
+        // 안 멈추면 주문 대사가 이어서 찍힌다.
+        FinishTyping();
+
+        lines = new string[0];
+        lineIndex = 0;
+
+        if (dialogueText == null) return;
+
+        dialogueText.text = line;
+        LayoutDialogue();
+    }
+
+    /// <summary>인스펙터가 비어 있으면(빌더를 안 돌린 씬) 화면 안에서 한 번 찾아 둔다.</summary>
+    /// <summary>
+    /// 말풍선을 통째로 여닫는다. 손님이 나간 자리에 말풍선만 떠 있으면 이상하다.
+    ///
+    /// 말풍선은 빌더가 따로 꽂아 주지 않는다. 글자 창(Viewport)의 부모가 곧 말풍선이라
+    /// 거기서 거슬러 올라간다.
+    /// </summary>
+    public void ShowBubble(bool visible)
+    {
+        if (dialogueViewport == null || dialogueViewport.parent == null) return;
+        dialogueViewport.parent.gameObject.SetActive(visible);
+    }
+
+    /// <summary>말풍선 상자. 클로즈업할 때 EatingCutscene 이 같이 키운다.</summary>
+    public RectTransform Bubble
+    {
+        get { return dialogueViewport != null ? dialogueViewport.parent as RectTransform : null; }
+    }
+
+    public CustomerAppearance Appearance
+    {
+        get
+        {
+            EnsureAppearance();
+            return customerAppearance;
+        }
+    }
+
+    private void EnsureAppearance()
+    {
+        if (customerAppearance == null && screenRoot != null)
+            customerAppearance = screenRoot.GetComponentInChildren<CustomerAppearance>(true);
+    }
+
     public void Close()
     {
         // 찍던 것을 안 멈추면 화면이 꺼진 뒤에도 코루틴이 남아 소리가 난다.
         FinishTyping();
 
-        if (screenRoot != null) screenRoot.SetActive(false);
+        // 꺼져 있거나 아직 살아나기 전이면 미끄러뜨릴 것도 없다.
+        // Awake 에서도 이 함수를 부르는데, 거기서 코루틴을 돌리면 시작하지 못하고 끊긴다.
+        if (screenRoot == null || !screenRoot.activeSelf || !gameObject.activeInHierarchy)
+        {
+            SnapSlide(false);
+            if (screenRoot != null) screenRoot.SetActive(false);
+            return;
+        }
+
+        // 시선이 조리대로 내려간다. 다 내려가면 그때 끈다.
+        StartSlide(false);
+    }
+
+    private void StartSlide(bool opening)
+    {
+        if (sliding != null) StopCoroutine(sliding);
+
+        if (!gameObject.activeInHierarchy)
+        {
+            SnapSlide(opening);
+            return;
+        }
+
+        SetSlide(opening ? SlideAway : slideHome, opening ? 0f : 1f);
+        sliding = StartCoroutine(SlideRoutine(opening));
     }
 
     /// <summary>
@@ -243,14 +516,36 @@ public class OrderScreenUI : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 말풍선을 글에 맞춰 늘린다. 사방 여백만 두고 나머지 크기는 글이 정한다.
+    ///
+    /// 가로는 maxTextWidth 까지만 늘리고 그 뒤로는 줄을 접는다. 더 넓히면 손님을 파고든다.
+    /// 세로는 접힌 줄 수만큼 늘어난다.
+    ///
+    /// 말풍선 피벗이 왼쪽 위라 늘어나는 방향이 오른쪽·아래다. 왼쪽 위 모서리는 늘 제자리에
+    /// 있어서, 커질 때 상자가 통째로 움직이지 않는다. 꼬리와 넵 버튼은 말풍선 가장자리에
+    /// 앵커가 걸려 있어 따라온다.
+    ///
+    /// 크기는 올림해서 정수로 맞춘다. 반칸에 걸치면 9-슬라이스 테두리가 흐려진다.
+    /// </summary>
     private void LayoutDialogue()
     {
-        if (dialogueViewport == null) return;
+        if (dialogueViewport == null || dialogueText == null) return;
 
-        // 말풍선은 고정 크기다. 글상자를 창에 맞춰 두면 글이 그 안에서 가운데에 놓인다.
-        // 예전에는 대사 길이를 재서 상자를 늘였다 줄였다 했는데, 말할 때마다 상자가 들썩여 보였다.
-        dialogueText.rectTransform.sizeDelta = dialogueViewport.rect.size;
+        Vector2 wanted = dialogueText.GetPreferredValues(dialogueText.text, maxTextWidth, 0f);
+        float w = Mathf.Ceil(Mathf.Min(wanted.x, maxTextWidth));
+        float h = Mathf.Ceil(wanted.y);
+
+        dialogueViewport.sizeDelta = new Vector2(w, h);
+        dialogueText.rectTransform.sizeDelta = new Vector2(w, h);
         dialogueText.rectTransform.anchoredPosition = Vector2.zero;
+
+        var bubble = dialogueViewport.parent as RectTransform;
+        if (bubble != null)
+        {
+            bubble.sizeDelta = new Vector2(w + bubblePadding.x * 2f,
+                                           h + bubblePadding.y * 2f);
+        }
     }
 
     /// <summary>대사를 줄 단위로 자른다. 빈 줄은 버린다.</summary>

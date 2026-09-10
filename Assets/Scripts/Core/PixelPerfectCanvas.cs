@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
@@ -9,14 +9,14 @@ using UnityEngine.UI;
 /// 픽셀아트가 지저분해진다. 그래서 배율을 1, 2, 3처럼 정수로만 끊는다.
 ///
 /// 배율이 정수면 원본 1픽셀이 화면에서 항상 정확히 N×N 정사각형이 된다.
-/// 기준 격자(640×360)가 화면에 몇 번 들어가는지를 내림한 값이 곧 배율이다.
+/// 기준 격자(960×540)가 화면에 몇 번 들어가는지를 내림한 값이 곧 배율이다.
 /// </summary>
 [RequireComponent(typeof(Canvas), typeof(CanvasScaler))]
 [ExecuteAlways]
 public class PixelPerfectCanvas : MonoBehaviour
 {
     /// <summary>기준 격자. 이 안에서 화면을 짠다.</summary>
-    public Vector2Int referenceResolution = new Vector2Int(640, 360);
+    public Vector2Int referenceResolution = new Vector2Int(960, 540);
 
     private CanvasScaler scaler;
     private Vector2Int lastScreen;

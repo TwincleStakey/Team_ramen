@@ -99,7 +99,7 @@ public static class RamenLayoutBuilder
     private const string ScreenDir = "Assets/Art/화면/";
 
     /// <summary>타래 3통과 향미유통이 기본·선택 두 줄로 함께 들어 있는 한 장. 자르기 영역은 아래 참고.</summary>
-    private const string TareSheet = IngredientDir + "타레통_향미유통.png";
+    private const string CookDir = "Assets/Art/조리/";
 
     /// <summary>코드로 만들어 둔 임시 그림. 기획자 그림이 오면 같은 이름으로 덮어쓰면 된다.</summary>
     private const string GeneratedDir = "Assets/Art/UI/Generated/";
@@ -117,7 +117,12 @@ public static class RamenLayoutBuilder
     /// 기준 격자. 화면을 이 칸 수 안에서 짠다. 여기 좌표 1칸이 픽셀아트 1픽셀이다.
     /// 화면에는 PixelPerfectCanvas가 정수 배율(1920x1080이면 3배)로 띄운다.
     /// </summary>
-    private static readonly Vector2 DesignResolution = new Vector2(640f, 360f);
+    // 640x360 에서 960x540 으로 올렸다. 새 조리 그림이 128칸이라 640 판에서는
+    // 타래 3통만으로 가로의 42%를 먹어 그릇이 한가운데에 못 선다.
+    // 960 이면 배율이 1920x1080 에서 2배로 여전히 정수라 픽셀이 안 깨지고,
+    // 타래 3통이 28% 로 배치도와 거의 같아진다.
+    // 1920 까지 올리면 배율이 1배가 되어 128칸 그림이 화면에서 128픽셀 — 너무 작다.
+    private static readonly Vector2 DesignResolution = new Vector2(960f, 540f);
 
     /// <summary>
     /// 팝업 뒤를 어둡게 덮는 판의 크기. 판(640×360)보다 넉넉히 크게 잡아
@@ -133,11 +138,28 @@ public static class RamenLayoutBuilder
     private static readonly Vector2 MidRight = new Vector2(1f, 0.5f);
     private static readonly Vector2 Center = new Vector2(0.5f, 0.5f);
     private static readonly Vector2 BottomRight = new Vector2(1f, 0f);
+    private static readonly Vector2 BottomLeft = new Vector2(0f, 0f);
 
     // 원본 픽셀의 몇 배로 띄울지를 실제 물건 크기 느낌에 맞춰 정한 것.
     // 냄비 > 재료통·타래통 > 조미료병 순서고, 면 튀김기가 제일 큰 장비다.
     // 정산 팝업은 밝은 판 위에 글자를 얹으므로 조리 화면의 흰 글자를 그대로 쓸 수 없다.
     private static readonly Color PopupInkColor = new Color(0.16f, 0.16f, 0.16f);
+
+    // 주문서 색. 영수증 종이라 상단바 판(흰색)보다 살짝 누렇다.
+    private static readonly Color NotePaperColor = new Color32(250, 244, 227, 255);
+    private static readonly Color NoteShadeColor = new Color32(206, 190, 158, 255);
+    private static readonly Color NoteOutlineColor = new Color32(0, 0, 0, 255);
+
+    /// <summary>주문서에서 본문보다 흐리게 두는 것들. 구분선과 머리 정보줄이 쓴다.</summary>
+    private static readonly Color NoteFadeColor = new Color32(122, 110, 88, 255);
+
+    /// <summary>
+    /// 그레인 노이즈 그림의 한 변.
+    ///
+    /// 칸 하나가 텍셀 하나라 이 값이 곧 "무늬가 몇 칸마다 반복되는가"다. 64 면 화면 가로
+    /// 640 칸에 열 번 반복된다. 매 프레임 통째로 밀기 때문에 반복이 눈에 띄지 않는다.
+    /// </summary>
+    private const int GrainNoiseSize = 64;
 
     // 크기는 전부 원본 PNG의 픽셀 수 그대로다. 기준 격자 1칸 = 원본 1픽셀이므로
     // 배율을 곱할 자리가 없다. 여기에 1.5배 같은 값이 끼면 그 순간 픽셀이 깨진다.
@@ -194,25 +216,146 @@ public static class RamenLayoutBuilder
     /// </summary>
     private const int DialogueVisibleLines = 4;
 
-    /// <summary>말풍선 테두리와 글자 사이 여백. 사방 같은 값을 쓴다.</summary>
-    private const float BubblePadding = 8f;
+    /// <summary>
+    /// 말풍선 테두리와 글자 사이 여백.
+    ///
+    /// 눈에 보이는 여백은 이 값과 조금 다르다. TMP 가 글자 좌우에 제 여백을 더 두어서,
+    /// 가로는 설정값보다 2~3칸 더 벌어져 보인다. 재 보니 가로 6 · 세로 10 일 때
+    /// 실제로는 왼쪽 8.5 · 위 10.5 였다.
+    ///
+    /// 그래서 사방이 고르게 보이도록 가로를 세로보다 2 작게 잡는다.
+    /// </summary>
+    private const float BubblePaddingX = 10f;
+    private const float BubblePaddingY = 12f;
 
     /// <summary>
     /// 말풍선 글자가 쓸 수 있는 최대 폭.
     ///
-    /// 말풍선 왼쪽 위가 화면 (1,47)에 고정이라, 폭이 224 를 넘으면 오른쪽 끝이 손님(256부터)을
-    /// 파고든다. 224 + 여백 16 = 240 이 상자 최대 폭이고 오른쪽 끝이 241 이다.
+    /// 말풍선 왼쪽 위가 화면 (8,60)에 고정이다. 손님 자리가 판 한가운데(417부터)라
+    /// 340 + 여백 12 = 352 면 오른쪽 끝이 360 으로 손님을 안 건드린다.
+    ///
+    /// 판이 640 에서 960 으로 넓어졌는데 224 그대로 두었더니 상자만 그 자리에 작게 남아,
+    /// 한 마디가 세 줄로 접히고 "왔습니 / 다!" 처럼 어색하게 끊겼다.
     /// </summary>
-    private const float BubbleMaxTextWidth = 224f;
+    private const float BubbleMaxTextWidth = 340f;
 
     /// <summary>
-    /// 말풍선 높이. 여백(위아래 8) + 글자 네 줄(80)이다.
-    /// 네 줄은 두 마디가 각각 두 줄까지 접히는 최악의 경우다.
+    /// 말풍선이 가장 커졌을 때의 높이. 여백(위아래 12) + 가장 긴 마디(39)다.
     ///
-    /// 버튼 자리를 따로 잡아 두지 않는다. 넵 버튼은 오른쪽 아래 구석에 얹혀 있는데,
-    /// 글이 거기까지 닿는 경우가 거의 없어 자리를 비워 두면 아래가 휑하게 남는다.
+    /// 39 는 재서 나온 값이다. 마디 16464 개를 글자폭 340 으로 재 보니 91% 가 한 줄,
+    /// 나머지가 두 줄이고 세 줄은 하나도 없었다. 가장 높은 것이 39 칸이다.
+    /// 예전에는 "네 줄 80칸"으로 잡혀 있었는데 그런 마디는 나오지 않는다.
+    ///
+    /// 넵 버튼 자리를 이 값에 맞춘다. 버튼은 늘 "상자가 가장 커졌을 때 아래변"에 서 있는다.
+    /// 그래야 마디마다 상자 높이가 달라져도 버튼이 위아래로 안 뛴다.
+    ///
+    /// 화면에 실제로 보이는 높이는 이 값이 아니다. OrderScreenUI 가 글에 맞춰 상자를 다시 잡으므로
+    /// 여기 값은 첫 줄이 찍히기 전까지의 초기 크기일 뿐이다. 여기만 고쳐도 화면은 안 바뀐다.
+    /// 여백을 바꾸려면 BubblePaddingX / BubblePaddingY 를 고친다.
     /// </summary>
-    private const float BubbleHeight = 96f;
+    private const float BubbleHeight = 39f + BubblePaddingY * 2f;
+
+    /// <summary>말풍선 아래변과 넵 버튼 사이 간격.</summary>
+    private const float BubbleButtonGap = 4f;
+
+    // ── 주문서 치수 ───────────────────────────────────────────────
+    //
+    // 종이 길이는 여기서 정하지 않는다. 대사가 길면 길어지고 짧으면 짧아진다.
+    // 가장 긴 주문에 맞춰 고정하면 흔한 아홉 줄짜리에서 아래가 절반 넘게 빈다.
+    // 주문 4000건을 재 보니 7~12줄이 대부분이고 13줄 이상은 2%, 17줄은 4000건에 셋뿐이었다.
+    //
+    // 폭은 좁을수록 세로로 길어진다. 줄이 접히기 때문이다.
+    // 본문 10 · 제목 12 로 12000건을 재 보면 가장 긴 주문이 이렇게 나온다.
+    //   176 -> 267칸 · 184 -> 267칸 · 192 -> 252칸 · 200 -> 237칸
+    //
+    // 184 는 영수증답게 세로로 서면서(보통 주문에서 세로/가로가 1.5 언저리) 가장 긴 주문도
+    // 화면 안에 들어가는 값이다. 높이는 대사에 맞춰 OrderNoteUI 가 매번 다시 잡는다.
+
+    /// <summary>주문서 글자가 쓸 수 있는 폭.</summary>
+    private const float NoteTextWidth = 156f;
+
+    /// <summary>종이 테두리와 글자 사이 여백. 사방 같은 값을 쓴다.</summary>
+    private const float NoteMargin = 14f;
+
+    /// <summary>종이 폭. 글자폭 + 여백 양쪽.</summary>
+    private const float NoteWidth = NoteTextWidth + NoteMargin * 2f;
+
+    /// <summary>
+    /// 주문서 본문 글자 크기.
+    ///
+    /// 손님 대사창이 15 라 주문서는 그보다 작아야 한다. 주문서는 대사를 옮겨 적은 것이라
+    /// 대사창보다 크면 주객이 바뀐다. 12 로 해 봤더니 종이가 348 까지 커져 조리 화면을
+    /// 너무 가렸다. 쓸 수 있는 크기는 8·10·12·15 의 배수뿐이라 한 단계 아래가 10 이다.
+    /// </summary>
+    private const int NoteFontSize = TextSmall;
+
+    /// <summary>
+    /// 주문서 본문 줄 간격.
+    /// 글자(10)에 딱 붙이면 줄이 엉겨 읽기 나쁘다. 두 칸 띄운다.
+    /// </summary>
+    private const float NoteLineHeight = 12f;
+
+    /// <summary>아래 톱니 높이. 이 안에서 찢긴 모양이 오르내린다.</summary>
+    private const float NoteTornHeight = 6f;
+
+    /// <summary>
+    /// 마우스를 올렸을 때 주문서가 남기는 진하기.
+    ///
+    /// 종이가 그릇과 재료통을 덮고 있어서, 보면서 조리하려면 뒤가 비쳐야 한다.
+    /// 0.4 까지 내리면 뒤는 잘 보이지만 정작 주문 글자가 안 읽힌다.
+    /// </summary>
+    private const float NoteHoverAlpha = 0.7f;
+
+    /// <summary>제목 '주문서' 크기. 본문 바로 윗단계다.</summary>
+    private const int NoteTitleFontSize = TextBody;
+
+    /// <summary>
+    /// 종이에서 글자를 뺀 나머지 높이. 머리글·구분선·정보줄을 다 더한 값이다.
+    ///
+    /// 위 61 = 여백 8 + 머리글 14 + 6 + 선 1 + 5 + 정보줄 14 + 5 + 선 1 + 7
+    /// 아래 12 = 7 + 선 1 + 4
+    ///
+    /// 톱니는 여기 안 들어간다. 종이 아래에 매달려 있어서 종이 높이 밖이다.
+    /// 눈에 보이는 전체 길이는 이 값 + 글자 + 톱니 6 이다.
+    ///
+    /// OrderNoteUI 가 종이 높이를 이 값 + 글자 높이로 잡는다. 배치를 고치면 여기도 고칠 것.
+    /// </summary>
+    private const float NoteChromeHeight = 61f + 12f;
+
+    /// <summary>
+    /// 말풍선 꼬리를 원본 실루엣의 몇 배로 키울지. 정수배만 쓴다.
+    ///
+    /// 원본 8x5 는 240x96 짜리 말풍선에 달기엔 눈에 안 띈다. 그렇다고 그림을 통째로 늘리면
+    /// 1픽셀 외곽선까지 같이 굵어져 본문 테두리와 따로 논다. 실루엣만 키우고 외곽선은
+    /// 다시 1픽셀로 긋는다(BuildBubbleTailBytes).
+    ///
+    /// 3 이면 꼬리 오른쪽 끝이 화면 x -56 이다. 손님 슬롯(-63)에는 들어가지만 그쪽은 여백이라
+    /// 손님 그림(-47)까지 9칸 남는다. 더 키우려면 그 두 값을 먼저 확인할 것.
+    /// </summary>
+    private const int BubbleTailScale = 3;
+
+    /// <summary>
+    /// 말풍선 위에서 꼬리 윗변까지. 정수라야 반칸에 안 걸린다.
+    ///
+    /// 상자 높이는 말 길이에 따라 변하는데 윗변은 고정이라, 이 거리도 고정이면 꼬리가
+    /// 늘 같은 자리에 선다. 다만 가장 작은 상자(한 줄 = 43칸)에도 꼬리(15칸)가 다
+    /// 들어가야 한다. 37 로 잡았더니 한 줄짜리에서 꼬리가 상자 아래로 9칸 삐져나와,
+    /// 상자와 꼬리가 따로 노는 것처럼 보였다.
+    ///   24 + 15 = 39  <=  43   (아래로 4칸 남는다)
+    /// </summary>
+    private const float BubbleTailTop = 24f;
+
+    // 말풍선이 Order UI.png 안에서 차지하는 자리. 왼쪽 아래가 (0,0)이다.
+    private const int BubbleBodyX = 7;
+    private const int BubbleBodyY = 19;
+    private const int BubbleBodyW = 46;
+    private const int BubbleBodyH = 28;
+
+    // 꼬리. 본문 테두리 칸(x 52)까지 넣어야 입이 어디서 열리는지가 실루엣에 남는다.
+    private const int BubbleTailX = 52;
+    private const int BubbleTailY = 34;
+    private const int BubbleTailW = 8;
+    private const int BubbleTailH = 5;
     private static readonly Vector2 CursorSize = new Vector2(64f, 64f);        // 젓가락·국자 시트 프레임 원본 64px
     private static readonly Vector2 RippleSize = new Vector2(32f, 32f);        // 클릭 파문 원본 32px
 
@@ -237,24 +380,13 @@ public static class RamenLayoutBuilder
     // 김만 내용이 60x44고 나머지 여섯은 60x42라, 같은 영역으로 잘라도 전부 안에 들어오고
     // 통끼리 세로 정렬도 저절로 맞는다.
     private static readonly Rect IngredientBinCrop = new Rect(2f, 10f, 60f, 44f);
-    private static readonly Vector2 IngredientBinSize = new Vector2(60f, 44f);
+    // 시치미 병은 그림이 24x56 이라 2배로 놓으면 48x112 가 된다.
+    // 재료통 왼쪽 열 위쪽 빈자리(y 66~334)에 넉넉히 들어간다.
+    private static readonly Vector2 ChiliBottleSize = new Vector2(128f, 128f);
 
-    // 타래 3통과 향미유통은 한 장(237x56)에 여덟 칸으로 그려져 있다.
-    // 아래 줄이 기본, 위 줄이 테두리를 두른 선택 그림이고 테두리는 사방 1픽셀이다.
-    // 유니티 스프라이트 좌표는 아래가 0이라, 그림 위쪽 줄(선택)이 y가 큰 쪽이다.
-    //
-    // 칸을 딱 맞는 그림 크기가 아니라 짝수로 끊었다. 향미유통은 그림이 25·27로 홀수라
-    // 정수 자리에 놓으면 가장자리가 반칸에 걸린다. 위아래로 투명 한 줄을 더해 26·28로 맞추면
-    // 기본과 선택이 같은 만큼 어긋나서 갈아 끼울 때 그림은 제자리에 있다.
-    private static readonly Rect ShioTareCrop = new Rect(1f, 0f, 64f, 26f);
-    private static readonly Rect ShoyuTareCrop = new Rect(72f, 0f, 64f, 26f);
-    private static readonly Rect TonkotsuTareCrop = new Rect(141f, 0f, 64f, 26f);
-    private static readonly Rect FlavorOilCrop = new Rect(208f, 0f, 28f, 26f);
-
-    private static readonly Rect ShioTareHoverCrop = new Rect(0f, 28f, 66f, 28f);
-    private static readonly Rect ShoyuTareHoverCrop = new Rect(71f, 28f, 66f, 28f);
-    private static readonly Rect TonkotsuTareHoverCrop = new Rect(140f, 28f, 66f, 28f);
-    private static readonly Rect FlavorOilHoverCrop = new Rect(207f, 28f, 30f, 28f);
+    // 잘라 낸 통(60x44)을 2배로 놓는다. 정확히 2배라 픽셀이 안 깨진다.
+    // 3배(180x132)면 네 줄이 세로 528이 되어 상단바 아래 500에 안 들어간다.
+    private static readonly Vector2 IngredientBinSize = new Vector2(120f, 88f);
 
     /// <summary>
     /// 끌고 다니는 그림의 기본 한 변. IngredientSlot 이 커서 크기(64)에 0.5를 곱해 쓰는 값과 같다.
@@ -262,8 +394,11 @@ public static class RamenLayoutBuilder
     /// </summary>
     private const float GhostBaseSide = 32f;
 
-    private static readonly Vector2 TareBinSize = new Vector2(64f, 26f);
-    private static readonly Vector2 OilBinSize = new Vector2(28f, 26f);
+    // 새 타래통은 128칸 그림이고 그 안에서 통이 87~93 x 99~104 를 차지한다.
+    // 칸째로 놓고 preserveAspect 에 맡긴다.
+    private static readonly Vector2 TareBinSize = new Vector2(128f, 128f);
+    // 향미유통만 칸이 91x100 이다. 다른 것과 달리 128 로 패딩돼 있지 않다.
+    private static readonly Vector2 OilBinSize = new Vector2(91f, 100f);
 
     /// <summary>
     /// 눕혀 쓰는 이름표. 눕히면 화면에서 16 x 46으로 보인다.
@@ -276,21 +411,29 @@ public static class RamenLayoutBuilder
     private const float BinLabelOffsetX = 40f;
 
     /// <summary>육수 냄비. 원본 64를 2배로 놓는다. 와이어프레임에서 가장 큰 통이다.</summary>
-    private static readonly Vector2 BrothPotSize = new Vector2(128f, 128f);
+    // 128칸 그림을 2배로 놓는다. 향미유통(폭 79)의 세 배쯤 되어 와이어프레임과 비슷해진다.
+    // 정확히 2배라 픽셀이 안 깨진다. 어중간한 배율은 가장자리가 반칸에 걸린다.
+    private static readonly Vector2 BrothPotSize = new Vector2(256f, 256f);
 
     /// <summary>타래 이름표를 통 오른쪽으로 밀어내는 거리. 통 32 + 간격 2 + 이름표 32.</summary>
     private const float TareLabelOffsetX = 66f;
 
     private const float PanelScale = 1f;
-    private const float PanelBarHeight = 18f;
+    /// <summary>
+    /// 상단 판 높이.
+    ///
+    /// 판이 960x540 으로 넓어지면서 18 짜리 판이 화면에 비해 너무 작아졌다. 두 배로 키웠다.
+    /// 판 그림은 9-슬라이스라 아무리 키워도 테두리는 1픽셀로 남는다. 글자만 한 단계 올린다.
+    /// </summary>
+    private const float PanelBarHeight = 36f;
 
     /// <summary>상단 바에서 만들어 두고 나중에 다른 것과 연결해야 하는 것들.</summary>
     private class TopBarRefs
     {
         public Image Discard;      // 그릇이 생긴 뒤 onClick을 붙인다
         public Image Help;         // ? 버튼. 눌리면 주문 화면을 다시 연다
-        public Text DayText;       // GameManager가 일차를 써 넣는다
-        public Text RevenueText;   // GameManager가 누적 매출을 써 넣는다
+        public TextMeshProUGUI DayText;       // GameManager가 일차를 써 넣는다
+        public TextMeshProUGUI RevenueText;   // GameManager가 누적 매출을 써 넣는다
     }
 
     /// <summary>주문 시스템 오브젝트에서 나중에 다른 것과 연결해야 하는 것들.</summary>
@@ -321,6 +464,13 @@ public static class RamenLayoutBuilder
 
         /// <summary>미끄러져 들어오는 종이. OrderNoteUI 가 이것만 움직인다.</summary>
         public RectTransform Paper;
+
+        /// <summary>종이 전체를 한꺼번에 흐리게 하는 데 쓴다.</summary>
+        public CanvasGroup Fade;
+
+        /// <summary>영수증 머리의 정보줄. 왼쪽은 며칠째, 오른쪽은 몇 번째 손님.</summary>
+        public TextMeshProUGUI DayLabel;
+        public TextMeshProUGUI CustomerLabel;
     }
 
     /// <summary>레시피 책(B 키)에서 RecipeBookUI에 꽂아 줘야 하는 것들.</summary>
@@ -344,9 +494,18 @@ public static class RamenLayoutBuilder
         public TextMeshProUGUI Dialogue;
         public RectTransform DialogueViewport;
 
+        /// <summary>밤 배경. 화면이 밀려 올라갈 때 같이 걷힌다.</summary>
+        public Image Backdrop;
+
         public Button Start;
         public Image StartImage;
         public TextMeshProUGUI StartLabel;
+
+        /// <summary>손님 겉모습. 새 손님을 맞을 때만 OrderScreenUI 가 다시 뽑는다.</summary>
+        public CustomerAppearance Look;
+
+        /// <summary>먹는 네 컷 연출. OrderScreenUI 는 나중에 꽂아 준다.</summary>
+        public EatingCutscene Cutscene;
     }
 
     /// <summary>5일 완료 화면에서 FinalResultUI에 꽂아 줘야 하는 것들.</summary>
@@ -425,11 +584,18 @@ public static class RamenLayoutBuilder
         /// </summary>
         public readonly Rect HoverCropRect;
 
+        /// <summary>
+        /// 0보다 크면 통 그림을 이 칸으로 잘라 SpriteLoop 가 돌린다.
+        /// 끓는 육수 냄비처럼 가만히 있어도 움직여야 하는 통에 쓴다.
+        /// </summary>
+        public readonly int LoopCell;
+
         public SlotDef(IngredientType type, string label, Vector2 anchor, float x, float y, Vector2 size,
                        string binPath, string bowlPath = null, string dragPath = null, bool liquid = false,
                        float labelX = 0f, float labelY = 0f, string idSuffix = null, bool labelAbove = false,
-                       Rect crop = default, bool labelRotated = false, Rect hoverCrop = default)
+                       Rect crop = default, bool labelRotated = false, Rect hoverCrop = default, int loopCell = 0)
         {
+            LoopCell = loopCell;
             LabelRotated = labelRotated;
             CropRect = crop;
             HoverCropRect = hoverCrop;
@@ -468,49 +634,44 @@ public static class RamenLayoutBuilder
         //
         // 타래는 이름표를 아래가 아니라 오른쪽에 붙여 통끼리 딱 붙였다(간격 64).
         // 아래에 붙이면 세 통이 240을 먹어 육수 자리가 안 나온다.
-        new SlotDef(IngredientType.ShioTare,     "시오",     TopLeft, 40f, -72f, TareBinSize,
-                    TareSheet, liquid: true,
-                    crop: ShioTareCrop, hoverCrop: ShioTareHoverCrop),
-        new SlotDef(IngredientType.ShoyuTare,    "쇼유",     TopLeft, 40f, -120f, TareBinSize,
-                    TareSheet, liquid: true,
-                    crop: ShoyuTareCrop, hoverCrop: ShoyuTareHoverCrop),
-        new SlotDef(IngredientType.TonkotsuBase, "돈코츠",   TopLeft, 40f, -168f, TareBinSize,
-                    TareSheet, liquid: true,
-                    crop: TonkotsuTareCrop, hoverCrop: TonkotsuTareHoverCrop),
+        // 통이 128칸으로 커져서 세로로 못 세운다. 셋을 가로로 눕혔다(배치도와 같다).
+        // 칸은 128이지만 안의 통은 90 안팎이라, 간격 110 이면 칸끼리는 겹쳐도 통끼리는 20 뜬다.
+        new SlotDef(IngredientType.ShioTare,     "시오",     TopLeft, 70f, -100f, TareBinSize,
+                    CookDir + "타래_시오.png", liquid: true),
+        new SlotDef(IngredientType.ShoyuTare,    "쇼유",     TopLeft, 175f, -100f, TareBinSize,
+                    CookDir + "타래_쇼유.png", liquid: true),
+        new SlotDef(IngredientType.TonkotsuBase, "돈코츠",   TopLeft, 280f, -100f, TareBinSize,
+                    CookDir + "타래_돈코츠.png", liquid: true),
+
+        // 향미유. 가운데 타래(쇼유) 바로 아래에 x 를 맞춰 세운다.
+        // 예전에는 화면 오른쪽 시치미 위에 있었는데, 액체는 왼쪽에 모으는 편이 손이 덜 간다.
+        new SlotDef(IngredientType.FlavorOil,    "향미유",   TopLeft, 175f, -215f, OilBinSize,
+                    CookDir + "향미유통.png", liquid: true),
 
         // 육수 냄비. 원본 64를 2배로 놓아 왼쪽 아래를 채운다(화면 8~136 x 232~360).
         // 이름표는 와이어프레임처럼 냄비 안에 얹는다. 아래에 두면 화면 밖으로 나간다.
-        new SlotDef(IngredientType.Broth,        "육수",     TopLeft, 72f, -296f, BrothPotSize,
-                    EtcDir + "육수.png", liquid: true, labelY: -40f),
+        // 육수 냄비. 4프레임 시트라 첫 칸만 통 그림으로 쓰고, 나머지는 SpriteLoop 가 돌린다.
+        new SlotDef(IngredientType.Broth,        "육수",     TopLeft, 140f, -400f, BrothPotSize,
+                    CookDir + "육수 냄비.png", liquid: true, loopCell: 128),
 
-        // 가운데 아래: 면 튀김기 2대.
-        // 두 그림은 한 대를 반으로 자른 것이다. 얇은면은 오른쪽 끝이, 굵은면은 왼쪽 끝이
-        // 잘려 있어서 "얇은면 → 굵은면" 순서로 딱 붙여야 한 대로 이어진다. 순서를 바꾸면 갈라진다.
-        // 이어지려면 간격이 통 너비(128)와 정확히 같아야 한다. 벌어지거나 겹치면 이음매가 보인다.
-        //
-        // 굵기는 채점에 반영된다. 라멘마다 기본 면이 정해져 있고 주문에 교체 요청이 섞인다.
-        // 그릇 안 그림은 둘이 같다. 시트 마지막 프레임이 면을 그리므로 따로 얹지 않는다.
-        // 이름표를 눕혀 오른쪽이 트인 만큼 튀김기를 그릇 쪽으로 당겼다.
-        // 와이어프레임에서 면은 그릇 바로 아래 가운데에 있다.
-        // 두 대의 간격은 통 너비(84)와 정확히 같아야 한 대로 이어진다. 중심 -42와 +42면
-        // 가장자리가 -84 / 0 / +84로 전부 정수에 떨어지고, 그릇 한가운데 아래에 놓인다.
-        // 세로는 84로 낮아진 만큼 아래에 붙여 화면 밑변(360)에 맞춘다.
-        new SlotDef(IngredientType.ThinNoodles,  "얇은면",   Center, -42f, -138f, NoodleBinSize,
-                    EtcDir + "얇은면.png", EtcDir + "얇은면 그릇용.png", labelAbove: true),
-        new SlotDef(IngredientType.ThickNoodles, "굵은면",   Center, 42f, -138f, NoodleBinSize,
-                    EtcDir + "굵은면.png", EtcDir + "굵은면 그릇용.png", labelAbove: true),
+        // 면은 재료통이 아니라 면통(BuildNoodlePot)이 맡는다. 바구니 둘을 한 그림이 덮고 있어서
+        // 슬롯 표로는 못 만든다.
 
         // 조미료 2종. 튀김기와 재료통 사이에 세로로 둘을 세운다.
         // 와이어프레임처럼 이름표를 눕혀 병 왼쪽에 붙인다. 병이 좁아 아래에 두면 줄이 어긋난다.
         // 클릭하면 젓가락 대신 병 자체를 들고, 그릇에 대면 기울여 뿌린다.
         // 그릇용 그림이 없어 수량만 세고 그릇에는 안 나온다.
-        new SlotDef(IngredientType.FlavorOil,    "향미유",   Center, 164f, -84f, OilBinSize,
-                    TareSheet, liquid: true, labelX: -38f, labelRotated: true,
-                    crop: FlavorOilCrop, hoverCrop: FlavorOilHoverCrop),
-        new SlotDef(IngredientType.ChiliPowder,  "시치미",   Center, 164f, -148f, BinSize,
-                    EtcDir + "시치미.png", liquid: true, labelX: -38f, labelRotated: true),
+        // 시치미. 재료통 왼쪽 열의 빈 위쪽(x 711~831, y 66~334) 한가운데에 세운다.
+        // 조미료라 재료통 무리 안에 두는 편이 손이 덜 간다.
+        new SlotDef(IngredientType.ChiliPowder,  "시치미",   MidRight, -189f, 70f, ChiliBottleSize,
+                    EtcDir + "시치미.png", liquid: true),
 
-        // 오른쪽: 재료통 7개를 세로 한 줄로. 기획서 와이어프레임(3.3, PDF 8쪽) 배치다.
+        // 오른쪽: 재료통 7개를 두 열로. 배치도가 두 열이다.
+        //   오른쪽 열(x -65)   멘마 · 차슈 · 파 · 김 · 계란   다섯 칸을 딱 붙여 세운다
+        //   왼쪽 열 (x -189)  숙주 · 목이버섯                 아래 두 칸에만 붙인다
+        //
+        // 통이 88 이라 줄 간격 90 이면 2칸만 뜬다. 열 사이도 4칸이다.
+        // 다섯 칸이 y 66~514 를 채우고, 왼쪽 둘이 그 아래쪽에 붙어 배치도의 ㄴ 자 모양이 된다.
         //
         // 예전에는 두 열(4+3)이었다. 64짜리 통 7개면 448이라 화면에 안 들어간다고 봤기 때문인데,
         // 그림 파일이 64일 뿐 실제 통은 60x44고 위아래 10칸이 투명 여백이었다. 여백을 잘라내면
@@ -523,27 +684,27 @@ public static class RamenLayoutBuilder
         // 44 x 1.08 = 47.5라 위아래로 1.75씩 커진다. 간격 2가 그걸 받아 주는 최소선이다.
         //
         // 이름표는 통 아래가 아니라 오른쪽에 붙인다. 간격이 2뿐이라 아래에 둘 자리가 없다.
-        new SlotDef(IngredientType.Menma,        "멘마",     MidRight, -90f, 119f, IngredientBinSize,
+        new SlotDef(IngredientType.Menma,        "멘마",     MidRight, -65f, 160f, IngredientBinSize,
                     IngredientDir + "멘마 재료통.png", IngredientDir + "멘마 그릇용.png",
                     labelX: BinLabelOffsetX, crop: IngredientBinCrop, labelRotated: true),
-        new SlotDef(IngredientType.Chashu,       "차슈",     MidRight, -90f, 73f, IngredientBinSize,
+        new SlotDef(IngredientType.Chashu,       "차슈",     MidRight, -65f, 70f, IngredientBinSize,
                     IngredientDir + "차슈 재료통.png", IngredientDir + "차슈 그릇용.png",
                     labelX: BinLabelOffsetX, crop: IngredientBinCrop, labelRotated: true),
-        new SlotDef(IngredientType.GreenOnion,   "파",       MidRight, -90f, 27f, IngredientBinSize,
+        new SlotDef(IngredientType.GreenOnion,   "파",       MidRight, -65f, -20f, IngredientBinSize,
                     IngredientDir + "파 재료통.png", IngredientDir + "파 그릇용.png",
                     labelX: BinLabelOffsetX, crop: IngredientBinCrop, labelRotated: true),
-        new SlotDef(IngredientType.Nori,         "김",       MidRight, -90f, -19f, IngredientBinSize,
+        new SlotDef(IngredientType.Nori,         "김",       MidRight, -65f, -110f, IngredientBinSize,
                     IngredientDir + "김 재료통.png", IngredientDir + "김 그릇용.png",
                     labelX: BinLabelOffsetX, crop: IngredientBinCrop, labelRotated: true),
-        new SlotDef(IngredientType.Egg,          "계란",     MidRight, -90f, -65f, IngredientBinSize,
+        new SlotDef(IngredientType.Egg,          "계란",     MidRight, -65f, -200f, IngredientBinSize,
                     IngredientDir + "계란 재료통.png", IngredientDir + "계란 그릇용.png",
                     labelX: BinLabelOffsetX, crop: IngredientBinCrop, labelRotated: true),
         // 숙주만 파일 이름이 "테두리 강조"가 아니라 "테두리"다.
-        new SlotDef(IngredientType.BeanSprout,   "숙주",     MidRight, -90f, -111f, IngredientBinSize,
+        new SlotDef(IngredientType.BeanSprout,   "숙주",     MidRight, -189f, -110f, IngredientBinSize,
                     IngredientDir + "숙주 재료통.png", IngredientDir + "숙주 그릇용.png",
                     labelX: BinLabelOffsetX, crop: IngredientBinCrop, labelRotated: true),
         // 눕힌 이름표가 46칸뿐이라 네 글자는 안 들어간다. 와이어프레임도 "목이"로 줄여 적혀 있다.
-        new SlotDef(IngredientType.WoodEar,      "목이",     MidRight, -90f, -157f, IngredientBinSize,
+        new SlotDef(IngredientType.WoodEar,      "목이",     MidRight, -189f, -200f, IngredientBinSize,
                     IngredientDir + "목이버섯 재료통.png", IngredientDir + "목이버섯 그릇용.png",
                     labelX: BinLabelOffsetX, crop: IngredientBinCrop, labelRotated: true),
     };
@@ -569,11 +730,14 @@ public static class RamenLayoutBuilder
 
         // 나머지는 전부 640×360 판 안에 넣는다. 아래에서 canvas는 곧 그 판이다.
         Transform canvas = CreateFrame(canvasRoot);
-        TopBarRefs topBar = BuildTopBar(canvas, font);
+        TopBarRefs topBar = BuildTopBar(canvas);
         // 팻말은 통보다 위에 그려져야 가려지지 않는다. 그리기 순서가 곧 만드는 순서라 먼저 만들 수 없어,
         // 오브젝트만 미리 만들어 슬롯에 넘기고 자리는 아래에서 옮긴다.
         SlotNameplate nameplate = BuildSlotNameplate(canvas, font);
         BuildSlots(CreateGroup("Slots", canvas), font, nameplate);
+
+        // 면통은 그릇보다 먼저 만든다. 그릇이 위에 그려져야 면을 부을 때 그릇이 안 가려진다.
+        BuildNoodlePot(canvas);
 
         Bowl bowl = BuildBowl(canvas);
 
@@ -611,6 +775,10 @@ public static class RamenLayoutBuilder
         {
             popup.Root, finalPopup.Root, orderScreen.Root, recipeBook.Root, orderResult.Root
         });
+
+        // 그레인은 DragLayer 보다 뒤에 만든다. 나중에 만든 것이 위에 그려지므로
+        // 커서와 드래그 고스트 위에까지 덮인다. 화면 전체에 고르게 깔려야 하기 때문이다.
+        BuildScreenGrain(canvas);
 
         // 더티 표시만 하면 디스크 파일은 그대로라, 이 상태로 커밋하면 옛 씬이 올라간다.
         // 실제로 한 번 그렇게 커밋돼서 클론 시 주문 시스템이 없는 씬이 나갔다. 그래서 바로 저장한다.
@@ -650,6 +818,101 @@ public static class RamenLayoutBuilder
     /// 그때 요소를 캔버스 가장자리에 직접 붙여 두면 창 크기마다 간격이 벌어져 구도가 흔들린다.
     /// 그래서 크기가 고정된 판을 하나 깔고 거기에 붙인다. 남는 자리는 여백이 된다.
     /// </summary>
+    /// <summary>
+    /// 화면 전체를 덮는 그레인 한 장.
+    ///
+    /// 판(Frame) 크기 그대로 만든다. 셰이더가 uv 를 판 크기 격자로 끊어 알갱이를
+    /// 게임 픽셀에 맞추므로, 상자 크기와 격자가 같아야 1:1 이 된다.
+    /// </summary>
+    private static void BuildScreenGrain(Transform canvas)
+    {
+        Material material = GrainMaterial();
+        if (material == null) return;
+
+        Image grain = CreateImage("ScreenGrain", canvas, Center, Vector2.zero,
+                                  DesignResolution, Color.white);
+        grain.material = material;
+        grain.raycastTarget = false;
+
+        var script = Undo.AddComponent<ScreenGrain>(grain.gameObject);
+        SetPrivateReference(script, "shakeTarget", canvas as RectTransform);
+        SetPrivateFloat(script, "noiseSize", GrainNoiseSize);
+    }
+
+    /// <summary>그레인 머티리얼. 없으면 만들고, 노이즈 그림을 꽂아 둔다.</summary>
+    private static Material GrainMaterial()
+    {
+        Shader shader = Shader.Find("Ramen/PixelGrain");
+        if (shader == null)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] Ramen/PixelGrain 셰이더를 찾지 못했습니다. " +
+                             "Assets/Shaders/PixelGrain.shader 가 있는지 확인해 주세요.");
+            return null;
+        }
+
+        Texture2D noise = GrainNoiseTexture();
+        if (noise == null) return null;
+
+        const string path = "Assets/Shaders/PixelGrain.mat";
+        var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+
+        if (material == null)
+        {
+            material = new Material(shader);
+            AssetDatabase.CreateAsset(material, path);
+        }
+
+        material.shader = shader;
+        material.SetTexture("_NoiseTex", noise);
+        material.SetFloat("_NoiseSize", GrainNoiseSize);
+        EditorUtility.SetDirty(material);
+
+        return material;
+    }
+
+    /// <summary>
+    /// 그레인용 백색잡음. 구워서 Generated 폴더에 둔다.
+    ///
+    /// URP 패키지에도 필름 그레인 그림이 있지만 쓰지 않는다. 그쪽은 부드럽게 뭉개진 그레인이라
+    /// 칸마다 값이 뚝뚝 끊기지 않는다. 여기서는 칸 하나가 텍셀 하나라 이웃과 확실히 달라야 한다.
+    /// </summary>
+    private static Texture2D GrainNoiseTexture()
+    {
+        const int N = GrainNoiseSize;
+        var px = new Color[N * N];
+
+        // 씨앗을 고정한다. 빌더를 돌릴 때마다 그림이 달라지면 무의미한 변경이 커밋에 쌓인다.
+        var random = new System.Random(20260910);
+        for (int i = 0; i < px.Length; i++)
+        {
+            float v = (float)random.NextDouble();
+            px[i] = new Color(v, v, v, 1f);
+        }
+
+        string path = SaveGenerated("GrainNoise", EncodePng(px, N, N));
+        if (path == null) return null;
+
+        var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+        if (importer != null &&
+            (importer.textureType != TextureImporterType.Default
+             || importer.wrapMode != TextureWrapMode.Repeat
+             || importer.filterMode != FilterMode.Point
+             || importer.mipmapEnabled
+             || importer.textureCompression != TextureImporterCompression.Uncompressed))
+        {
+            // 반복해서 읽으므로 Repeat 여야 한다. Clamp 면 가장자리 한 줄이 화면 전체에 늘어난다.
+            // Point 가 아니면 이웃 텍셀이 섞여 칸 경계가 흐려지고, 알갱이가 게임 픽셀과 어긋난다.
+            importer.textureType = TextureImporterType.Default;
+            importer.wrapMode = TextureWrapMode.Repeat;
+            importer.filterMode = FilterMode.Point;
+            importer.mipmapEnabled = false;
+            importer.textureCompression = TextureImporterCompression.Uncompressed;
+            importer.SaveAndReimport();
+        }
+
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+    }
+
     private static Transform CreateFrame(Transform canvas)
     {
         var rt = (RectTransform)CreateGroup("Frame", canvas);
@@ -683,20 +946,22 @@ public static class RamenLayoutBuilder
         //
         // Tiled 는 그림을 원본 크기 그대로 반복해 찍으므로 늘어나지 않는다. 배율 1이면 64칸마다
         // 한 장이다. 임포트에서 wrap 이 Repeat, filter 가 Point 여야 이음매와 픽셀이 안 깨진다.
-        Sprite wood = LoadSprite(GeneratedDir + "WoodCounter_64.png");
-        if (wood != null)
+        Sprite art = LoadPhotoSprite(ScreenDir + "제조화면 배경.png");
+        if (art != null)
         {
-            img.sprite = wood;
-            img.type = Image.Type.Tiled;
-            img.pixelsPerUnitMultiplier = 1f;
+            img.sprite = art;
             img.color = Color.white;
         }
         else
         {
-            Sprite art = LoadPhotoSprite(ScreenDir + "제조화면 배경.png");
-            if (art != null)
+            // 사진이 없으면 코드로 만든 나무 널판을 깐다.
+            // Tiled 는 그림을 원본 크기 그대로 반복해 찍으므로 늘어나지 않는다.
+            Sprite wood = LoadSprite(GeneratedDir + "WoodCounter_64.png");
+            if (wood != null)
             {
-                img.sprite = art;
+                img.sprite = wood;
+                img.type = Image.Type.Tiled;
+                img.pixelsPerUnitMultiplier = 1f;
                 img.color = Color.white;
             }
             else
@@ -711,41 +976,49 @@ public static class RamenLayoutBuilder
 
 
     /// <summary>나중에 연결해야 하는 것들을 묶어 돌려준다.</summary>
-    private static TopBarRefs BuildTopBar(Transform canvas, Font font)
+    /// <summary>
+    /// 조리 화면 상단바.
+    ///
+    /// 판 크기·아이콘·글자를 주문 화면(BuildOrderScreen)과 똑같이 맞춘다. 두 화면이 겹쳐
+    /// 있다가 하나만 걷히는 구조라, 상단바가 서로 다르면 넘어가는 순간 티가 난다.
+    /// 글자도 주문 화면과 같은 TMP 를 쓴다. legacy Text 는 픽셀 폰트를 또렷하게 못 낸다.
+    /// </summary>
+    private static TopBarRefs BuildTopBar(Transform canvas)
     {
+        TMP_FontAsset tmpFont = EnsureTmpFont();
+
         Transform bar = CreateGroup("TopBar", canvas);
-        Sprite panel = PanelSprite();
 
         IconSprites icons = LoadIconSprites();
 
         // 주문 확인 ? 버튼. 그림에 물음표가 들어 있어 글자를 따로 얹지 않는다.
-        Image help = CreateImage("OrderCheckButton", bar, TopLeft, new Vector2(27f, -21f), new Vector2(32f, 32f),
+        Image help = CreateImage("OrderCheckButton", bar, TopLeft, new Vector2(26f, -24f), new Vector2(36f, 36f),
                                  Color.white, icons.Help);
 
         // 날짜와 영업 시각. 왼쪽에 시계 아이콘이 붙은 판이라 글자를 그만큼 오른쪽으로 민다.
-        Image day = CreateImage("DayPanel", bar, TopLeft, new Vector2(127f, -19f), new Vector2(100f, PanelBarHeight),
-                                Color.white, TimeBarSprite(), PanelScale);
-        AttachPanelIcon(day, TimeIconSprite(), new Vector2(20f, 18f));
-        Text dayText = CreateText("Label", day.transform, Center, Vector2.zero,
-                                  new Vector2(100f - 13f, 15f), "1일차", TextBody, PopupInkColor, font,
-                                  TextAnchor.MiddleCenter);
+        Image day = CreateImage("DayPanel", bar, TopLeft, new Vector2(189f, -24f),
+                                new Vector2(200f, PanelBarHeight), Color.white, TimeBarSprite(), PanelScale);
+        AttachPanelIcon(day, TimeIconSprite(), new Vector2(40f, 36f));
+        var dayText = CreateTmpText("Label", day.transform, Center, Vector2.zero,
+                                    new Vector2(174f, 38f), "1일차", TextTitle, tmpFont);
 
         // 제출 영역. 와이어프레임의 회색 가로 바.
-        Image submit = CreateImage("SubmitZone", bar, TopCenter, new Vector2(0f, -18f), new Vector2(187f, 27f),
+        Image submit = CreateImage("SubmitZone", bar, TopCenter, new Vector2(0f, -24f), new Vector2(200f, 36f),
                                    Color.white, icons.SubmitBar);
         Undo.AddComponent<SubmitZone>(submit.gameObject);
-        CreateLabel(submit.transform, "제출하기", TextBody, PopupInkColor, font);
+        var submitLabel = CreateTmpText("Label", submit.transform, Center, Vector2.zero,
+                                        new Vector2(174f, 38f), "완성하기", TextTitle, tmpFont);
+        submitLabel.color = PopupInkColor;
 
         // 누적 매출. 재료비와 자본은 기획 확정으로 제거되어 누적 매출만 표시한다.
-        Image revenue = CreateImage("RevenuePanel", bar, TopRight, new Vector2(-110f, -19f), new Vector2(113f, PanelBarHeight),
-                                    Color.white, MoneyBarSprite(), PanelScale);
-        AttachPanelIcon(revenue, MoneyIconSprite(), new Vector2(18f, 14f));
-        Text revenueText = CreateText("Label", revenue.transform, Center, Vector2.zero,
-                                      new Vector2(113f - 13f, 15f), "누적 수익 : 0₩", TextBody, PopupInkColor, font,
-                                      TextAnchor.MiddleCenter);
+        Image revenue = CreateImage("RevenuePanel", bar, TopRight, new Vector2(-200f, -24f),
+                                    new Vector2(260f, PanelBarHeight), Color.white, MoneyBarSprite(), PanelScale);
+        AttachPanelIcon(revenue, MoneyIconSprite(), new Vector2(36f, 28f));
+        var revenueText = CreateTmpText("Label", revenue.transform, Center, Vector2.zero,
+                                        new Vector2(234f, 38f), "누적 수익 : 0₩", TextTitle, tmpFont);
 
         // 폐기 버튼. onClick은 그릇이 생긴 뒤 WireDiscardButton에서 붙인다.
-        Image discard = CreateImage("DiscardButton", bar, TopRight, new Vector2(-23f, -21f), new Vector2(32f, 32f),
+        Image discard = CreateImage("DiscardButton", bar, TopRight, new Vector2(-26f, -24f), new Vector2(36f, 36f),
                                     Color.white, icons.Trash);
 
         // 손님 대사 줄. 주문 화면(B)이 아직 없어서 조리 화면 위에 글자로만 띄운다.
@@ -754,7 +1027,7 @@ public static class RamenLayoutBuilder
 
     /// <summary>
     /// 슬롯 하나 = 통 그림 + 아래에 이름.
-    /// 고체는 IngredientSlot(드래그), 액체는 LiquidSlot(클릭해서 국자에 담기)이 붙는다.
+    /// 고체는 IngredientSlot, 액체·조미료는 LiquidSlot 이 붙는다. 둘 다 그릇으로 끌어다 놓는다.
     /// </summary>
     /// <summary>
     /// 하루 마감 때 뜨는 정산 팝업. 내용 갱신과 열고 닫기는 B의 DailyResultUI가 한다.
@@ -917,6 +1190,12 @@ public static class RamenLayoutBuilder
             barBorder, barBorder
         };
 
+        // CS0618: TextureImporter.spritesheet 은 폐기 예고 상태다. 유니티는 ISpriteEditorDataProvider
+        // 를 쓰라고 하지만, 새 API 는 칸마다 GUID 를 직접 관리해야 해서 잘못 건드리면 씬이 물고 있는
+        // 스프라이트 참조가 끊긴다. 6000.3 에서는 아직 제대로 동작하니 지금은 경고만 끈다.
+        // 정말 막히면 경고가 아니라 에러(CS0619)로 바뀌어 바로 드러난다. 그때 옮기면 된다.
+        #pragma warning disable 0618
+
         // 칸 좌표까지 비교해야 한다. 개수만 보면 좌표를 고쳐도 다시 자르지 않는다.
         bool needsSlice = importer.spriteImportMode != SpriteImportMode.Multiple
                           || importer.spritesheet == null
@@ -950,6 +1229,7 @@ public static class RamenLayoutBuilder
             importer.spritesheet = slices;
             importer.SaveAndReimport();
         }
+        #pragma warning restore 0618
 
         var found = new System.Collections.Generic.Dictionary<string, Sprite>();
         foreach (Object asset in AssetDatabase.LoadAllAssetsAtPath(path))
@@ -1018,61 +1298,121 @@ public static class RamenLayoutBuilder
 
         Transform root = CreateGroup("OrderNote", canvas);
 
-        // 64x64 그림 안에 영수증이 40x49로 들어 있다. 여백째 늘리면 종이가 뭉개지므로 잘라 쓴다.
-        // 9-슬라이스는 쓰지 않는다. 위쪽 밑줄과 테두리가 가로로 늘어나 뭉개진다.
-        // 대신 원본 비율(40:49)을 지킨 채 통째로 확대한다.
-        Sprite paper = LoadCroppedSprite(UiDir + "Order_history.png", "OrderPaper",
-                                         new Rect(13f, 6f, 40f, 49f), Vector4.zero);
-
-        // 크기는 원본(40x49)의 정수배여야 한다. 3.5배 같은 값을 쓰면 종이 테두리가
-        // 어떤 줄은 3픽셀, 어떤 줄은 4픽셀이 되어 가장자리가 울퉁불퉁해진다.
+        // 종이.
         //
-        // 6배(240x294)다.
+        // 예전에는 64x64 그림에서 40x49 를 잘라 통째로 6배 확대했다. 그러면 원본의 1픽셀 선이
+        // 전부 6픽셀이 되어, 9-슬라이스로 1픽셀을 지키는 말풍선·상단바와 굵기가 따로 놀았다.
+        // 지금은 종이도 9-슬라이스라 아무리 늘려도 테두리가 1픽셀이다.
         //
-        // 본문 글자를 10칸으로 올리면서 종이도 같이 키워야 했다. 5배(200x245)로는 글자 10칸이
-        // 물리적으로 안 들어간다 — 주문 400건을 재 보니 가장 긴 것이 161칸인데 종이가 내주는
-        // 세로가 155칸뿐이었다. 8칸 글자로 내리면 5배로도 되지만 그때는 글씨가 너무 작았다.
-        // 자리는 OrderNoteUI 가 정한다(숨은 자리 -440, 나온 자리 -40). 여기서는 숨은 자리로 둔다.
-        // 왼쪽 바깥에서 미끄러져 들어와 화면 한가운데보다 조금 왼쪽에 선다.
+        // 높이는 여기서 정하지 않는다. 대사 길이에 따라 OrderNoteUI 가 매번 다시 잡는다.
+        // 여기 넣는 값은 씬에서 눈으로 볼 때 쓰는 임시값이다.
+        // 자리도 OrderNoteUI 가 정한다. 여기서는 화면 왼쪽 바깥(숨은 자리)에 둔다.
         Image sheet = CreateImage("Paper", root, Center, new Vector2(-440f, 0f),
-                                  new Vector2(240f, 294f), Color.white, paper);
-        // 스프라이트에 옛 9-슬라이스 테두리 값(6,10,6,14)이 남아 있어 CreateImage가 Sliced를 고른다.
-        // 그대로 두면 머리글이 있는 위쪽 14픽셀 띠만 3배로 눌리고 가운데만 늘어나 글자가 뭉개진다.
-        // 여기는 통째로 균일 확대해야 하므로 Simple로 되돌린다.
-        sheet.type = Image.Type.Simple;
-        sheet.preserveAspect = true;
+                                  new Vector2(NoteWidth, NoteChromeHeight + 130f),
+                                  Color.white, NotePaperSprite());
+        sheet.type = Image.Type.Sliced;
+        sheet.pixelsPerUnitMultiplier = 1f;
         sheet.raycastTarget = false;
 
-        // 머리글은 그림에서 지웠다. 64px 그림에 박힌 픽셀 글자를 10.5배로 늘리면 획이 뭉개진다.
-        // 원본 글자가 있던 자리(종이 왼쪽 끝에서 31px, 위에서 21~105px)에 같은 폰트로 다시 쓴다.
-        var header = CreateTmpText("HeaderText", sheet.transform, TopLeft, new Vector2(98f, -36f),
-                                   new Vector2(136f, 28f), "주문서", TextHead, tmpFont);
-        header.alignment = TextAlignmentOptions.Left;
-
-        // 대사는 머리글 밑줄(위에서 115px)과 합계 줄(위에서 399px) 사이에만 놓는다.
-        // 그 구간의 한가운데가 종이 정중앙이라 좌표는 0이다.
-        // 머리글 밑줄과 합계 줄 사이(종이 높이의 22~77%)가 대사 자리다.
-        // 글자 자리는 종이 그림에 그려진 줄에 맞춰 잡았다. 원본 49줄짜리 종이에서
-        // 머리글 밑줄이 9번째, 아래 합계 줄이 40번째다. 6배로 띄우면 종이 위에서 54칸과 240칸이고,
-        // 종이 한가운데를 0으로 보면 그 사이가 y -93 ~ +93, 즉 186칸이다.
+        // 마우스를 올리면 종이가 흐려진다. 글자·선·톱니까지 한꺼번에 흐려져야 하므로
+        // 낱장마다 색을 만지지 않고 종이에 CanvasGroup 을 하나 씌운다.
         //
-        // 상자를 그 안에 꽉 채워 위쪽 여백을 없앤다. 예전에는 상자가 band 보다 작아
-        // 밑줄과 첫 줄 사이가 벌어져 보였다.
-        var dialogue = CreateTmpText("DialogueText", sheet.transform, Center, Vector2.zero,
-                                     new Vector2(200f, 186f), "", TextSmall, tmpFont);
+        // blocksRaycasts 를 꺼 둔다. 종이는 재료통과 그릇을 덮고 있는데, 이걸 켜면
+        // 안에 있는 것이 전부 클릭을 가로채 뒤를 못 만지게 된다.
+        var noteFade = Undo.AddComponent<CanvasGroup>(sheet.gameObject);
+        noteFade.blocksRaycasts = false;
+        noteFade.interactable = false;
+
+        // 머리글.
+        var header = CreateTmpText("HeaderText", sheet.transform, TopLeft,
+                                   new Vector2(NoteMargin, -8f), new Vector2(NoteTextWidth, 14f),
+                                   "주문서", NoteTitleFontSize, tmpFont);
+        header.alignment = TextAlignmentOptions.TopLeft;
+        header.rectTransform.pivot = TopLeft;
+        header.rectTransform.anchoredPosition = new Vector2(NoteMargin, -8f);
+
+        // 구분선. 4x1 짜리 점선 한 칸을 가로로 깐다. 선 하나를 통째로 늘리면
+        // 점 간격이 종이 폭에 따라 들쭉날쭉해진다.
+        CreateNoteRule(sheet.transform, TopLeft, -28f);
+
+        // 영수증 머리의 정보줄. 값은 OrderNoteUI 가 채운다.
+        //
+        // 라멘 종류는 일부러 넣지 않는다. 무슨 라멘인지 알아내는 것이 이 게임의 기본 과제라
+        // 여기 적어 두면 답을 알려 주는 꼴이 된다.
+        var dayLabel = CreateTmpText("DayLabel", sheet.transform, TopLeft,
+                                     new Vector2(NoteMargin, -34f), new Vector2(60f, 14f),
+                                     "1일차", TextSmall, tmpFont);
+        dayLabel.alignment = TextAlignmentOptions.TopLeft;
+        dayLabel.color = NoteFadeColor;
+        dayLabel.rectTransform.pivot = TopLeft;
+        dayLabel.rectTransform.anchoredPosition = new Vector2(NoteMargin, -34f);
+
+        var customerLabel = CreateTmpText("CustomerLabel", sheet.transform, TopRight,
+                                          new Vector2(-NoteMargin, -34f), new Vector2(94f, 14f),
+                                          "1번째 손님", TextSmall, tmpFont);
+        customerLabel.alignment = TextAlignmentOptions.TopRight;
+        customerLabel.color = NoteFadeColor;
+        customerLabel.rectTransform.pivot = TopRight;
+        customerLabel.rectTransform.anchoredPosition = new Vector2(-NoteMargin, -34f);
+
+        CreateNoteRule(sheet.transform, TopLeft, -53f);
+
+        // 손님 대사. 위에 붙여 두고 아래로 자란다. 높이는 OrderNoteUI 가 매번 다시 잡는다.
+        var dialogue = CreateTmpText("DialogueText", sheet.transform, TopLeft,
+                                     new Vector2(NoteMargin, -61f), new Vector2(NoteTextWidth, 130f),
+                                     "", NoteFontSize, tmpFont);
         dialogue.alignment = TextAlignmentOptions.TopLeft;
+        dialogue.rectTransform.pivot = TopLeft;
+        dialogue.rectTransform.anchoredPosition = new Vector2(NoteMargin, -61f);
+        ApplyPixelLineSpacing(dialogue, NoteLineHeight);
 
-        // 줄 간격 11칸. 글자(10칸)에 딱 맞춰 좁히면 줄이 붙어 읽기 나쁘고,
-        // 12칸으로 벌리면 가장 긴 주문이 종이를 넘친다.
-        ApplyPixelLineSpacing(dialogue, TextSmall + 1f);
-
-        // 자동 크기 조절을 껐다. TMP가 16~26 사이에서 아무 값이나 골라 버리면
-        // 11의 배수 규칙이 그 자리에서 깨져 글자에 회색이 낀다. 넘치면 줄이 아니라 판을 손본다.
+        // 자동 크기 조절을 껐다. TMP가 아무 값이나 골라 버리면 8·10·12·15 규칙이 그 자리에서
+        // 깨져 글자에 회색이 낀다. 넘치면 글자가 아니라 종이를 늘린다.
         dialogue.enableAutoSizing = false;
+
+        // 아래 구분선은 종이 아래변에 붙인다. 종이가 길어져도 늘 맨 아래에 있다.
+        CreateNoteRule(sheet.transform, BottomLeft, 5f);
+
+        // 톱니.
+        //
+        // 종이 "밖" 아래에 매단다. 종이 안에 두면 잘려 나간 자리에서 뒤가 아니라
+        // 종이 자신의 채움이 비쳐, 오려낸 게 아니라 종이 위에 지그재그를 그린 꼴이 된다.
+        // 아래변(anchor 0,0)에 톱니 윗변(pivot 0,1)을 걸어 종이 밑으로 떨어뜨린다.
+        //
+        // 종이 아래 두 줄에는 가로 테두리가 없다(NotePaperSprite). 그 열린 자리를
+        // 톱니가 이어받아 종이의 아래 끝이 된다.
+        Image torn = CreateImage("TornEdge", sheet.transform, BottomLeft,
+                                 Vector2.zero, new Vector2(NoteWidth, NoteTornHeight),
+                                 Color.white, NoteTornSprite());
+        torn.type = Image.Type.Tiled;
+        torn.pixelsPerUnitMultiplier = 1f;
+        torn.raycastTarget = false;
+        torn.rectTransform.pivot = TopLeft;
+        torn.rectTransform.anchoredPosition = Vector2.zero;
 
         root.gameObject.SetActive(false);
 
-        return new OrderNoteRefs { Root = root.gameObject, Dialogue = dialogue, Paper = sheet.rectTransform };
+        return new OrderNoteRefs
+        {
+            Root = root.gameObject,
+            Dialogue = dialogue,
+            Paper = sheet.rectTransform,
+            Fade = noteFade,
+            DayLabel = dayLabel,
+            CustomerLabel = customerLabel,
+        };
+    }
+
+    /// <summary>주문서 점선 한 줄. 4x1 짜리 점 한 칸을 가로로 깐다.</summary>
+    private static void CreateNoteRule(Transform parent, Vector2 anchor, float y)
+    {
+        Image rule = CreateImage("Rule", parent, anchor, new Vector2(NoteMargin, y),
+                                 new Vector2(NoteTextWidth, 1f), NoteFadeColor, NoteRuleSprite());
+        rule.type = Image.Type.Tiled;
+        rule.pixelsPerUnitMultiplier = 1f;
+        rule.raycastTarget = false;
+        rule.rectTransform.pivot = anchor;
+        rule.rectTransform.anchoredPosition = new Vector2(NoteMargin, y);
     }
 
     // 시간·수익 판은 막대와 아이콘을 따로 잘라 쓴다.
@@ -1081,8 +1421,39 @@ public static class RamenLayoutBuilder
 
     private static Sprite TimeBarSprite()
     {
-        return LoadCroppedSprite(UiDir + "Time.png", "TimeBar",
-                                 new Rect(19f, 27f, 37f, 16f), new Vector4(6f, 5f, 6f, 5f));
+        return BarSprite(UiDir + "Time.png", "TimeBar",
+                         new RectInt(19, 27, 37, 16), new Vector4(6f, 5f, 6f, 5f));
+    }
+
+    /// <summary>
+    /// 상단 판. 왼쪽 외곽선을 그려 넣은 것을 따로 구워 쓴다.
+    ///
+    /// 원본 그림은 아이콘이 판 왼쪽 끝에 겹쳐 그려져 있다. 아이콘을 빼고 막대만 자르려면
+    /// 아이콘 오른쪽에서 잘라야 하는데, 그 자리가 하필 판의 왼쪽 외곽선이라 선까지 잘려 나간다.
+    /// 그래서 오른쪽 변에서 테두리 색을 떠다가 왼쪽 끝에 한 줄 긋는다.
+    ///
+    /// 위아래 모서리 줄은 건드리지 않는다. 그 줄들은 오른쪽 끝이 테두리가 아니라 비어 있거나
+    /// 그림자라, 같이 칠하면 모서리가 각지거나 색이 튄다.
+    /// </summary>
+    private static Sprite BarSprite(string sourcePath, string outputName, RectInt area, Vector4 border)
+    {
+        Texture2D texture = ReadableTexture(sourcePath);
+        if (texture == null) return null;
+
+        Color[] px = texture.GetPixels(area.x, area.y, area.width, area.height);
+
+        for (int y = 0; y < area.height; y++)
+        {
+            Color right = px[y * area.width + (area.width - 1)];
+            if (!IsOutlineColor(right)) continue;
+
+            px[y * area.width] = right;
+        }
+
+        string path = SaveGenerated(outputName, EncodePng(px, area.width, area.height));
+        if (path == null) return null;
+
+        return LoadSlicedSprite(path, border);
     }
 
     /// <summary>시계 아이콘만. 그림 좌표로 x9~18, y17~25. x8 칸은 막대의 왼쪽 테두리라 뺀다.</summary>
@@ -1093,8 +1464,8 @@ public static class RamenLayoutBuilder
 
     private static Sprite MoneyBarSprite()
     {
-        return LoadCroppedSprite(UiDir + "Money_UI2.png", "MoneyBar",
-                                 new Rect(17f, 16f, 40f, 20f), new Vector4(6f, 6f, 6f, 6f));
+        return BarSprite(UiDir + "Money_UI2.png", "MoneyBar",
+                         new RectInt(17, 16, 40, 20), new Vector4(6f, 6f, 6f, 6f));
     }
 
     /// <summary>원 표시 배지만. 그림 좌표로 x8~16, y25~31. x7 칸은 막대의 왼쪽 테두리라 뺀다.</summary>
@@ -1232,22 +1603,343 @@ public static class RamenLayoutBuilder
         return list.ToArray();
     }
 
+    /// <summary>
+    /// 말풍선 본문. 꼬리를 뺀 사각형만 9-슬라이스로 쓴다.
+    ///
+    /// 원본을 그대로 잘라 쓰지 않고 구워서 쓴다. 오른쪽 테두리에 뚫린 꼬리 입구를 메워야
+    /// 하기 때문이다. 까닭은 BuildBubbleBodyBytes 에 적었다.
+    /// </summary>
     private static Sprite SpeechBubbleBodySprite()
     {
-        return LoadCroppedSprite(UiDir + "Order UI.png", "SpeechBubbleBody",
-                                 new Rect(7f, 19f, 46f, 28f), new Vector4(4f, 4f, 4f, 4f));
+        string path = SaveGenerated("BubbleBody", BuildBubbleBodyBytes());
+        if (path == null) return null;
+
+        return LoadSlicedSprite(path, new Vector4(4f, 4f, 4f, 4f));
     }
 
     /// <summary>
     /// 말풍선 꼬리. 본문 오른쪽에 따로 붙인다.
     ///
-    /// 꼬리까지 9-슬라이스에 넣으면 세로로 늘어나 뭉개진다. 원본 7x5 를 그대로 두고
-    /// 본문 오른쪽 끝에 얹는다.
+    /// 꼬리까지 9-슬라이스에 넣으면 세로로 늘어나 뭉개진다. 그렇다고 원본 8x5 를 그대로 두면
+    /// 240x96 짜리 말풍선에서 눈에 안 띈다. 실루엣만 키워 다시 구운 그림을 쓴다.
     /// </summary>
     private static Sprite SpeechBubbleTailSprite()
     {
-        return LoadCroppedSprite(UiDir + "Order UI.png", "SpeechBubbleTail",
-                                 new Rect(53f, 34f, 7f, 5f), Vector4.zero);
+        string path = SaveGenerated("BubbleTail", BuildBubbleTailBytes());
+        if (path == null) return null;
+
+        return LoadSprite(path);
+    }
+
+    /// <summary>
+    /// 본문 PNG. 원본에서 잘라 오되 오른쪽 테두리에 뚫린 꼬리 입구를 메운다.
+    ///
+    /// 원본에는 꼬리가 붙는 자리의 테두리가 세 줄 터져 있다. 9-슬라이스는 가운데를 늘리는데
+    /// 하필 그 세 줄이 늘어나는 구간에 들어가, 28칸을 96칸으로 키우면 4.4배가 되어
+    /// 13칸짜리 구멍이 됐다. 꼬리는 위에서 잰 거리로 따로 고정돼 있어 구멍과 만나지도 않는다.
+    ///
+    /// 그래서 테두리는 끊김 없이 메워 두고, 입은 꼬리 그림이 본문 테두리를 한 칸 물고
+    /// 덮어서 만든다.
+    /// </summary>
+    private static byte[] BuildBubbleBodyBytes()
+    {
+        Texture2D texture = ReadableTexture(UiDir + "Order UI.png");
+        if (texture == null) return null;
+
+        Color[] px = texture.GetPixels(BubbleBodyX, BubbleBodyY, BubbleBodyW, BubbleBodyH);
+
+        int clean = CleanEdgeRow(px);
+        if (clean < 0) return null;
+
+        for (int y = 0; y < BubbleBodyH; y++)
+        {
+            Color right = px[y * BubbleBodyW + (BubbleBodyW - 1)];
+
+            // 위아래 둥근 모서리는 오른쪽 끝이 비어 있다. 거기까지 메우면 모서리가 각진다.
+            if (right.a <= 0.5f || IsOutlineColor(right)) continue;
+
+            for (int i = 1; i <= 4; i++)
+                px[y * BubbleBodyW + (BubbleBodyW - i)] = px[clean * BubbleBodyW + (BubbleBodyW - i)];
+        }
+
+        return EncodePng(px, BubbleBodyW, BubbleBodyH);
+    }
+
+    /// <summary>
+    /// 꼬리 PNG. 원본 실루엣만 정수배로 키우고 외곽선을 1픽셀로 다시 긋는다.
+    ///
+    /// 그림을 통째로 늘리면 1픽셀이던 외곽선도 같이 굵어져 본문 테두리와 따로 논다.
+    /// 본문에 물리는 왼쪽 변은 테두리를 치지 않는다. 그 열린 자리가 꼬리의 입이다.
+    /// </summary>
+    private static byte[] BuildBubbleTailBytes()
+    {
+        Texture2D texture = ReadableTexture(UiDir + "Order UI.png");
+        if (texture == null) return null;
+
+        if (!BubblePalette(texture, out Color outline, out Color fill, out Color shade)) return null;
+
+        int n = Mathf.Max(1, BubbleTailScale);
+        int w = BubbleTailW * n;
+        int h = BubbleTailH * n;
+
+        // 원본 8x5 를 그대로 확대하지 않는다. 확대하면 비스듬한 변이 세 칸씩 뚝뚝 끊겨
+        // 계단이 굵게 보인다. 같은 모양을 제 크기에서 다시 그려 계단을 한 칸씩으로 만든다.
+        //
+        // 모양은 원본을 따른다. 위쪽 절반쯤은 폭이 그대로고 거기서부터 아래로 좁아진다.
+        // 원본의 줄별 폭이 8·8·8·6·3 이라 위 60% 가 평평하고 아래가 빠르게 준다.
+        int flatRows = Mathf.RoundToInt(h * 0.45f);
+        float endWidth = w * 0.3f;
+
+        var solid = new bool[w * h];
+        for (int y = 0; y < h; y++)
+        {
+            float t = h - 1 - flatRows <= 0 ? 1f : (y - flatRows) / (float)(h - 1 - flatRows);
+            float rowWidth = y < flatRows ? w : Mathf.Lerp(w, endWidth, Mathf.Clamp01(t));
+            int cut = Mathf.Max(1, Mathf.RoundToInt(rowWidth));
+
+            // SetPixels 는 아래에서 위로 담는다. 위에서부터 그린 줄을 뒤집어 넣어야
+            // 원본처럼 위가 넓고 아래로 좁아진다.
+            for (int x = 0; x < cut; x++) solid[(h - 1 - y) * w + x] = true;
+        }
+
+        var kind = new byte[w * h];                  // 0 빈칸 · 1 테두리 · 2 채움 · 3 그림자
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                if (!solid[y * w + x]) continue;
+
+                bool edge = !(TailInside(solid, w, h, x - 1, y) && TailInside(solid, w, h, x + 1, y)
+                              && TailInside(solid, w, h, x, y - 1) && TailInside(solid, w, h, x, y + 1));
+                kind[y * w + x] = (byte)(edge ? 1 : 2);
+            }
+        }
+
+        // 아래쪽 테두리 바로 안에 그림자를 한 줄 넣는다.
+        // GetPixels 는 아래에서 위로 담기므로 '아래'가 y-1 이다.
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                if (kind[y * w + x] != 2) continue;
+
+                byte below = y == 0 ? (byte)0 : kind[(y - 1) * w + x];
+                if (below == 0 || below == 1) kind[y * w + x] = 3;
+            }
+        }
+
+        var px = new Color[w * h];
+        for (int i = 0; i < px.Length; i++)
+        {
+            px[i] = kind[i] == 1 ? outline
+                  : kind[i] == 2 ? fill
+                  : kind[i] == 3 ? shade
+                  : new Color(0f, 0f, 0f, 0f);
+        }
+
+        return EncodePng(px, w, h);
+    }
+
+    /// <summary>
+    /// 꼬리 실루엣 안쪽인가. 왼쪽 바깥은 본문이 이어진다고 본다.
+    /// 그래야 본문에 물리는 변에 외곽선이 생기지 않는다.
+    /// </summary>
+    private static bool TailInside(bool[] solid, int w, int h, int x, int y)
+    {
+        if (x < 0) return true;
+
+        return x < w && y >= 0 && y < h && solid[y * w + x];
+    }
+
+    /// <summary>
+    /// 말풍선 원본의 세 가지 색. 테두리가 온전한 줄의 오른쪽 끝에서 그대로 뜬다.
+    /// 값을 코드에 적어 두면 그림을 다시 칠했을 때 꼬리만 옛 색으로 남는다.
+    /// </summary>
+    private static bool BubblePalette(Texture2D texture, out Color outline, out Color fill, out Color shade)
+    {
+        outline = fill = shade = Color.clear;
+
+        Color[] px = texture.GetPixels(BubbleBodyX, BubbleBodyY, BubbleBodyW, BubbleBodyH);
+
+        int clean = CleanEdgeRow(px);
+        if (clean < 0) return false;
+
+        int right = clean * BubbleBodyW + (BubbleBodyW - 1);
+        outline = px[right];
+        shade = px[right - 1];
+        fill = px[right - 2];
+        return true;
+    }
+
+    /// <summary>
+    /// 오른쪽 테두리가 온전한 줄. 검은 칸이 하나뿐인 줄을 찾는다.
+    /// 둥근 모서리 줄은 검은 칸이 둘이라 거기서 뜨면 메운 자리만 테두리가 굵어진다.
+    /// </summary>
+    private static int CleanEdgeRow(Color[] px)
+    {
+        for (int y = 4; y < BubbleBodyH - 4; y++)
+        {
+            int right = y * BubbleBodyW + (BubbleBodyW - 1);
+            if (IsOutlineColor(px[right]) && !IsOutlineColor(px[right - 1])) return y;
+        }
+
+        Debug.LogWarning("[RamenLayoutBuilder] 말풍선 오른쪽 테두리가 온전한 줄을 찾지 못했습니다.");
+        return -1;
+    }
+
+    /// <summary>말풍선 검은 테두리인가. 채움·그림자와 구별만 되면 된다.</summary>
+    private static bool IsOutlineColor(Color c)
+    {
+        return c.a > 0.5f && c.r + c.g + c.b < 0.9f;
+    }
+
+    /// <summary>픽셀을 읽을 수 있게 만든 뒤 그림을 돌려준다.</summary>
+    private static Texture2D ReadableTexture(string path)
+    {
+        var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+        if (importer == null)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] 그림을 찾지 못했습니다: " + path);
+            return null;
+        }
+
+        if (!importer.isReadable)
+        {
+            importer.isReadable = true;
+            importer.SaveAndReimport();
+        }
+
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+    }
+
+    /// <summary>픽셀 배열을 PNG 바이트로 굽는다.</summary>
+    private static byte[] EncodePng(Color[] pixels, int width, int height)
+    {
+        var texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+        texture.SetPixels(pixels);
+        texture.Apply();
+
+        byte[] png = texture.EncodeToPNG();
+        Object.DestroyImmediate(texture);
+        return png;
+    }
+
+    /// <summary>구운 PNG 를 Generated 폴더에 둔다. 내용이 같으면 다시 쓰지 않는다.</summary>
+    private static string SaveGenerated(string outputName, byte[] made)
+    {
+        if (made == null) return null;
+
+        string folder = UiDir + "Generated";
+        string outPath = folder + "/" + outputName + ".png";
+
+        if (!AssetDatabase.IsValidFolder(folder))
+        {
+            AssetDatabase.CreateFolder(UiDir.TrimEnd('/'), "Generated");
+        }
+
+        string full = System.IO.Path.GetFullPath(outPath);
+        bool changed = !System.IO.File.Exists(full)
+                       || !ByteArraysEqual(System.IO.File.ReadAllBytes(full), made);
+
+        if (changed)
+        {
+            System.IO.File.WriteAllBytes(full, made);
+            AssetDatabase.ImportAsset(outPath, ImportAssetOptions.ForceUpdate);
+        }
+
+        return outPath;
+    }
+
+    /// <summary>
+    /// 주문서 종이. 9-슬라이스로 쓸 6x6 이다.
+    ///
+    /// 테두리 두 칸씩을 원본 크기로 찍고 가운데만 늘리므로 종이가 아무리 커져도 선은 1픽셀이다.
+    /// 아래 두 줄에는 가로 테두리를 긋지 않는다. 종이 아래변은 톱니 그림이 맡는다.
+    /// </summary>
+    private static Sprite NotePaperSprite()
+    {
+        string path = SaveGenerated("NotePaper", BuildNotePaperBytes());
+        if (path == null) return null;
+
+        return LoadSlicedSprite(path, new Vector4(2f, 2f, 2f, 2f));
+    }
+
+    private static byte[] BuildNotePaperBytes()
+    {
+        const int N = 6;
+        var px = new Color[N * N];
+
+        for (int y = 0; y < N; y++)
+        {
+            for (int x = 0; x < N; x++)
+            {
+                // GetPixels·SetPixels 는 아래에서 위로 담긴다. y = N-1 이 맨 윗줄이다.
+                bool side = x == 0 || x == N - 1;
+                bool top = y == N - 1;
+
+                px[y * N + x] = side || top ? NoteOutlineColor
+                              : x == N - 2 ? NoteShadeColor
+                              : NotePaperColor;
+            }
+        }
+
+        return EncodePng(px, N, N);
+    }
+
+    /// <summary>
+    /// 종이 아래 톱니. 가로로 깔아 쓰는 8x6 한 칸이다.
+    ///
+    /// 9-슬라이스로는 못 만든다. 늘리는 구간에 들어가면 톱니가 가로로 늘어나 뭉개진다.
+    /// 그래서 Tiled 로 같은 칸을 반복해 깐다.
+    /// </summary>
+    private static Sprite NoteTornSprite()
+    {
+        string path = SaveGenerated("NoteTorn", BuildNoteTornBytes());
+        if (path == null) return null;
+
+        return LoadSprite(path);
+    }
+
+    private static byte[] BuildNoteTornBytes()
+    {
+        const int W = 8, H = 6;
+        var px = new Color[W * H];          // 기본은 투명
+
+        for (int x = 0; x < W; x++)
+        {
+            // 0 1 2 3 4 3 2 1 처럼 오르내린다. 한 칸이 끝나고 다음 칸이 시작해도 이어진다.
+            int depth = Mathf.Abs((x + 3) % W - 4);
+
+            for (int d = 0; d <= depth; d++) px[(H - 1 - d) * W + x] = NotePaperColor;
+
+            int edge = H - 1 - (depth + 1);
+            if (edge >= 0) px[edge * W + x] = NoteOutlineColor;
+        }
+
+        return EncodePng(px, W, H);
+    }
+
+    /// <summary>
+    /// 구분선 점 한 칸. 4x1 에 두 칸만 찍혀 있고 이걸 가로로 깐다.
+    /// 색은 흰색으로 두고 Image.color 로 입힌다.
+    /// </summary>
+    private static Sprite NoteRuleSprite()
+    {
+        string path = SaveGenerated("NoteRule", BuildNoteRuleBytes());
+        if (path == null) return null;
+
+        return LoadSprite(path);
+    }
+
+    private static byte[] BuildNoteRuleBytes()
+    {
+        var px = new Color[4];
+        px[0] = Color.white;
+        px[1] = Color.white;
+        px[2] = new Color(0f, 0f, 0f, 0f);
+        px[3] = new Color(0f, 0f, 0f, 0f);
+
+        return EncodePng(px, 4, 1);
     }
 
     private static Sprite SpeechBubbleSprite()
@@ -1269,6 +1961,7 @@ public static class RamenLayoutBuilder
             return null;
         }
 
+        #pragma warning disable 0618 // spritesheet 폐기 예고 — LoadIconSprites 의 설명 참조
         // 한 파일에서 조각을 여럿 잘라 쓸 수 있어야 한다. 이미 있는 조각은 두고 필요한 것만 더한다.
         var slices = new System.Collections.Generic.List<SpriteMetaData>();
         if (importer.spriteImportMode == SpriteImportMode.Multiple && importer.spritesheet != null)
@@ -1306,6 +1999,7 @@ public static class RamenLayoutBuilder
             importer.spritesheet = slices.ToArray();
             importer.SaveAndReimport();
         }
+        #pragma warning restore 0618
 
         foreach (Object asset in AssetDatabase.LoadAllAssetsAtPath(path))
         {
@@ -1393,25 +2087,67 @@ public static class RamenLayoutBuilder
         // 포장마차 그림. 노렌·뒷벽·카운터가 다 들어 있어서, 예전에 자리만 잡아 두었던
         // BackWall·CounterFront·CounterTop 색판 세 장을 이 한 장이 대신한다.
         // Night 와 달리 판(640x360)에 맞춘다. ScreenCover 로 두면 3배로 늘어나 가운데만 보인다.
-        var scenery = CreateImage("Scenery", root, Center, Vector2.zero, new Vector2(640f, 360f),
+        var scenery = CreateImage("Scenery", root, Center, Vector2.zero, DesignResolution,
                                   Color.white, LoadPhotoSprite(ScreenDir + "주문화면 배경.png"));
         scenery.raycastTarget = false;
 
+        // 3컷에서만 켜지는 우주 배경. 포장마차를 통째로 덮되 손님보다는 뒤에 있어야 하므로
+        // 여기서 만든다(유니티 UI 는 나중에 만든 형제가 위에 그려진다).
+        // Scenery 와 같이 판(640x360)에 맞춘다. ScreenCover 로 두면 3배로 늘어나 가운데만 보인다.
+        //
+        // Scenery 와 달리 LoadPhotoSprite 를 쓰면 안 된다. 그쪽은 Bilinear 로 넣는데,
+        // 1671x941 짜리를 640 으로 줄여 쓰는 그림에는 그게 맞지만 이 그림은 640x360 픽셀아트다.
+        // 보간하면 1픽셀 별이 뭉개지고, 압축까지 걸리면 디더 무늬에 얼룩이 생긴다.
+        Image cosmos = CreateImage("Cosmos", root, Center, Vector2.zero, DesignResolution,
+                                   Color.white, LoadSprite(ScreenDir + "우주 배경.png"));
+        cosmos.raycastTarget = false;
+        cosmos.enabled = false;
+
+        // 번개 한 방. 11시에서 5시로 가는 방향이 그림에 이미 구워져 있어 돌리지 않는다.
+        // 손님보다 먼저 만들어 뒤에 깔리게 한다. 앞에 두면 번쩍일 때 얼굴을 가린다.
+        Image bolt = CreateImage("Bolt", root, Center, Vector2.zero, DesignResolution,
+                                 Color.white, LoadSprite(EtcDir + "큰번개.png"));
+        bolt.raycastTarget = false;
+        bolt.enabled = false;
+
+        // 감동 오우라. 손님 뒤에서 퍼져야 한다 — 앞에 두면 금빛 고리가 얼굴을 가로지른다.
+        // 그림은 160칸인데 상자를 320으로 둔다. 정확히 2배라 픽셀이 안 깨지고,
+        // 3배로 당긴 얼굴(246칸)을 감쌀 만큼 커진다.
+        Image aura = CreateImage("Aura", root, Center, Vector2.zero, new Vector2(320f, 320f),
+                                 Color.white);
+        aura.raycastTarget = false;
+        aura.enabled = false;
+
         // 손님 자리.
         //
-        // 손님은 카운터 "너머"에 서 있어야 한다. 예전에는 아래끝이 240이라 카운터 앞면(216.5)을
-        // 23칸 파고들어, 사람이 상 위로 삐져나온 것처럼 보였다.
-        // 지금은 상단바 아래(40)부터 카운터가 시작되는 216까지, 그 사이에만 들어가게 잡았다.
-        //   화면 세로 40 ~ 216 = 176칸,  가운데는 128 → Center 기준 y = 180 - 128 = 52
+        // 손님은 카운터 "너머"에 서 있어야 한다. 자리의 아래변이 곧 카운터 선이고,
+        // 아래에 씌운 마스크가 거기서 몸을 잘라 카운터에 가린 것처럼 보이게 한다.
+        //
+        // 카운터 선은 배경 그림에서 직접 쟀다. 주문화면 배경.png 는 1671x941 사진인데
+        // 나무가 화면 폭을 다 덮기 시작하는 줄이 596 이다. 사진은 판 높이에 맞춰 눌러 담긴다.
+        //
+        // 숫자를 적어 두지 않고 판 높이에서 계산한다. 예전에 -48 로 박아 두었더니
+        // 판이 640x360 에서 960x540 으로 바뀌면서 24칸이 어긋났다. 잘린 몸 아래로 배경이
+        // 비쳐 손님이 상 위에 떠 있는 것처럼 보인다.
+        //   360 칸이면 -48,  540 칸이면 -72 가 나온다.
         //
         // 얼굴과 몸통을 따로 얹는다. 손님이 바뀔 때마다 CustomerAppearance 가 무작위로 짝짓는다.
         // 그림 여덟 장(얼굴 4 + 몸통 4)으로 열여섯 가지가 나온다.
+
+        /// 사진 941 줄 중 나무가 화면을 덮기 시작하는 줄.
+        const float CounterRow = 596f / 941f;
+
+        float CounterLineY = Mathf.Round(DesignResolution.y * (0.5f - CounterRow));
+
+        // 상단바 바로 아래. 판이 커지면 상단바도 위로 따라가므로 같이 계산한다.
+        float CustomerTopY = Mathf.Round(DesignResolution.y * 0.5f - 24f - PanelBarHeight * 0.5f - 4f);
+
         var slot = (RectTransform)CreateGroup("CustomerSlot", root);
         slot.anchorMin = Center;
         slot.anchorMax = Center;
         slot.pivot = Center;
-        slot.anchoredPosition = new Vector2(0f, 52f);
-        slot.sizeDelta = new Vector2(126f, 176f);
+        slot.anchoredPosition = new Vector2(0f, (CustomerTopY + CounterLineY) * 0.5f);
+        slot.sizeDelta = new Vector2(126f, CustomerTopY - CounterLineY);
 
         // 자리 밖으로 나간 부분을 잘라 낸다. 손님을 카운터 선 아래로 내려 두면
         // 여기서 잘려서 카운터 뒤에 서 있는 것처럼 보인다.
@@ -1429,30 +2165,53 @@ public static class RamenLayoutBuilder
         SetPrivateArray(look, "bodies", LoadCustomerParts("body"));
         SetPrivateArray(look, "heads", LoadCustomerParts("head"));
 
+        // 손님이 걸어오는 소리. 오디오 파일이 없어 파형을 코드로 만들어 쓴다.
+        // AudioSource 는 RequireComponent 가 같이 붙여 준다.
+        Undo.AddComponent<Footsteps>(slot.gameObject);
+
         // 손님 대화창.
         //
-        // 크기는 고정이다. 말 길이에 따라 늘였다 줄였다 하면 상자가 계속 들썩여 보인다.
-        // 가장 긴 대사(두 마디 네 줄)가 들어가는 크기로 잡아 두고, 짧은 말은 가운데에 띄운다.
+        // 크기는 말 길이에 따라 변한다(OrderScreenUI.LayoutDialogue). 그래서 어느 모서리를
+        // 고정하느냐가 중요하다.
         //
-        // 왼쪽 위 모서리를 기준으로 잡는다(피벗 0,1). 화면 (1, 47)이고 상단바 바로 아래,
-        // 판 왼쪽 끝이다. 폭 240 은 오른쪽 끝이 241 이라 손님(256부터)을 안 건드리는 한계값이다.
-        Image bubble = CreateImage("Bubble", root, Center, new Vector2(-319f, 133f),
-                                   new Vector2(BubbleMaxTextWidth + BubblePadding * 2f, BubbleHeight),
+        // 오른쪽 위를 고정한다(피벗 1,1). 꼬리가 오른쪽 변에 달려 있어서, 여기를 잡아야
+        // 꼬리가 늘 같은 자리에 선다. 왼쪽 위를 잡고 있었더니 짧은 대사에서 상자가 줄면서
+        // 오른쪽 변이 왼쪽으로 딸려 가, 꼬리가 손님에게서 130칸씩 멀어졌다.
+        // 상자는 이제 왼쪽으로만 자란다.
+        //
+        // 자리는 손님 머리에서 조금 떨어진 지점이다. 판 한가운데가 손님이라 Center 기준으로
+        // 잡는다 — 판 크기가 바뀌어도 손님과의 거리가 그대로 유지된다.
+        // 꼬리 끝이 오른쪽 변에서 23칸 더 나가므로, 오른쪽 변을 -67 에 두면 꼬리 끝이 -44 다.
+        // 손님 머리 왼쪽 끝이 -36 언저리라 8칸쯤 띄운 셈이다.
+        Image bubble = CreateImage("Bubble", root, Center, new Vector2(-67f, 102f),
+                                   new Vector2(BubbleMaxTextWidth + BubblePaddingX * 2f, BubbleHeight),
                                    Color.white, SpeechBubbleBodySprite());
-        bubble.rectTransform.pivot = new Vector2(0f, 1f);
+        bubble.rectTransform.pivot = new Vector2(1f, 1f);
 
         // 9-슬라이스로 그린다. 배율 1이라 테두리가 원본 그대로(얇게) 남는다.
         bubble.type = Image.Type.Sliced;
         bubble.pixelsPerUnitMultiplier = 1f;
 
         // 꼬리. 본문과 같은 배율(1배)로 둔다. 3배로 띄웠더니 꼬리 외곽선만 3픽셀이라
-        // 본문의 1픽셀 테두리와 따로 놀았다.
+        // 본문의 1픽셀 테두리와 따로 놀았다. 크기는 그림을 다시 구워 키운다(BubbleTailScale).
         //
-        // 오른쪽 변에 붙이고 위에서 44칸 내려 단다. 피벗이 왼쪽이라 x=0 이면 본문 변에 딱 붙는다.
-        // 상자 높이가 변해도 위에서 잰 거리는 그대로라 꼬리가 늘 같은 자리에 있다.
-        var tail = CreateImage("BubbleTail", bubble.transform, new Vector2(1f, 1f), new Vector2(0f, -44f),
-                               new Vector2(7f, 5f), Color.white, SpeechBubbleTailSprite());
-        tail.rectTransform.pivot = new Vector2(0f, 0.5f);
+        // x 를 -1 로 둔다. 꼬리 왼쪽 열이 본문 테두리 위에 얹히는데 그 열에는 외곽선을
+        // 치지 않아, 테두리를 덮어 지우면서 거기가 입이 된다.
+        //
+        // 세로는 "윗변에서 잰 거리"로 고정한다. 상자 윗변이 고정이라 꼬리도 고정된다.
+        //
+        // 한때 세로 한가운데(0.5)에 걸어 둔 적이 있다. 짧은 대사에서 꼬리가 상자 밖으로
+        // 삐져나오는 것을 막으려는 것이었는데, 그러면 상자가 자랄 때마다 가운데가 움직여
+        // 꼬리가 같이 오르내린다. 꼬리는 손님을 가리키는 것이라 손님이 안 움직이면
+        // 꼬리도 안 움직여야 한다.
+        //
+        // 삐져나오는 문제는 거리를 줄여서 푼다. 가장 작은 상자(한 줄 = 43칸)에도
+        // 꼬리(15칸)가 다 들어가야 한다.  BubbleTailTop 24 + 15 = 39 <= 43
+        var tail = CreateImage("BubbleTail", bubble.transform, new Vector2(1f, 1f),
+                               new Vector2(-1f, -BubbleTailTop),
+                               new Vector2(BubbleTailW * BubbleTailScale, BubbleTailH * BubbleTailScale),
+                               Color.white, SpeechBubbleTailSprite());
+        tail.rectTransform.pivot = new Vector2(0f, 1f);
         tail.raycastTarget = false;
 
         // 대사는 페르소나·난이도에 따라 6~8마디까지 가는데, 클릭할 때마다 쌓인다(기획서 10.2).
@@ -1465,7 +2224,7 @@ public static class RamenLayoutBuilder
         viewport.anchorMin = new Vector2(0f, 1f);
         viewport.anchorMax = new Vector2(0f, 1f);
         viewport.pivot = new Vector2(0f, 1f);
-        viewport.anchoredPosition = new Vector2(BubblePadding, -BubblePadding);
+        viewport.anchoredPosition = new Vector2(BubblePaddingX, -BubblePaddingY);
         // 가로: 글상자(152)보다 넓어야 한다. 마스크가 더 좁으면 첫 글자와 끝 글자의 바깥 획이 잘린다.
         // TMP가 글자 상자를 사방 1칸 넓게 잡으므로 좌우로 2칸씩 더 준다. 홀수면 경계가 반칸에 걸린다.
         //
@@ -1500,13 +2259,21 @@ public static class RamenLayoutBuilder
         // 바깥 획이 잘려 나간다. 여백은 폭을 덮어써도 남으므로 여기서 막는다.
         dialogue.margin = new Vector4(2f, 0f, 2f, 0f);
 
-        // 넘기기 버튼. 상자 오른쪽 아래 구석에 붙는다. 상자가 자라도 늘 구석에 있다.
+        // 넘기기 버튼. 말풍선 "바깥" 아래에 매단다. 상자 안은 글자만 쓴다.
+        //
+        // 자리를 상자 아래변이 아니라 "윗변"에 건다. 상자 높이가 말 길이에 따라 변하는데
+        // 아래변에 걸면 버튼이 마디마다 위아래로 뛴다. 윗변은 고정이라 안 움직인다.
+        //
+        // 내려오는 거리는 가장 긴 마디가 들어갔을 때의 상자 높이(BubbleHeight)다.
+        // 그래서 버튼은 늘 "말풍선이 가장 커졌을 때 아래변" 자리에 서 있는다.
+        // 오른쪽 끝을 맞추는 것은 꼬리와 같은 쪽이라 시선이 한 줄로 떨어지기 때문이다.
+        //
         // 글자를 "▶"과 "넵"으로 줄여 버튼도 같이 작아졌다. 예전 112x30 은 상자의 절반을 먹었다.
-        Image startImage = CreateImage("StartButton", bubble.transform, new Vector2(1f, 0f),
-                                       new Vector2(-BubblePadding, BubblePadding),
-                                       new Vector2(34f, 22f), Hex("#7BA7C7"),
+        Image startImage = CreateImage("StartButton", bubble.transform, new Vector2(1f, 1f),
+                                       new Vector2(0f, -(BubbleHeight + BubbleButtonGap)),
+                                       new Vector2(56f, 36f), Hex("#7BA7C7"),
                                        LoadSlicedSprite(UiDir + "TextBox.png", new Vector4(8f, 8f, 8f, 8f)));
-        startImage.rectTransform.pivot = new Vector2(1f, 0f);
+        startImage.rectTransform.pivot = new Vector2(1f, 1f);
         startImage.type = Image.Type.Sliced;
         startImage.pixelsPerUnitMultiplier = 1f;
 
@@ -1517,19 +2284,81 @@ public static class RamenLayoutBuilder
                                        new Vector2(30f, 18f), "▶", DialogueFontSize, tmpFont);
         startLabel.color = Color.white;
 
-        Image dayPanel = CreateImage("DayTimePanel", root, TopLeft, new Vector2(140f, -21f),
-                                     new Vector2(200f, PanelBarHeight), Color.white, TimeBarSprite(), PanelScale);
-        AttachPanelIcon(dayPanel, TimeIconSprite(), new Vector2(20f, 18f));
+        Image dayPanel = CreateImage("DayTimePanel", root, TopLeft, new Vector2(280f, -24f),
+                                     new Vector2(400f, PanelBarHeight), Color.white, TimeBarSprite(), PanelScale);
+        AttachPanelIcon(dayPanel, TimeIconSprite(), new Vector2(40f, 36f));
         var dayTime = CreateTmpText("DayTimeText", dayPanel.transform, Center, Vector2.zero,
-                                    new Vector2(187f, 19f), "영업 시간 1일차 / 17 : 00", TextBody, tmpFont);
+                                    new Vector2(374f, 38f), "영업 시간 1일차 / 17 : 00", TextTitle, tmpFont);
 
-        Image revenuePanel = CreateImage("RevenuePanel", root, TopRight, new Vector2(-87f, -21f),
-                                         new Vector2(140f, PanelBarHeight), Color.white, MoneyBarSprite(), PanelScale);
-        AttachPanelIcon(revenuePanel, MoneyIconSprite(), new Vector2(18f, 14f));
+        Image revenuePanel = CreateImage("RevenuePanel", root, TopRight, new Vector2(-174f, -24f),
+                                         new Vector2(280f, PanelBarHeight), Color.white, MoneyBarSprite(), PanelScale);
+        AttachPanelIcon(revenuePanel, MoneyIconSprite(), new Vector2(36f, 28f));
         var revenue = CreateTmpText("RevenueText", revenuePanel.transform, Center, Vector2.zero,
-                                    new Vector2(127f, 19f), "누적 수익 : 0₩", TextBody, tmpFont);
+                                    new Vector2(254f, 38f), "누적 수익 : 0₩", TextTitle, tmpFont);
 
         root.gameObject.SetActive(false);
+
+        // ── 먹는 연출용 판들 ──────────────────────────────────────────
+        //
+        // 여기서 만드는 것은 전부 다른 것들 "위에" 덮여야 하므로 맨 마지막에 만든다.
+        // 유니티 UI 는 나중에 만든 형제가 위에 그려진다.
+
+        // 반짝임이 도는 자리. 조각은 EatingCutscene 이 필요할 때 만들어 넣는다.
+        // 손님 윗몸 언저리에 두어야 얼굴 주변에서 반짝인다.
+        var sparkleRoot = (RectTransform)CreateGroup("Sparkles", root);
+        sparkleRoot.anchorMin = Center;
+        sparkleRoot.anchorMax = Center;
+        sparkleRoot.pivot = Center;
+        sparkleRoot.anchoredPosition = new Vector2(0f, 40f);
+        sparkleRoot.sizeDelta = new Vector2(126f, 176f);
+
+
+        // 따봉. 그림이 40칸이라 그대로 두면 너무 작다. 2배(80)로 키운다.
+        // 손님 왼손 자리. 화면에서는 손님 오른쪽이다. 말풍선(판 왼쪽 위)과도 안 겹친다.
+        Image thumb = CreateImage("Thumb", root, Center, new Vector2(72f, -16f),
+                                  new Vector2(80f, 80f), Color.white,
+                                  LoadSprite(EtcDir + "따봉.png"));
+        thumb.raycastTarget = false;
+        thumb.enabled = false;
+
+        // 그림은 오른손 모양으로 그려져 있어서 좌우를 뒤집어 왼손으로 만든다.
+        // 뒤집기는 칸이 그대로 맞바뀌는 것이라 회전과 달리 픽셀이 안 깨진다.
+        thumb.rectTransform.localScale = new Vector3(-1f, 1f, 1f);
+
+        // 시네마틱 검은 바. 높이 0으로 두고 EatingCutscene 이 늘렸다 줄인다.
+        // 폭은 판(640)이 아니라 화면 전체로 잡는다. 16:9가 아닌 창에서 판 옆이 비어 보이면
+        // 바가 거기서 끊겨 시네마틱으로 안 보인다.
+        Image topBar = CreateImage("LetterboxTop", root, TopCenter, Vector2.zero,
+                                   new Vector2(ScreenCover.x, 0f), Color.black);
+        topBar.rectTransform.pivot = new Vector2(0.5f, 1f);
+        topBar.raycastTarget = false;
+
+        Image bottomBar = CreateImage("LetterboxBottom", root, new Vector2(0.5f, 0f), Vector2.zero,
+                                      new Vector2(ScreenCover.x, 0f), Color.black);
+        bottomBar.rectTransform.pivot = new Vector2(0.5f, 0f);
+        bottomBar.raycastTarget = false;
+
+        // 번쩍임. 번개 그림이 없어 흰 판으로 대신한다. 알파는 연출이 쥔다.
+        Image flash = CreateImage("Flash", root, Center, Vector2.zero, ScreenCover,
+                                  new Color(1f, 1f, 1f, 0f));
+        flash.raycastTarget = false;
+        flash.enabled = false;
+
+        var cutscene = Undo.AddComponent<EatingCutscene>(root.gameObject);
+        SetPrivateReference(cutscene, "topBar", topBar.rectTransform);
+        SetPrivateReference(cutscene, "bottomBar", bottomBar.rectTransform);
+        SetPrivateReference(cutscene, "flash", flash);
+        SetPrivateReference(cutscene, "sparkleRoot", sparkleRoot);
+        SetPrivateReference(cutscene, "cosmos", cosmos);
+        SetPrivateReference(cutscene, "bolt", bolt);
+        SetPrivateReference(cutscene, "aura", aura);
+        SetPrivateArray(cutscene, "auraFrames", LoadSpriteSheet(EtcDir + "오우라.png", 160, 160));
+        SetPrivateReference(cutscene, "thumb", thumb);
+
+        // 후루룩과 천둥. AudioSource 는 RequireComponent 가 같이 붙여 준다.
+        SetPrivateReference(cutscene, "sfx", Undo.AddComponent<CutsceneSfx>(root.gameObject));
+        SetPrivateReference(cutscene, "customerSlot", slot);
+        SetPrivateReference(cutscene, "customerHead", headImage.rectTransform);
 
         return new OrderScreenRefs
         {
@@ -1538,9 +2367,12 @@ public static class RamenLayoutBuilder
             Revenue = revenue,
             Dialogue = dialogue,
             DialogueViewport = viewport,
+            Backdrop = night,
             Start = start,
             StartImage = startImage,
-            StartLabel = startLabel
+            StartLabel = startLabel,
+            Look = look,
+            Cutscene = cutscene
         };
     }
 
@@ -1910,14 +2742,28 @@ public static class RamenLayoutBuilder
     {
         foreach (SlotDef def in Slots)
         {
+            // 돌리는 통은 시트로 잘라 온다. LoadSprite 를 먼저 부르면 임포터가 Single 로 바뀌어
+            // 그다음 LoadSpriteSheet 가 다시 잘라야 하므로, 처음부터 갈라 둔다.
+            Sprite[] loopFrames = def.LoopCell > 0
+                ? LoadSpriteSheet(def.BinPath, def.LoopCell, def.LoopCell)
+                : null;
+
             // 자르기 영역이 있으면 그 부분만 떼어 쓴다. 재료통은 투명 여백을 잘라야 한 줄에 들어간다.
-            Sprite binSprite = def.CropRect.width > 0f
-                ? LoadCroppedSprite(def.BinPath, def.Type + (def.IdSuffix ?? "") + "Bin", def.CropRect, Vector4.zero)
-                : LoadSprite(def.BinPath);
+            Sprite binSprite = loopFrames != null && loopFrames.Length > 0
+                ? loopFrames[0]
+                : def.CropRect.width > 0f
+                    ? LoadCroppedSprite(def.BinPath, def.Type + (def.IdSuffix ?? "") + "Bin", def.CropRect, Vector4.zero)
+                    : LoadSprite(def.BinPath);
 
             Image bin = CreateImage("Slot_" + def.Type + (def.IdSuffix ?? ""), parent, def.Anchor, def.Pos, def.Size,
                                     Color.white, binSprite);
             bin.preserveAspect = true;
+
+            if (loopFrames != null && loopFrames.Length > 1)
+            {
+                var loop = Undo.AddComponent<SpriteLoop>(bin.gameObject);
+                loop.frames = loopFrames;
+            }
 
             if (def.Liquid)
             {
@@ -1962,7 +2808,8 @@ public static class RamenLayoutBuilder
             // 두 군데 뜬다. 팻말로 되돌리려면 이 줄을 살리고 CreateSlotLabel 호출을 지운다.
             // hover.nameplate = nameplate;
 
-            CreateSlotLabel(bin.transform, def, font);
+            // 이름판은 뺐다. 통 그림만으로 무엇인지 읽히는지 먼저 보기로 했다.
+            // 되살리려면 이 줄을 살린다:  CreateSlotLabel(bin.transform, def, font);
 
             // 면 두 통은 한 대를 반으로 자른 그림이라 한쪽만 커지면 이음매가 벌어진다.
             // 대신 밝기로 표시하면 이어진 채로 어느 쪽을 가리키는지 구분된다.
@@ -1988,9 +2835,18 @@ public static class RamenLayoutBuilder
         var cursor = Undo.AddComponent<CookingCursor>(img.gameObject);
         cursor.chopstickFrames = frames;
         // 국자는 낱장이 아니라 30칸 시트다. 가로 5칸이 기울기, 세로 6줄이 담긴 것이고
-        // 줄 순서는 CookingCursor.LadleRow 와 맞춰 두었다(빈·시오·쇼유·돈코츠·육수·향미유).
-        // 칸이 80인 이유는 CookingCursor.LadleArtFrameSize 주석 참고.
-        cursor.ladleFrames = LoadSpriteSheet(EtcDir + "국자 애니메이션.png", 80, 80);
+        // 국자는 국물 색마다 시트가 따로다. 시오·향미유·육수가 금색 한 장을 나눠 쓴다.
+        // 마지막 칸(35번)은 빈 칸이라 잘라 낸다. CookingCursor 가 시트 끝 칸을 "빈 국자"로 쓰므로
+        // 빈 칸이 남아 있으면 국자가 통째로 사라진 것처럼 보인다.
+        cursor.ladleShioFrames = LadleSheet("국자_시오향미유.png");
+        cursor.ladleShoyuFrames = LadleSheet("국자_쇼유.png");
+        cursor.ladleTonkotsuFrames = LadleSheet("국자_돈코츠.png");
+
+        // 면 소쿠리. 터는 것과 쏟는 것 두 벌씩이고 각각 40칸이다.
+        cursor.noodleThinDrainFrames = LoadSpriteSheet(CookDir + "면털기_얇은면.png", 128, 128);
+        cursor.noodleThickDrainFrames = LoadSpriteSheet(CookDir + "면털기_굵은면.png", 128, 128);
+        cursor.noodleThinPourFrames = NoodlePourSheet("면붓기_얇은면.png");
+        cursor.noodleThickPourFrames = NoodlePourSheet("면붓기_굵은면.png");
 
         // 시치미 병 5칸. 국자와 달리 병은 64칸 안에서 다 돌아가서 칸을 키우지 않았다.
         // 세워 둔 24x56 병이 중심에서 30픽셀이라, 58도까지 기울여도 32를 안 넘는다.
@@ -2066,6 +2922,7 @@ public static class RamenLayoutBuilder
             return null;
         }
 
+        #pragma warning disable 0618 // spritesheet 폐기 예고 — LoadIconSprites 의 설명 참조
         if (importer.spriteImportMode != SpriteImportMode.Multiple || importer.spritesheet.Length != frameCount)
         {
             importer.textureType = TextureImporterType.Sprite;
@@ -2086,6 +2943,7 @@ public static class RamenLayoutBuilder
             importer.spritesheet = sheet;
             importer.SaveAndReimport();
         }
+        #pragma warning restore 0618
 
         var frames = new Sprite[frameCount];
         foreach (Object asset in AssetDatabase.LoadAllAssetsAtPath(path))
@@ -2121,6 +2979,10 @@ public static class RamenLayoutBuilder
         component.shioToppingFrames = LoadSpriteSheet(BowlDir + "Sio_Topping.png", 128, 128);
         component.shoyuToppingFrames = LoadSpriteSheet(BowlDir + "Syo_Topping.png", 128, 128);
         component.tonkotsuToppingFrames = LoadSpriteSheet(BowlDir + "Don_Topping.png", 128, 128);
+
+        // 그릇에 얹는 재료 29칸. 자리마다 기울기와 국물에 잠긴 깊이가 구워져 있다.
+        // 칸 순서는 Bowl.Layouts 의 SheetStart 와 맞아야 한다. 자리를 옮기면 시트를 다시 구울 것.
+        component.toppingFrames = LoadSpriteSheet(BowlDir + "토핑배치.png", 50, 50);
 
         // 드래그 중에 레이캐스트를 통과시키려면 CanvasGroup이 필요하다.
         // 없으면 그릇 자신이 SubmitZone을 가려서 제출이 영영 안 된다.
@@ -2296,6 +3158,10 @@ public static class RamenLayoutBuilder
             SetPrivateReference(orderScreenUI, "startButton", orderScreen.Start);
             SetPrivateReference(orderScreenUI, "startButtonImage", orderScreen.StartImage);
             SetPrivateReference(orderScreenUI, "startButtonLabel", orderScreen.StartLabel);
+            SetPrivateReference(orderScreenUI, "customerAppearance", orderScreen.Look);
+            SetPrivateReference(orderScreenUI, "backdrop", orderScreen.Backdrop);
+            if (orderScreen.Cutscene != null)
+                SetPrivateReference(orderScreen.Cutscene, "orderScreen", orderScreenUI);
 
             // 글자가 찍힐 때마다 나는 톤. 사인파 한 토막을 코드로 만들어 pitch 만 바꿔 쓴다.
             SetPrivateReference(orderScreenUI, "blip", go.GetComponent<DialogueBlip>());
@@ -2341,6 +3207,13 @@ public static class RamenLayoutBuilder
         {
             SetPrivateReference(note, "root", orderNote.Root);
             SetPrivateReference(note, "dialogueText", orderNote.Dialogue);
+            SetPrivateReference(note, "dayLabel", orderNote.DayLabel);
+            SetPrivateReference(note, "customerLabel", orderNote.CustomerLabel);
+            SetPrivateReference(note, "dayManager", dayManager);
+            SetPrivateReference(note, "fade", orderNote.Fade);
+            SetPrivateFloat(note, "chromeHeight", NoteChromeHeight);
+            SetPrivateFloat(note, "textWidth", NoteTextWidth);
+            SetPrivateFloat(note, "hoverAlpha", NoteHoverAlpha);
 
             // 미끄러지는 것은 종이 하나다. root 는 껐다 켜기만 한다.
             SetPrivateReference(note, "panel", orderNote.Paper);
@@ -2374,6 +3247,10 @@ public static class RamenLayoutBuilder
         SetPrivateReference(gameManager, "orderScreenUI", Object.FindFirstObjectByType<OrderScreenUI>());
         SetPrivateReference(gameManager, "orderNoteUI", Object.FindFirstObjectByType<OrderNoteUI>());
         SetPrivateReference(gameManager, "orderResultUI", Object.FindFirstObjectByType<OrderResultUI>());
+        SetPrivateReference(gameManager, "footsteps",
+                            Object.FindFirstObjectByType<Footsteps>(FindObjectsInactive.Include));
+        SetPrivateReference(gameManager, "cutscene",
+                            Object.FindFirstObjectByType<EatingCutscene>(FindObjectsInactive.Include));
 
         // ? 버튼: 주문 원문 + 기본 레시피 + 재료 속성표 (기획서 6.1).
         // 조리 화면에는 대사줄이 없으므로 이게 유일한 확인 수단이다.
@@ -2439,6 +3316,21 @@ public static class RamenLayoutBuilder
         }
 
         property.objectReferenceValue = value;
+        serialized.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    private static void SetPrivateFloat(Object target, string fieldName, float value)
+    {
+        var serialized = new SerializedObject(target);
+        SerializedProperty property = serialized.FindProperty(fieldName);
+
+        if (property == null)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] " + target.GetType().Name + "." + fieldName + " 을(를) 찾지 못했습니다.");
+            return;
+        }
+
+        property.floatValue = value;
         serialized.ApplyModifiedPropertiesWithoutUndo();
     }
 
@@ -2567,6 +3459,68 @@ public static class RamenLayoutBuilder
     /// LoadSprite는 Single을 강제하므로 애니메이션 시트에는 쓸 수 없어 따로 둔다.
     /// 잘린 순서는 왼쪽 위에서 오른쪽으로, 그다음 아랫줄이다.
     /// </summary>
+    /// <summary>
+    /// 면 쏟기 시트 한 장. 6x7 로 잘리지만 그려진 것은 40칸이고 뒤 두 칸은 빈 칸이다.
+    /// 빈 칸이 남아 있으면 마지막 장에서 소쿠리가 통째로 사라진다.
+    /// </summary>
+    private static Sprite[] NoodlePourSheet(string fileName)
+    {
+        Sprite[] frames = LoadSpriteSheet(CookDir + fileName, 128, 128);
+        if (frames.Length > 40) System.Array.Resize(ref frames, 40);
+        return frames;
+    }
+
+    /// <summary>
+    /// 면통. 바구니 둘이 한 그림에 같이 그려져 있어서 슬롯 표로는 못 만든다.
+    /// 그림 한 장을 깔고 그 위에 안 보이는 자리 둘을 얹어, 왼쪽은 얇은면 오른쪽은 굵은면을 맡긴다.
+    ///
+    /// 배치도대로 그릇 바로 아래 가운데다.
+    /// </summary>
+    private static void BuildNoodlePot(Transform canvas)
+    {
+        Sprite[] frames = LoadSpriteSheet(CookDir + "면통.png", 128, 128);
+
+        // 그릇과 같은 256으로 놓는다. 128로 두면 그릇 옆에서 장난감처럼 작아 보인다.
+        // 128칸 그림의 정확히 2배라 픽셀은 그대로다.
+        // y 는 -140 이 한계다. 칸이 256 이라 그보다 내리면 아래변이 판(540) 밖으로 나간다.
+        Image pot = CreateImage("NoodlePot", canvas, Center, new Vector2(0f, -140f),
+                                new Vector2(256f, 256f), Color.white,
+                                frames.Length > 0 ? frames[0] : null);
+        pot.preserveAspect = true;
+        pot.raycastTarget = false;   // 클릭은 위에 얹는 자리 둘이 받는다
+
+        if (frames.Length > 1)
+        {
+            var loop = Undo.AddComponent<SpriteLoop>(pot.gameObject);
+            loop.frames = frames;
+        }
+
+        // 안 보이는 자리 둘. 그림 안에서 바구니가 좌우로 나뉘어 있는 만큼만 잡는다.
+        AddNoodleBasket(pot.transform, IngredientType.ThinNoodles, -60f);
+        AddNoodleBasket(pot.transform, IngredientType.ThickNoodles, 60f);
+    }
+
+    private static void AddNoodleBasket(Transform pot, IngredientType type, float x)
+    {
+        Image area = CreateImage("Basket_" + type, pot, Center, new Vector2(x, -12f),
+                                 new Vector2(116f, 144f), new Color(0f, 0f, 0f, 0f));
+        area.raycastTarget = true;
+
+        var slot = Undo.AddComponent<NoodleSlot>(area.gameObject);
+        slot.type = type;
+    }
+
+    /// <summary>
+    /// 국자 붓기 시트 한 장. 6x6 으로 잘리지만 실제로 그려진 것은 35칸이고 마지막은 빈 칸이다.
+    /// 빈 칸을 남겨 두면 CookingCursor 가 그것을 "빈 국자"로 집어 커서가 사라진다.
+    /// </summary>
+    private static Sprite[] LadleSheet(string fileName)
+    {
+        Sprite[] frames = LoadSpriteSheet(CookDir + fileName, 128, 128);
+        if (frames.Length > 35) System.Array.Resize(ref frames, 35);
+        return frames;
+    }
+
     private static Sprite[] LoadSpriteSheet(string path, int cellWidth, int cellHeight)
     {
         var importer = AssetImporter.GetAtPath(path) as TextureImporter;
@@ -2587,6 +3541,7 @@ public static class RamenLayoutBuilder
             return new Sprite[0];
         }
 
+        #pragma warning disable 0618 // spritesheet 폐기 예고 — LoadIconSprites 의 설명 참조
         // 이미 같은 개수로 잘려 있으면 다시 임포트하지 않는다. 재임포트는 느리다.
         bool needsSlice = importer.spriteImportMode != SpriteImportMode.Multiple
                           || importer.spritesheet == null
@@ -2626,6 +3581,7 @@ public static class RamenLayoutBuilder
             importer.spritesheet = slices.ToArray();
             importer.SaveAndReimport();
         }
+        #pragma warning restore 0618
 
         // LoadAllAssetsAtPath는 순서를 보장하지 않는다. 이름 끝 번호로 다시 세운다.
         var frames = new Sprite[cols * rows];

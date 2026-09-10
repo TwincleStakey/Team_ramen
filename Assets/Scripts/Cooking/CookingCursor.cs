@@ -15,13 +15,28 @@ public class CookingCursor : MonoBehaviour
     public Sprite[] chopstickFrames;   // 0=벌림, 1=중간, 2=집음
 
     /// <summary>
-    /// 국자 시트. 가로 5칸이 기울기(0 = 세운 채, 4 = 다 기운 상태)고,
-    /// 세로 6줄이 담긴 것(빈·시오·쇼유·돈코츠·육수·향미유)이다. 줄 순서는 LadleRow 와 맞춰야 한다.
+    /// 국자가 기울어 다 붓기까지의 한 벌(35칸). 국물 색이 달라 재료 갈래마다 시트가 따로다.
+    ///
+    ///   0~4     세운 채, 국물 담김      → 들고 다닐 때 쓰는 그림
+    ///   5~26    기울여 붓는 중
+    ///   27~34   다시 세움, 빈 국자      → 뜨러 내려갈 때 쓰는 그림
     ///
     /// 기울기를 그림으로 갖고 있는 이유는, 커서를 코드로 돌리면 컵 테두리의 검은 윤곽이
-    /// 회전으로 부서지기 때문이다. 그림은 컵을 고정한 채 손잡이만 돌려서 구웠다.
+    /// 회전으로 부서지기 때문이다.
     /// </summary>
-    public Sprite[] ladleFrames;
+    /// <summary>
+    /// 면 소쿠리. 두 벌씩 있다.
+    ///   Drain  통 위에서 물기를 터는 대기 모션 40칸. 0번은 안 흔들린 자세라 들고 다닐 때도 쓴다.
+    ///   Pour   그릇에 면을 쏟는 40칸. 마지막 장까지 다 돌아야 그릇에 들어간다.
+    /// </summary>
+    public Sprite[] noodleThinDrainFrames;
+    public Sprite[] noodleThickDrainFrames;
+    public Sprite[] noodleThinPourFrames;
+    public Sprite[] noodleThickPourFrames;
+
+    public Sprite[] ladleShioFrames;      // 시오 · 향미유 · 육수 (금색)
+    public Sprite[] ladleShoyuFrames;     // 쇼유 (갈색)
+    public Sprite[] ladleTonkotsuFrames;  // 돈코츠 (크림색)
 
     /// <summary>
     /// 시치미 병 시트 5칸. 0 = 세운 채, 3 = 붓는 자세, 4 = 터는 끝이다.
@@ -51,11 +66,30 @@ public class CookingCursor : MonoBehaviour
     // 국자만 그림 한 칸이 80이다. 손잡이를 기울인 그림을 담으려면 64칸으로는 모자란다.
     // 컵-손잡이 이음매에서 손잡이 끝까지가 56픽셀이라, 지금 각도에서 3도만 돌려도 칸 밖으로 나간다.
     // 그림 자체는 그대로고 투명 여백만 늘렸으므로, 상자도 같은 비율로 키워야 화면에서 크기가 안 변한다.
-    private const float LadleArtFrameSize = 80f;
-    private static readonly Vector2 LadleTipArt = new Vector2(-36f, 25f);
+    private const float LadleArtFrameSize = 128f;
+    // 새 시트에서 국자 컵 바닥은 칸 안 (84, 85)에 있다. 칸 한가운데(64,64) 기준으로 잰 값이다.
+    private static readonly Vector2 LadleTipArt = new Vector2(20f, 21f);
 
-    /// <summary>국자 시트의 가로 칸 수. 0이 세운 채, 마지막이 다 기운 상태다.</summary>
-    private const int LadleTiltSteps = 5;
+    // 면 소쿠리는 칸 한가운데를 그대로 쥔다. 손잡이 끝을 잡게 하려면 여기를 (34,-42)쯤으로 옮긴다.
+    private static readonly Vector2 NoodleTipArt = Vector2.zero;
+
+    /// <summary>국자 시트에서 국물이 담긴 채 세워진 칸.</summary>
+    private const int LadleFullFrame = 0;
+
+    /// <summary>국자를 기울여 다 붓는 데 걸리는 시간(초).</summary>
+    private const float LadlePourSeconds = 0.7f;
+
+    /// <summary>면 소쿠리를 터는 속도(초당 장). 40칸이라 24면 한 바퀴가 1.7초쯤이다.</summary>
+    private const float NoodleDrainFps = 24f;
+
+    /// <summary>면을 그릇에 다 쏟는 데 걸리는 시간(초).</summary>
+    private const float NoodlePourSeconds = 1.2f;
+
+    /// <summary>면통 위에 마우스가 있는가. 터는 대기 모션은 통 위에서만 돈다.</summary>
+    private bool overNoodlePot;
+
+    /// <summary>터는 모션이 얼마나 돌았는지. 통을 벗어나면 0번으로 굳는다.</summary>
+    private float drainTime;
 
     // ── 젓가락 ───────────────────────────────────────────────────
     private const float PinchSpeed = 12f;   // 0(벌림)에서 1(집음)까지 가는 속도
@@ -81,7 +115,7 @@ public class CookingCursor : MonoBehaviour
     private const int BottleUprightStep = 0;
     private const int BottlePourStep = 3;
 
-    private enum Mode { Chopsticks, Ladle, Bottle }
+    private enum Mode { Chopsticks, Ladle, Bottle, Noodle }
 
     private RectTransform rect;
     private Image image;
@@ -128,13 +162,15 @@ public class CookingCursor : MonoBehaviour
 
     /// <summary>
     /// 모드를 바꾸면서 상자 크기도 같이 맞춘다.
-    /// 국자만 그림 칸이 80이라, 64짜리 상자에 넣으면 그림이 줄어들어 다른 도구보다 작아진다.
+    /// 국자와 면 소쿠리는 그림 칸이 128이라, 64짜리 상자에 넣으면 다른 도구보다 작아진다.
     /// </summary>
     private void SetMode(Mode value)
     {
         mode = value;
 
-        float ratio = value == Mode.Ladle ? LadleArtFrameSize / ArtFrameSize : 1f;
+        float ratio = (value == Mode.Ladle || value == Mode.Noodle)
+            ? LadleArtFrameSize / ArtFrameSize
+            : 1f;
         rect.sizeDelta = baseSize * ratio;
     }
 
@@ -221,6 +257,7 @@ public class CookingCursor : MonoBehaviour
         }
 
         UpdateSprite();
+        TickNoodleDrain();
         Follow();
     }
 
@@ -258,7 +295,7 @@ public class CookingCursor : MonoBehaviour
 
     private float PixelScale()
     {
-        float art = mode == Mode.Ladle ? LadleArtFrameSize : ArtFrameSize;
+        float art = (mode == Mode.Ladle || mode == Mode.Noodle) ? LadleArtFrameSize : ArtFrameSize;
         return rect.sizeDelta.x / art;
     }
 
@@ -269,6 +306,7 @@ public class CookingCursor : MonoBehaviour
         switch (mode)
         {
             case Mode.Ladle: tip = LadleTipArt; break;
+            case Mode.Noodle: tip = NoodleTipArt; break;
             case Mode.Bottle: tip = BottleTipArt; break;
             default: tip = ChopstickTipArt; break;
         }
@@ -289,12 +327,34 @@ public class CookingCursor : MonoBehaviour
     // ── 액체·조미료 들기 ─────────────────────────────────────────
 
     /// <summary>
+    /// 지금 도구를 바꾸면 안 되는 상태인가.
+    ///
+    /// 통에서 무언가를 들었거나 뜨는 중이면, 마우스가 다른 통 위를 지나가도 도구를 그대로 둔다.
+    /// 들고 그릇까지 가는 길에 다른 통을 스치는 일이 흔한데, 거기서 도구가 바뀌면
+    /// 들고 있던 것이 사라진 것처럼 보인다.
+    ///
+    /// frozen  뿌리는 동작 중
+    /// IsHolding  이미 들었다 (병은 누르는 순간부터, 국자는 다 뜬 뒤부터)
+    /// motion  뜨거나 뿌리는 코루틴이 도는 중 (국자를 뜨는 도중이 여기에 걸린다)
+    /// </summary>
+    private bool Busy
+    {
+        get { return frozen || IsHolding || motion != null; }
+    }
+
+    /// <summary>
     /// 통 위에 마우스가 올라왔을 때. 내용물 없이 도구 모양만 그 통에 맞춘다.
-    /// 실제로 뜨는 것은 클릭(PickUp)이다.
+    /// 실제로 뜨는 것은 통에서 끌기 시작할 때(PickUp)다.
     /// </summary>
     public void PreviewTool(IngredientType type)
     {
-        if (frozen) return;
+        // 젓가락으로 재료를 집고 있는 동안에는 도구를 바꾸지 않는다.
+        // 집은 채로는 어차피 뜨거나 부을 수 없는데, 커서만 국자로 바뀌면
+        // 집은 것이 사라진 것처럼 보인다.
+        //
+        // SlotHover 에도 같은 검사가 있지만 그것은 고체 재료통에만 붙는다.
+        // 액체·조미료통은 LiquidSlot 이 직접 이 함수를 부르므로 여기서도 막아야 한다.
+        if (Busy || gripping) return;
 
         if (IsBottle(type))
         {
@@ -308,7 +368,20 @@ public class CookingCursor : MonoBehaviour
             return;
         }
 
-        if (LadleRow(type) < 0) return;
+        if (IsNoodle(type))
+        {
+            if (mode == Mode.Noodle && Held == type) return;   // 이미 그 면이면 그대로 둔다
+            StopMotion();
+            SetMode(Mode.Noodle);
+            IsHolding = false;
+            Held = type;
+            drainTime = 0f;
+            image.sprite = Frame(DrainSheet(type), 0);
+            dip = 0f;
+            return;
+        }
+
+        if (!IsLadleType(type)) return;
 
         // 국자는 비어 있는 모양으로 보여 준다. 담긴 그림은 실제로 펐을 때만 쓴다.
         if (mode == Mode.Ladle && !IsHolding && Held == type) return;
@@ -316,7 +389,7 @@ public class CookingCursor : MonoBehaviour
         SetMode(Mode.Ladle);
         IsHolding = false;
         Held = type;
-        image.sprite = LadleSprite(LadleEmptyRow, 0);
+        image.sprite = EmptyLadle(type);
         dip = 0f;
     }
 
@@ -326,11 +399,11 @@ public class CookingCursor : MonoBehaviour
     /// </summary>
     public void UseChopsticks()
     {
-        if (frozen || mode == Mode.Chopsticks) return;
+        if (Busy || mode == Mode.Chopsticks) return;
         Drop();
     }
 
-    /// <summary>통을 클릭했을 때. 액체는 국자로 뜨고, 조미료는 병째로 든다.</summary>
+    /// <summary>통에서 끌기 시작했을 때. 액체는 국자로 뜨고, 조미료는 병째로 든다.</summary>
     public void PickUp(IngredientType type)
     {
         if (IsBottle(type))
@@ -345,7 +418,19 @@ public class CookingCursor : MonoBehaviour
             return;
         }
 
-        if (LadleRow(type) < 0)
+        if (IsNoodle(type))
+        {
+            StopMotion();
+            SetMode(Mode.Noodle);
+            IsHolding = true;
+            Held = type;
+            image.sprite = Frame(DrainSheet(type), 0);
+            dip = 0f;
+            Debug.Log("[면] " + type + " 소쿠리를 들었습니다.");
+            return;
+        }
+
+        if (!IsLadleType(type))
         {
             Debug.LogWarning("[CookingCursor] 들 수 없는 재료입니다: " + type);
             return;
@@ -361,55 +446,69 @@ public class CookingCursor : MonoBehaviour
         IsHolding = false;
         Held = type;
 
-        int filled = LadleRow(type);
-        int last = LadleTiltSteps - 1;
-
-        // 기울기는 회전이 아니라 그림으로 준다. 코드로 돌리면 컵 테두리가 부서진다.
-        image.sprite = LadleSprite(LadleEmptyRow, 0);
+        // 새 시트는 붓는 동작 한 벌이라 "뜨는" 그림이 따로 없다.
+        // 끝 칸이 빈 국자, 첫 칸이 담긴 국자라 그 둘만 바꿔 끼우면 뜨는 것처럼 보인다.
+        image.sprite = EmptyLadle(type);
 
         for (float t = 0f; t < DipDownSeconds; t += Time.unscaledDeltaTime)
         {
-            float k = t / DipDownSeconds;
-            dip = Mathf.Lerp(0f, DipDepth, k);
-            image.sprite = LadleSprite(LadleEmptyRow, Mathf.RoundToInt(k * last));
+            dip = Mathf.Lerp(0f, DipDepth, t / DipDownSeconds);
             yield return null;
         }
 
         // 바닥에서 국물이 담긴다
         dip = DipDepth;
-        image.sprite = LadleSprite(filled, last);
+        image.sprite = FullLadle(type);
         IsHolding = true;
 
         for (float t = 0f; t < DipUpSeconds; t += Time.unscaledDeltaTime)
         {
-            float k = t / DipUpSeconds;
-            dip = Mathf.Lerp(DipDepth, 0f, k);
-            image.sprite = LadleSprite(filled, Mathf.RoundToInt((1f - k) * last));
+            dip = Mathf.Lerp(DipDepth, 0f, t / DipUpSeconds);
             yield return null;
         }
 
         dip = 0f;
-        image.sprite = LadleSprite(filled, 0);
         motion = null;
         Debug.Log("[국자] " + type + "을(를) 펐습니다.");
     }
 
     // ── 그릇에 넣기 ──────────────────────────────────────────────
 
-    /// <summary>그릇이 재료를 받아들인 뒤 부른다. 병은 기울여 뿌리는 동작을 보여 준다.</summary>
-    public void Deliver()
+    /// <summary>
+    /// 그릇에 놓았을 때 부른다. 병은 기울여 뿌리는 동작을 보여 준다.
+    ///
+    /// 동작이 다 끝나면 onDone 을 부른다. 넣어지는 판정을 그때 해야 하기 때문이다 —
+    /// 국자를 다 퍼야 담기는 것과 같은 규칙이다. 병은 뿌리는 동작이 끝나야 들어간다.
+    /// 국자는 통에서 이미 다 퍼 왔으므로 여기서는 곧바로다.
+    /// </summary>
+    public void Deliver(System.Action onDone = null)
     {
         if (mode == Mode.Bottle)
         {
             StopMotion();
-            motion = StartCoroutine(PourRoutine());
+            motion = StartCoroutine(PourRoutine(onDone));
+            return;
+        }
+
+        if (mode == Mode.Ladle)
+        {
+            StopMotion();
+            motion = StartCoroutine(LadlePourRoutine(onDone));
+            return;
+        }
+
+        if (mode == Mode.Noodle)
+        {
+            StopMotion();
+            motion = StartCoroutine(NoodlePourRoutine(onDone));
             return;
         }
 
         Drop();
+        if (onDone != null) onDone();
     }
 
-    private IEnumerator PourRoutine()
+    private IEnumerator PourRoutine(System.Action onDone)
     {
         IsHolding = false;   // 붓는 동안 또 넣지 못하게
         frozen = true;       // 병이 마우스를 따라다니면 뿌리는 동작이 읽히지 않는다
@@ -447,6 +546,9 @@ public class CookingCursor : MonoBehaviour
         motion = null;
         frozen = false;
         Drop();
+
+        // 다 뿌리고 나서야 그릇에 들어간다.
+        if (onDone != null) onDone();
     }
 
     /// <summary>들고 있던 것을 놓고 젓가락으로 돌아간다.</summary>
@@ -470,31 +572,156 @@ public class CookingCursor : MonoBehaviour
     }
 
     /// <summary>
-    /// 국자 시트에서 이 재료가 쓰는 줄. 국자로 뜰 수 없는 것은 -1이다.
-    /// 0번 줄은 빈 국자라 어떤 재료도 쓰지 않는다.
+    /// 국자를 기울여 다 붓는다. 다 붓고 나서야 그릇에 들어간다 —
+    /// 통에서 다 떠야 담기는 것과 같은 규칙이고, 시치미 병도 마찬가지다.
     /// </summary>
-    private static int LadleRow(IngredientType type)
+    private IEnumerator LadlePourRoutine(System.Action onDone)
+    {
+        IsHolding = false;   // 붓는 동안 또 넣지 못하게
+        frozen = true;       // 국자가 마우스를 따라다니면 붓는 동작이 읽히지 않는다
+
+        Sprite[] sheet = LadleSheet(Held);
+        int last = sheet != null ? sheet.Length - 1 : 0;
+
+        for (float t = 0f; t < LadlePourSeconds; t += Time.unscaledDeltaTime)
+        {
+            int step = Mathf.Clamp(Mathf.FloorToInt(t / LadlePourSeconds * (last + 1)), 0, last);
+            image.sprite = Frame(sheet, step);
+            yield return null;
+        }
+
+        image.sprite = Frame(sheet, last);
+        motion = null;
+        frozen = false;
+        Drop();
+
+        // 다 붓고 나서야 그릇에 들어간다.
+        if (onDone != null) onDone();
+    }
+
+    /// <summary>
+    /// 면통 위에 마우스가 있는지 NoodleSlot 이 알려 준다.
+    /// 통 위에서는 소쿠리를 털고, 벗어나면 0번에서 굳는다.
+    /// </summary>
+    public void SetOverNoodlePot(bool value)
+    {
+        overNoodlePot = value;
+        if (!value) drainTime = 0f;
+    }
+
+    /// <summary>
+    /// 소쿠리를 터는 대기 모션. Follow 가 매 프레임 부른다.
+    /// 붓는 중(frozen)에는 손대지 않는다 — 그때는 쏟는 그림이 돌고 있다.
+    /// </summary>
+    private void TickNoodleDrain()
+    {
+        if (mode != Mode.Noodle || frozen) return;
+
+        Sprite[] sheet = DrainSheet(Held);
+        if (sheet == null || sheet.Length == 0) return;
+
+        if (!overNoodlePot)
+        {
+            image.sprite = sheet[0];
+            return;
+        }
+
+        drainTime += Time.unscaledDeltaTime;
+        image.sprite = sheet[Mathf.Abs(Mathf.FloorToInt(drainTime * NoodleDrainFps)) % sheet.Length];
+    }
+
+    /// <summary>
+    /// 면을 그릇에 쏟는다. 마지막 장까지 다 돌아야 그릇에 들어간다.
+    /// 국자·시치미와 같은 규칙이다.
+    /// </summary>
+    private IEnumerator NoodlePourRoutine(System.Action onDone)
+    {
+        IsHolding = false;   // 붓는 동안 또 넣지 못하게
+        frozen = true;       // 소쿠리가 마우스를 따라다니면 쏟는 동작이 읽히지 않는다
+
+        Sprite[] sheet = PourSheet(Held);
+        int last = sheet != null ? sheet.Length - 1 : 0;
+
+        for (float t = 0f; t < NoodlePourSeconds; t += Time.unscaledDeltaTime)
+        {
+            int step = Mathf.Clamp(Mathf.FloorToInt(t / NoodlePourSeconds * (last + 1)), 0, last);
+            image.sprite = Frame(sheet, step);
+            yield return null;
+        }
+
+        image.sprite = Frame(sheet, last);
+        motion = null;
+        frozen = false;
+        Drop();
+
+        // 다 쏟고 나서야 그릇에 들어간다.
+        if (onDone != null) onDone();
+    }
+
+    private static bool IsNoodle(IngredientType type)
+    {
+        return type == IngredientType.ThinNoodles || type == IngredientType.ThickNoodles;
+    }
+
+    private Sprite[] DrainSheet(IngredientType type)
+    {
+        return type == IngredientType.ThickNoodles ? noodleThickDrainFrames : noodleThinDrainFrames;
+    }
+
+    private Sprite[] PourSheet(IngredientType type)
+    {
+        return type == IngredientType.ThickNoodles ? noodleThickPourFrames : noodleThinPourFrames;
+    }
+
+    /// <summary>국자로 뜰 수 있는 재료인가.</summary>
+    private static bool IsLadleType(IngredientType type)
     {
         switch (type)
         {
-            case IngredientType.ShioTare: return 1;
-            case IngredientType.ShoyuTare: return 2;
-            case IngredientType.TonkotsuBase: return 3;
-            case IngredientType.Broth: return 4;
-            case IngredientType.FlavorOil: return 5;
-            default: return -1;
+            case IngredientType.ShioTare:
+            case IngredientType.ShoyuTare:
+            case IngredientType.TonkotsuBase:
+            case IngredientType.Broth:
+            case IngredientType.FlavorOil:
+                return true;
+            default:
+                return false;
         }
     }
 
-    private const int LadleEmptyRow = 0;
-
-    /// <summary>국자 시트에서 한 장을 꺼낸다. 시트가 없거나 짧으면 null이다.</summary>
-    private Sprite LadleSprite(int row, int step)
+    /// <summary>
+    /// 이 재료가 쓰는 국자 시트. 국물 색이 같은 것끼리 한 장을 나눠 쓴다.
+    ///
+    /// 육수는 제 시트가 아직 없어서 금색(시오)을 빌려 쓴다. 냄비 안 육수가 주황색이라
+    /// 셋 중에서는 이쪽이 그나마 가깝다. 육수용 그림이 들어오면 여기만 바꾸면 된다.
+    /// </summary>
+    private Sprite[] LadleSheet(IngredientType type)
     {
-        if (ladleFrames == null) return null;
+        switch (type)
+        {
+            case IngredientType.ShoyuTare: return ladleShoyuFrames;
+            case IngredientType.TonkotsuBase: return ladleTonkotsuFrames;
+            default: return ladleShioFrames;   // 시오 · 향미유 · 육수
+        }
+    }
 
-        int index = row * LadleTiltSteps + Mathf.Clamp(step, 0, LadleTiltSteps - 1);
-        return index < ladleFrames.Length ? ladleFrames[index] : null;
+    /// <summary>국물이 담긴 채 세워진 국자.</summary>
+    private Sprite FullLadle(IngredientType type)
+    {
+        return Frame(LadleSheet(type), LadleFullFrame);
+    }
+
+    /// <summary>다 붓고 난 빈 국자. 시트 맨 끝 칸이다.</summary>
+    private Sprite EmptyLadle(IngredientType type)
+    {
+        Sprite[] sheet = LadleSheet(type);
+        return Frame(sheet, sheet != null ? sheet.Length - 1 : 0);
+    }
+
+    private static Sprite Frame(Sprite[] sheet, int index)
+    {
+        if (sheet == null || sheet.Length == 0) return null;
+        return sheet[Mathf.Clamp(index, 0, sheet.Length - 1)];
     }
 
     /// <summary>병으로 드는 재료인가. 지금은 시치미뿐이고, 향미유는 국자로 옮겼다.</summary>
