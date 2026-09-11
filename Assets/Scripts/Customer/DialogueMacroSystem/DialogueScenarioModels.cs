@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 public enum IngredientChangeKind
@@ -44,6 +44,7 @@ public class DialogueDb
     public TemplateRow[] templates;
     public KeywordRow[] keywords;
     public string[] fillers;
+    public UnitRow[] units;
 }
 
 [Serializable]
@@ -97,6 +98,16 @@ public class TemplateRow
     public int amount;
     public int difficulty;
     public string template;
+}
+
+/// <summary>재료별 수량 단위. {unit} 슬롯에 들어간다 (한 점 / 두 점 / 세 점).</summary>
+[Serializable]
+public class UnitRow
+{
+    public string ingredient;
+    public string unit1;
+    public string unit2;
+    public string unit3;
 }
 
 [Serializable]

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -148,6 +148,8 @@ public class DialogueScenarioGenerator : MonoBehaviour
         string ramenTemplate = database.RandomTemplate("Ramen", 0, scenario.difficulty);
         AddIfNotEmpty(scenario.lines, Render(ramenTemplate, scenario, persona, null, scenario.changes.Count > 0));
 
+        // 한 주문 안에서 같은 뼈대가 두 번 나오면("…충분하니 그렇게 해주시고요" 연타) 기계 티가 난다. 몇 번 다시 뽑는다.
+        HashSet<string> usedTemplates = new HashSet<string>();
         for (int i = 0; i < scenario.changes.Count; i++)
         {
             DialogueScenarioRequest change = scenario.changes[i];
@@ -155,11 +157,15 @@ public class DialogueScenarioGenerator : MonoBehaviour
                              change.kind == IngredientChangeKind.Less ? -2 :
                              change.kind == IngredientChangeKind.Swap ? -3 : change.expressionAmount;
             string template = database.RandomTemplate(change.ingredient.ToString(), amountCode, scenario.difficulty);
+            for (int retry = 0; retry < 4 && usedTemplates.Contains(template); retry++)
+                template = database.RandomTemplate(change.ingredient.ToString(), amountCode, scenario.difficulty);
+            usedTemplates.Add(template);
             bool connecting = i < scenario.changes.Count - 1 && UnityEngine.Random.value < 0.55f;
             AddIfNotEmpty(scenario.lines, Render(template, scenario, persona, change, connecting));
         }
 
-        if (UnityEngine.Random.value < fillerChance)
+        // 요청이 3개 이상이면 주문서가 넘치니(힌트+요청4+필러 = 9줄) 필러를 생략한다. 최대 8줄.
+        if (scenario.changes.Count < 3 && UnityEngine.Random.value < fillerChance)
         {
             string filler = database.RandomFiller();
             bool hasNoodleChange = scenario.changes.Exists(c => c.kind == IngredientChangeKind.Swap);
@@ -186,13 +192,32 @@ public class DialogueScenarioGenerator : MonoBehaviour
             text = text.Replace("{ing}", database.RandomKeyword("Ingredient", ingredientKey));
             text = text.Replace("{ing_desc}", database.RandomKeyword("IngDesc", ingredientKey));
             text = text.Replace("{amt}", database.PickAmountWord(persona, change.expressionAmount));
+            text = text.Replace("{unit}", database.PickUnit(ingredientKey, change.expressionAmount));
         }
 
         string[] keys = { "give", "make", "want", "order", "good", "crave", "ask", "remove", "less" };
-        foreach (string key in keys)
-            text = text.Replace("{" + key + "}", database.PickSpeech(persona, key, connecting));
 
-        return text.Replace("  ", " ").Trim();
+        // 두 문장짜리 뼈대("{ing} {amt} {give}. 많을수록 {good}.")는 마지막 문장만 연결형으로 만든다.
+        // 앞 문장까지 연결형이 되면 "넣어주고. 많을수록 좋겠고,"처럼 문장 중간이 끊긴다.
+        int split = connecting ? text.LastIndexOf(". ", StringComparison.Ordinal) : -1;
+        string head = split < 0 ? string.Empty : text.Substring(0, split + 2);
+        string tail = split < 0 ? text : text.Substring(split + 2);
+        foreach (string key in keys)
+        {
+            head = head.Replace("{" + key + "}", database.PickSpeech(persona, key, false));
+            tail = tail.Replace("{" + key + "}", database.PickSpeech(persona, key, connecting));
+        }
+        text = head + tail;
+
+        // 말투 어미가 !·?로 끝나면 뼈대의 마침표가 뒤에 겹친다("주세요!." "있죠?."). 마침표 쪽을 지운다.
+        text = text.Replace("!.", "!").Replace("?.", "?");
+        text = text.Replace("  ", " ").Trim();
+
+        // 연결어미("~고" "~는데")로 끝난 줄은 다음 줄로 이어지는 말이라 마침표 대신 쉼표로 닫는다.
+        // 말줄임(..)으로 끝난 건 그대로 둔다.
+        if (connecting && text.EndsWith(".") && !text.EndsWith(".."))
+            text = text.Substring(0, text.Length - 1) + ",";
+        return text;
     }
 
     private Dictionary<IngredientType, int> GetBaseRecipe(RamenType ramenType)

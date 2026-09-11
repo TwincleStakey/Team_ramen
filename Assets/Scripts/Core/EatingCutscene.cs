@@ -51,6 +51,10 @@ public class EatingCutscene : MonoBehaviour
     [SerializeField] private float cosmosHoldSeconds = 0.8f;
     [SerializeField] private float thumbSeconds = 3f;        // 7 따봉
 
+    /// <summary>마지막 컷의 긴 소감은 3초로는 못 읽는다. 글자 수만큼 더 머문다.</summary>
+    [SerializeField] private float bubbleSecondsPerChar = 0.05f;
+    [SerializeField] private float bubbleMaxSeconds = 6f;
+
     [Header("모양")]
     /// <summary>클로즈업 배율. 정수만 쓴다 — 소수 배율은 픽셀을 반칸에 걸치게 한다.</summary>
     [SerializeField] private int closeUpScale = 3;
@@ -182,14 +186,20 @@ public class EatingCutscene : MonoBehaviour
         yield return MoveBars(barHeight, 0f, barSeconds);
 
         // 7 — 따봉과 대사 한 줄. 화면이 제자리로 돌아왔으니 말풍선도 다시 꺼낸다.
+        float hold = thumbSeconds;
         if (orderScreen != null)
         {
+            // 말풍선용 긴 소감. 결과창은 따로 짧은 말을 쓰므로 여기서 뽑아 둔 말(picked)은 건드리지 않는다.
+            string line = ReactionLines.Cutscene(accuracy);
+            if (line != null) hold = Mathf.Min(thumbSeconds + line.Length * bubbleSecondsPerChar, bubbleMaxSeconds);
+            else line = ReactionLine(accuracy);
+
             orderScreen.ShowBubble(true);
-            orderScreen.SetBubbleLine(ReactionLine(accuracy));
+            orderScreen.SetBubbleLine(line);
         }
         if (thumb != null) thumb.enabled = true;
         if (gameObject.activeInHierarchy) sparkling = StartCoroutine(Sparkle(thumbSeconds));
-        yield return new WaitForSecondsRealtime(thumbSeconds);
+        yield return new WaitForSecondsRealtime(hold);
 
         sparkling = null;
         playing = false;

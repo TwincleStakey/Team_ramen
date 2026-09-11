@@ -45,6 +45,26 @@ public static class ReactionLines
         picked = null;
     }
 
+    /// <summary>
+    /// 컷신 말풍선에만 띄우는 긴 소감. 결과창은 이걸 쓰지 않고 <see cref="For"/> 의 짧은 말을 쓴다.
+    /// 구간은 표정과 같되 완벽(<see cref="RamenCalculator.PERFECT_ACCURACY"/> 이상)만 따로 둔다 —
+    /// "주문한 대로 하나도 안 빠졌다"는 말은 92% 에서 하면 거짓말이 된다.
+    /// 그 말투의 칸이 비어 있으면 null — 부르는 쪽이 For 로 돌아간다.
+    /// </summary>
+    public static string Cutscene(float accuracy)
+    {
+        Load();
+        ReactionLineRow row = Row(CurrentPersonaId());
+        if (row == null) return null;
+
+        string[] pool = accuracy >= RamenCalculator.PERFECT_ACCURACY ? row.perfect
+                      : accuracy >= 90f ? row.goodLong
+                      : accuracy >= 70f ? row.normalLong
+                      : row.badLong;
+
+        return pool != null && pool.Length > 0 ? pool[Random.Range(0, pool.Length)] : null;
+    }
+
     /// <summary>말투와 구간을 찾아 한 줄 고른다.</summary>
     private static string Roll(float accuracy)
     {
@@ -61,13 +81,20 @@ public static class ReactionLines
     /// <summary>그 말투의 그 구간 칸. 못 찾으면 null 이다.</summary>
     private static string[] Pool(string personaId, int tier)
     {
+        ReactionLineRow row = Row(personaId);
+        if (row == null) return null;
+
+        return tier == 0 ? row.good : tier == 1 ? row.normal : row.bad;
+    }
+
+    /// <summary>그 말투의 줄. 표가 없거나 말투를 못 찾으면 null 이다.</summary>
+    private static ReactionLineRow Row(string personaId)
+    {
         if (table == null || table.lines == null || string.IsNullOrEmpty(personaId)) return null;
 
         foreach (ReactionLineRow row in table.lines)
         {
-            if (row == null || row.personaId != personaId) continue;
-
-            return tier == 0 ? row.good : tier == 1 ? row.normal : row.bad;
+            if (row != null && row.personaId == personaId) return row;
         }
 
         return null;
@@ -114,4 +141,9 @@ public class ReactionLineRow
     public string[] good;
     public string[] normal;
     public string[] bad;
+    // 컷신 말풍선에만 띄우는 긴 소감. 비우면 위의 짧은 말이 나온다.
+    public string[] perfect;     // PERFECT_ACCURACY 이상
+    public string[] goodLong;    // 90 이상
+    public string[] normalLong;  // 70 이상
+    public string[] badLong;     // 그 미만
 }

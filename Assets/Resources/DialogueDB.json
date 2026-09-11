@@ -1242,7 +1242,7 @@
           "values": [
             "넣어주렴",
             "넣어주려무나",
-            "넣어주면 좋겠구나"
+            "넣어다오"
           ]
         },
         {
@@ -1250,14 +1250,15 @@
           "values": [
             "해주렴",
             "해주려무나",
-            "해주면 좋겠구나"
+            "해다오"
           ]
         },
         {
           "key": "want",
           "values": [
-            "싶구나",
-            "싶구나.."
+            "싶다",
+            "싶어",
+            "싶구나"
           ]
         },
         {
@@ -1269,13 +1270,15 @@
         {
           "key": "good",
           "values": [
+            "좋겠다",
             "좋겠구나"
           ]
         },
         {
           "key": "crave",
           "values": [
-            "당기는구나"
+            "당긴다",
+            "당기네"
           ]
         },
         {
@@ -1592,7 +1595,7 @@
           "key": "order",
           "values": [
             "하나 가고요!",
-            "하나 가겠고요!"
+            "하나 주시고요!"
           ]
         },
         {
@@ -1763,7 +1766,7 @@
         "살짝"
       ],
       "amt2": [
-        "조금 더"
+        "좀 많이"
       ],
       "amt3": [
         "넉넉히"
@@ -2141,7 +2144,7 @@
     },
     {
       "personaId": "Chungcheong",
-      "text": "뭐랄까유."
+      "text": "오늘 날씨가 참 좋네유."
     },
     {
       "personaId": "Chungcheong",
@@ -2221,7 +2224,7 @@
     },
     {
       "personaId": "Child",
-      "text": "아저씨 라면 주세요!"
+      "text": "아저씨, 저 왔어요!"
     },
     {
       "personaId": "Child",
@@ -2241,7 +2244,7 @@
     },
     {
       "personaId": "Grandma",
-      "text": "총각아, 라면 하나만 해다오."
+      "text": "총각아, 여기 앉아도 되겠니?"
     },
     {
       "personaId": "Grandma",
@@ -2249,7 +2252,7 @@
     },
     {
       "personaId": "Grandma",
-      "text": "이가 안 좋아서 부드러운 게 좋구나."
+      "text": "이가 안 좋아서 부드러운 게 좋아."
     },
     {
       "personaId": "Grandpa",
@@ -2261,7 +2264,7 @@
     },
     {
       "personaId": "Grandpa",
-      "text": "복잡한 건 싫으니 간단히 하세."
+      "text": "오랜만에 나와 봤네."
     },
     {
       "personaId": "Grandpa",
@@ -2646,7 +2649,7 @@
     {
       "ingredient": "Ramen",
       "amount": 0,
-      "difficulty": 2,
+      "difficulty": 1,
       "template": "{ramen} {ask} 그걸로 {order}."
     },
     {
@@ -2659,13 +2662,19 @@
       "ingredient": "Ramen",
       "amount": 0,
       "difficulty": 3,
-      "template": "그런 {ramen_desc}으로 {order}."
+      "template": "그러니까 {ramen_desc}으로 {order}."
     },
     {
       "ingredient": "Any",
       "amount": 1,
       "difficulty": 1,
       "template": "{ing} {amt} 더 {give}."
+    },
+    {
+      "ingredient": "Any",
+      "amount": 1,
+      "difficulty": 1,
+      "template": "{ing} {unit}만 더 {give}."
     },
     {
       "ingredient": "Any",
@@ -2683,7 +2692,7 @@
       "ingredient": "Any",
       "amount": 1,
       "difficulty": 2,
-      "template": "{ing} {unit} 정도만 더 넣으면 충분하니 그렇게 {make}."
+      "template": "{ing} {unit}만 더 넣으면 딱 {good}."
     },
     {
       "ingredient": "Any",
@@ -2702,6 +2711,12 @@
       "amount": 2,
       "difficulty": 1,
       "template": "{ing} {amt} {give}."
+    },
+    {
+      "ingredient": "Any",
+      "amount": 2,
+      "difficulty": 1,
+      "template": "{ing} {unit} 더 넣어주면 {good}."
     },
     {
       "ingredient": "Any",
@@ -2744,6 +2759,12 @@
       "amount": 3,
       "difficulty": 1,
       "template": "{ing} 최대한 많이 {give}."
+    },
+    {
+      "ingredient": "Any",
+      "amount": 3,
+      "difficulty": 1,
+      "template": "{ing} 넉넉하게 {give}."
     },
     {
       "ingredient": "Any",
@@ -2791,7 +2812,7 @@
       "ingredient": "Egg",
       "amount": 3,
       "difficulty": 2,
-      "template": "{ing} 위주로 먹고 {want}."
+      "template": "{ing} {amt} 넣어서 든든하게 먹고 {want}."
     },
     {
       "ingredient": "BeanSprout",
@@ -2803,7 +2824,7 @@
       "ingredient": "WoodEar",
       "amount": 3,
       "difficulty": 2,
-      "template": "{ing} 위주로 먹고 {want}."
+      "template": "{ing} 잔뜩 올려서 {give}."
     },
     {
       "ingredient": "Chashu",
@@ -2815,7 +2836,7 @@
       "ingredient": "Chashu",
       "amount": 3,
       "difficulty": 2,
-      "template": "고기 향을 {amt} 느끼고 {want}."
+      "template": "고기 {amt} 올려서 푸짐하게 {make}."
     },
     {
       "ingredient": "Chashu",
@@ -2833,13 +2854,13 @@
       "ingredient": "FlavorOil",
       "amount": 3,
       "difficulty": 2,
-      "template": "{ing} 향 {amt} 느끼고 {want}."
+      "template": "{ing} {amt} 둘러서 고소하게 {make}."
     },
     {
       "ingredient": "ChiliPowder",
       "amount": 1,
       "difficulty": 1,
-      "template": "{amt} 맵게 {make}."
+      "template": "살짝 맵게 {make}."
     },
     {
       "ingredient": "ChiliPowder",
@@ -2875,7 +2896,7 @@
       "ingredient": "Menma",
       "amount": 3,
       "difficulty": 2,
-      "template": "{ing} 아삭한 식감 {amt} 느끼고 {want}."
+      "template": "{ing} {amt} 넣어서 아삭하게 먹고 {want}."
     },
     {
       "ingredient": "GreenOnion",
@@ -2911,7 +2932,7 @@
       "ingredient": "WoodEar",
       "amount": 3,
       "difficulty": 2,
-      "template": "{ing} 쫄깃한 식감 {amt} 느끼고 {want}."
+      "template": "{ing} {amt} 넣어서 쫄깃하게 먹고 {want}."
     },
     {
       "ingredient": "Nori",
@@ -2929,19 +2950,19 @@
       "ingredient": "Nori",
       "amount": 2,
       "difficulty": 3,
-      "template": "바다 냄새를 좀 느끼고 {want}. {ing} {unit} 정도 {give}."
+      "template": "{ing_desc} {unit} 정도 더 얹어주면 {good}."
     },
     {
       "ingredient": "Nori",
       "amount": 3,
       "difficulty": 2,
-      "template": "바다 향기 {amt} 느끼고 {want}."
+      "template": "{ing} {amt} 올려서 바다 향 제대로 나게 {make}."
     },
     {
       "ingredient": "Nori",
       "amount": 3,
       "difficulty": 3,
-      "template": "{ing} 한 장 말고 {amt} {give}. 바다에 빠지고 {want}."
+      "template": "{ing_desc} 한 장으로는 부족하니 {amt} {give}."
     },
     {
       "ingredient": "Any",
@@ -2953,7 +2974,7 @@
       "ingredient": "Any",
       "amount": -1,
       "difficulty": 1,
-      "template": "이번엔 {ing} {remove}."
+      "template": "{ing} 없이 {make}."
     },
     {
       "ingredient": "Any",
@@ -2977,7 +2998,7 @@
       "ingredient": "Any",
       "amount": -1,
       "difficulty": 3,
-      "template": "한 가지 싫어하는 게 있는데, {ing_desc}, 그거 {remove}."
+      "template": "{ing_desc}, 그건 {remove}."
     },
     {
       "ingredient": "Chashu",
@@ -3231,7 +3252,7 @@
     {
       "type": "IngDesc",
       "enumName": "GreenOnion",
-      "value": "초록색 파"
+      "value": "파 향 나는 거"
     },
     {
       "type": "IngDesc",
@@ -3346,47 +3367,47 @@
     {
       "type": "RamenDesc",
       "enumName": "Shio",
-      "value": "소금으로 간한 라면"
+      "value": "소금으로 간한 라멘"
     },
     {
       "type": "RamenDesc",
       "enumName": "Shio",
-      "value": "맑고 담백한 라면"
+      "value": "맑고 담백한 라멘"
     },
     {
       "type": "RamenDesc",
       "enumName": "Shio",
-      "value": "깔끔한 소금 라면"
+      "value": "깔끔한 소금 라멘"
     },
     {
       "type": "RamenDesc",
       "enumName": "Shoyu",
-      "value": "간장 베이스 라면"
+      "value": "간장 베이스 라멘"
     },
     {
       "type": "RamenDesc",
       "enumName": "Shoyu",
-      "value": "간장 향 은은한 라면"
+      "value": "간장 향 은은한 라멘"
     },
     {
       "type": "RamenDesc",
       "enumName": "Shoyu",
-      "value": "간장 맛 나는 라면"
+      "value": "간장 맛 나는 라멘"
     },
     {
       "type": "RamenDesc",
       "enumName": "Tonkotsu",
-      "value": "돼지뼈 푹 고은 라면"
+      "value": "돼지뼈 푹 고아낸 라멘"
     },
     {
       "type": "RamenDesc",
       "enumName": "Tonkotsu",
-      "value": "하얗고 걸쭉한 국물 라면"
+      "value": "하얗고 걸쭉한 국물 라멘"
     },
     {
       "type": "RamenDesc",
       "enumName": "Tonkotsu",
-      "value": "뽀얀 국물 라면"
+      "value": "뽀얀 국물 라멘"
     }
   ],
   "fillers": [

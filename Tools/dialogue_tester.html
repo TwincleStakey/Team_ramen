@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>대사 테스터</title>
+<style>
+  :root { --paper:#f4e7c9; --ink:#3a2a1a; --line:#b9a27a; --bad:#c0392b; --bg:#2b2622; --panel:#3a332d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:#eee; font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif; font-size:14px; }
+  header { padding:12px 16px; background:var(--panel); display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; position:sticky; top:0; z-index:2; box-shadow:0 2px 6px #0006; }
+  header .group { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+  header .label { color:#bbb; margin-right:4px; font-size:12px; }
+  button, select { background:#55493f; color:#eee; border:1px solid #7a6a5a; border-radius:4px; padding:4px 9px; cursor:pointer; font:inherit; font-size:13px; }
+  button:hover { background:#6a5b4d; }
+  button.on { background:#d9a441; color:#221; border-color:#f0c060; font-weight:bold; }
+  button.big { background:#d9a441; color:#221; font-weight:bold; padding:6px 18px; font-size:14px; }
+  #status { font-size:12px; color:#aaa; width:100%; }
+  #status.err { color:#f88; }
+  #file { display:none; }
+  main { padding:16px; display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; }
+  .card { width:340px; background:var(--paper); color:var(--ink); padding:14px 16px 12px; border-radius:2px; box-shadow:0 3px 0 #b39a6d, 0 6px 14px #0008; position:relative; }
+  .card h3 { margin:0 0 6px; font-size:16px; font-weight:bold; border-bottom:1px dashed var(--line); padding-bottom:6px; }
+  .card .meta { display:flex; justify-content:space-between; font-size:12px; color:#6b5a42; border-bottom:1px dashed var(--line); padding-bottom:6px; margin-bottom:10px; }
+  .card .line { padding:2px 0 2px 6px; border-left:3px solid transparent; line-height:1.45; word-break:keep-all; overflow-wrap:break-word; }
+  .card .line.bad { border-left-color:var(--bad); background:#f6d3cc; }
+  .card .src { display:none; font-size:11px; color:#8a7658; padding-left:6px; margin-bottom:3px; }
+  body.showsrc .card .src { display:block; }
+  .card .flags { margin-top:8px; font-size:11px; color:var(--bad); border-top:1px dashed var(--line); padding-top:6px; }
+  .card .recipe { margin-top:8px; font-size:11px; color:#6b5a42; border-top:1px dashed var(--line); padding-top:6px; }
+  .card .recipe b { color:#3a2a1a; }
+  .card .tag { position:absolute; top:-8px; right:10px; background:#3a2a1a; color:#f4e7c9; font-size:11px; padding:2px 8px; border-radius:10px; }
+  .drop { padding:40px; text-align:center; color:#aaa; border:2px dashed #666; margin:16px; border-radius:8px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="group"><span class="label">말투</span><div id="personas"></div></div>
+  <div class="group"><span class="label">난이도</span><div id="diffs"></div></div>
+  <div class="group"><span class="label">라멘</span><div id="ramens"></div></div>
+  <div class="group"><span class="label">개수</span>
+    <select id="count"><option>1</option><option selected>4</option><option>8</option><option>20</option><option>50</option></select>
+  </div>
+  <div class="group">
+    <button class="big" id="gen">생성</button>
+    <button id="copy">결과 복사</button>
+    <button id="srcToggle">출처 보기</button>
+    <button id="reload">JSON 다시 읽기</button>
+    <button id="pickFile">JSON 파일 고르기</button>
+    <input type="file" id="file" accept=".json">
+  </div>
+  <div id="status">JSON 읽는 중…</div>
+</header>
+<main id="out"><div class="drop">위에서 말투·난이도를 고르고 <b>생성</b>을 누르세요.<br><small>JSON을 고친 뒤 다시 생성하면 바로 반영됩니다.</small></div></main>
+
+<script>
+// ===== DialogueScenarioGenerator.cs / DialogueWorkbookDatabase.cs 를 그대로 옮긴 것 =====
+// C# 쪽을 고치면 여기도 같이 고쳐야 한다. (검사 규칙은 Tools/dialogue_sim.py 와 같다)
+const JSON_PATH = '../Assets/Resources/DialogueDB.json';
+const RAMENS = ['Shio','Shoyu','Tonkotsu'];
+const RAMEN_KO = { Shio:'시오', Shoyu:'쇼유', Tonkotsu:'돈코츠' };
+// RecipeGenerator.GetBaseRecipe
+const BASE = {
+  Shio:     { ShioTare:1, Broth:1, ThinNoodles:1, Chashu:1, Menma:2, GreenOnion:1, FlavorOil:1 },
+  Shoyu:    { ShoyuTare:1, Broth:1, ThinNoodles:1, Chashu:2, Menma:1, GreenOnion:1, FlavorOil:1 },
+  Tonkotsu: { TonkotsuBase:1, Broth:1, ThickNoodles:1, Chashu:1, Egg:1, Nori:1, BeanSprout:1, WoodEar:1, GreenOnion:1, FlavorOil:1 },
+};
+const NON_TOPPING = new Set(['ShioTare','ShoyuTare','TonkotsuBase','Broth','ThinNoodles','ThickNoodles']);
+const KEYS = ['give','make','want','order','good','crave','ask','remove','less'];
+const FILLER_CHANCE = 0.5;
+const MAX_REQUEST_COUNT = 4;
+
+let DB = null;
+const rnd = () => Math.random();
+const randInt = (lo, hiExcl) => lo + Math.floor(rnd() * (hiExcl - lo)); // UnityEngine.Random.Range(int,int)
+const pick = a => a[Math.floor(rnd() * a.length)];
+function shuffle(a) { for (let i = 0; i < a.length; i++) { const j = randInt(i, a.length); [a[i], a[j]] = [a[j], a[i]]; } }
+
+function findTemplates(ing, amt, diff) {
+  return DB.templates.filter(r => r.ingredient === ing && r.amount === amt && r.difficulty === diff).map(r => r.template);
+}
+function randomTemplate(ing, amt, diff) {
+  const exact = findTemplates(ing, amt, diff).concat(findTemplates('Any', amt, diff));
+  if (exact.length) return pick(exact);
+  const fb = DB.templates.filter(r => (r.ingredient === ing || r.ingredient === 'Any') && r.amount === amt).map(r => r.template);
+  if (!fb.length) return amt === -1 ? '{ing} {remove}.' : amt === -2 ? '{ing} {less}.' : amt === -3 ? '면은 {ing}으로 바꿔서 {give}.' : '{ing} {amt} {give}.';
+  return pick(fb);
+}
+function randomKeyword(type, en) {
+  const v = DB.keywords.filter(r => r.type === type && r.enumName === en).map(r => r.value);
+  return v.length ? pick(v) : en;
+}
+function getConflicts(hint) {
+  const s = new Set();
+  if (!hint) return s;
+  for (const r of DB.keywords) if (r.type === 'Conflict' && hint.includes(r.value)) s.add(r.enumName);
+  return s;
+}
+function pickAmountWord(p, a) { return pick(a <= 1 ? p.amt1 : a === 2 ? p.amt2 : p.amt3); }
+function pickUnit(ing, a) {
+  if (!DB.units) return '';
+  const u = DB.units.find(r => r.ingredient === ing);
+  return !u ? '' : a <= 1 ? u.unit1 : a === 2 ? u.unit2 : u.unit3;
+}
+function pickSpeech(p, key, connecting) {
+  const rows = connecting ? p.connecting : p.terminal;
+  for (const r of rows) if (r.key === key && r.values && r.values.length) return pick(r.values);
+  return connecting ? pickSpeech(p, key, false) : '';
+}
+function randomPersonaText(rows, pid) {
+  const v = rows.filter(r => r.personaId === pid).map(r => r.text);
+  return v.length ? pick(v) : '';
+}
+function randomHint(ramen, diff, pid) {
+  const c = DB.hints.filter(r => r.ramenType === ramen && r.difficulty === diff && !(r.excludePersona || []).includes(pid));
+  return c.length ? pick(c) : null;
+}
+
+function render(text, ramen, p, change, connecting) {
+  text = text.split('{ramen}').join(randomKeyword('Ramen', ramen));
+  text = text.split('{ramen_desc}').join(randomKeyword('RamenDesc', ramen));
+  if (change) {
+    const ing = change.ingredient;
+    text = text.split('{ing}').join(randomKeyword('Ingredient', ing));
+    text = text.split('{ing_desc}').join(randomKeyword('IngDesc', ing));
+    text = text.split('{amt}').join(pickAmountWord(p, change.expressionAmount));
+    text = text.split('{unit}').join(pickUnit(ing, change.expressionAmount));
+  }
+  const split = connecting ? text.lastIndexOf('. ') : -1;
+  let head = split < 0 ? '' : text.slice(0, split + 2);
+  let tail = split < 0 ? text : text.slice(split + 2);
+  for (const k of KEYS) {
+    head = head.split('{' + k + '}').join(pickSpeech(p, k, false));
+    tail = tail.split('{' + k + '}').join(pickSpeech(p, k, connecting));
+  }
+  text = head + tail;
+  text = text.split('!.').join('!').split('?.').join('?');
+  text = text.split('  ').join(' ').trim();
+  if (connecting && text.endsWith('.') && !text.endsWith('..')) text = text.slice(0, -1) + ',';
+  return text;
+}
+
+function decideChange(ing, baseAmount) {
+  const r = { ingredient: ing }; const roll = rnd();
+  if (baseAmount > 0 && roll < 0.2) { r.kind = 'Remove'; r.recipeDelta = -baseAmount; r.expressionAmount = 0; }
+  else if (baseAmount >= 2 && roll < 0.35) { r.kind = 'Less'; r.recipeDelta = -1; r.expressionAmount = 1; }
+  else { r.kind = 'Add'; r.recipeDelta = randInt(1, 4); r.expressionAmount = r.recipeDelta; }
+  return r;
+}
+
+function generate(personaId, difficulty, ramenType) {
+  const p = personaId ? DB.personas.find(x => x.personaId === personaId) : pick(DB.personas);
+  const diff = difficulty || randInt(1, 4);
+  const ramen = ramenType || pick(RAMENS);
+  const base = BASE[ramen];
+  const hintRow = diff >= 2 ? randomHint(ramen, diff, p.personaId) : null;
+  const rawHint = hintRow ? hintRow.template : '';
+  const conflicts = getConflicts(rawHint);
+
+  // GenerateChanges
+  const ramenRow = DB.ramens.find(r => r.ramenType === ramen);
+  const cands = ramenRow.addable.filter(x => !conflicts.has(x)); shuffle(cands);
+  const defaultNoodle = ramen === 'Tonkotsu' ? 'ThickNoodles' : 'ThinNoodles';
+  const swappedNoodle = ramen === 'Tonkotsu' ? 'ThinNoodles' : 'ThickNoodles';
+  const swap = rnd() < 0.4;
+  const maxChanges = Math.min(MAX_REQUEST_COUNT, cands.length + (swap ? 1 : 0));
+  const total = randInt(1, maxChanges + 1);
+  const slots = swap ? total - 1 : total;
+  const changes = []; const requests = [];
+  if (swap) {
+    changes.push({ ingredient: swappedNoodle, kind: 'Swap', recipeDelta: 1, expressionAmount: 1 });
+    requests.push([defaultNoodle, -1], [swappedNoodle, 1]);
+  }
+  for (let i = 0; i < slots && i < cands.length; i++) {
+    const ch = decideChange(cands[i], base[cands[i]] || 0);
+    changes.push(ch); requests.push([cands[i], ch.recipeDelta]);
+  }
+  const target = Object.assign({}, base);
+  for (const [ing, d] of requests) target[ing] = Math.min(4, Math.max(0, (target[ing] || 0) + d));
+
+  // BuildDialogue — 각 줄에 출처를 같이 남긴다
+  const lines = [];
+  const add = (text, src) => { if (text && text.trim()) lines.push({ text, src }); };
+  add(randomPersonaText(DB.openers, p.personaId), 'opener');
+  if (rawHint) add(render(rawHint, ramen, p, null, true), 'hint: ' + rawHint);
+  const rt = randomTemplate('Ramen', 0, diff);
+  add(render(rt, ramen, p, null, changes.length > 0), 'Ramen d' + diff + ': ' + rt);
+  const used = new Set();
+  changes.forEach((ch, i) => {
+    const code = ch.kind === 'Remove' ? -1 : ch.kind === 'Less' ? -2 : ch.kind === 'Swap' ? -3 : ch.expressionAmount;
+    let t = randomTemplate(ch.ingredient, code, diff);
+    for (let r = 0; r < 4 && used.has(t); r++) t = randomTemplate(ch.ingredient, code, diff);
+    used.add(t);
+    const conn = i < changes.length - 1 && rnd() < 0.55;
+    add(render(t, ramen, p, ch, conn), `${ch.ingredient} a${code} d${diff}${conn ? ' (연결)' : ''}: ${t}`);
+  });
+  if (changes.length < 3 && rnd() < FILLER_CHANCE) {
+    const f = pick(DB.fillers);
+    if (!swap || !f.includes('면')) add(render(f, ramen, p, null, false), 'filler: ' + f);
+  }
+  add(randomPersonaText(DB.closers, p.personaId), 'closer');
+  return { persona: p, diff, ramen, changes, target, lines, hint: rawHint };
+}
+
+// ===== 검사 (dialogue_sim.py 와 같은 규칙) =====
+function check(s) {
+  const flags = []; const bad = new Set();
+  const L = s.lines.map(l => l.text); const full = L.join('\n');
+  const mark = (name, idx) => { flags.push(name); if (idx != null) bad.add(idx); };
+  L.forEach((l, i) => {
+    if (/[!?]\./.test(l)) mark('문장부호 중복', i);
+    if (/\{\w+\}/.test(l)) mark('슬롯 미치환', i);
+    if (/(고|는데|은데|니까|니께)\.$/.test(l)) mark('연결어미+마침표', i);
+    if (/(고|는데|은데|고요|고예|고잉)[!.] /.test(l) || /(?<!되)구유[!.] /.test(l)) mark('문장 중간 연결어미', i);
+    if (l.includes('면로')) mark('조사 오류(면로)', i);
+  });
+  if (new Set(L).size !== L.length) mark('같은 문장 반복');
+  if (full.includes('라면') && full.includes('라멘')) mark('라멘/라면 혼용');
+  if ((full.match(/이번엔/g) || []).length > 1 || (full.match(/그냥/g) || []).length > 1) mark('이번엔/그냥 중복');
+  if ((full.match(/많을수록/g) || []).length > 1) mark('많을수록 중복');
+  if (s.hint && ['시오 라멘','쇼유 라멘','돈코츠 라멘'].some(k => L[2] && L[2].includes(k))) mark('힌트 뒤 라멘 직접 지명', 2);
+  if (L.length > 8) mark('9줄 이상');
+  return { flags, bad };
+}
+
+// ===== UI =====
+const sel = { persona: null, diff: null, ramen: null };
+const $ = id => document.getElementById(id);
+function chipGroup(el, items, key) {
+  el.innerHTML = '';
+  for (const it of items) {
+    const b = document.createElement('button'); b.textContent = it.label; b.dataset.v = it.v || '';
+    if ((it.v || null) === sel[key]) b.classList.add('on');
+    b.onclick = () => { sel[key] = it.v || null; chipGroup(el, items, key); };
+    el.appendChild(b);
+  }
+}
+function buildControls() {
+  chipGroup($('personas'), [{ label:'랜덤' }].concat(DB.personas.map(p => ({ label: p.name.replace(' 손님',''), v: p.personaId }))), 'persona');
+  chipGroup($('diffs'), [{ label:'랜덤' }, { label:'1', v:1 }, { label:'2', v:2 }, { label:'3', v:3 }], 'diff');
+  chipGroup($('ramens'), [{ label:'랜덤' }].concat(RAMENS.map(r => ({ label: RAMEN_KO[r], v: r }))), 'ramen');
+}
+function ingKo(en) { const r = DB.keywords.find(k => k.type === 'Ingredient' && k.enumName === en); return r ? r.value : en; }
+function describeChanges(s) {
+  return s.changes.map(c => {
+    const ko = ingKo(c.ingredient);
+    return c.kind === 'Swap' ? `면→${ko}` : c.kind === 'Remove' ? `${ko} 제거` : c.kind === 'Less' ? `${ko} -1` : `${ko} +${c.recipeDelta}`;
+  }).join(' · ');
+}
+function targetText(s) {
+  return Object.entries(s.target).filter(([k, v]) => !NON_TOPPING.has(k) && v > 0).map(([k, v]) => `${ingKo(k)} ${v}`).join(', ');
+}
+let lastResults = [];
+function run() {
+  if (!DB) return;
+  const n = +$('count').value; const out = $('out'); out.innerHTML = ''; lastResults = [];
+  for (let i = 0; i < n; i++) {
+    const s = generate(sel.persona, sel.diff, sel.ramen); const c = check(s); lastResults.push(s);
+    const card = document.createElement('div'); card.className = 'card';
+    card.innerHTML = `<span class="tag">${s.persona.name} · 난이도 ${s.diff} · ${RAMEN_KO[s.ramen]}</span>
+      <h3>주문서</h3><div class="meta"><span>1일차</span><span>${i + 1}번째 손님</span></div>`;
+    s.lines.forEach((l, idx) => {
+      const d = document.createElement('div'); d.className = 'line' + (c.bad.has(idx) ? ' bad' : ''); d.textContent = l.text; d.title = l.src;
+      const sd = document.createElement('div'); sd.className = 'src'; sd.textContent = '↳ ' + l.src;
+      card.appendChild(d); card.appendChild(sd);
+    });
+    if (c.flags.length) { const f = document.createElement('div'); f.className = 'flags'; f.textContent = '⚠ ' + [...new Set(c.flags)].join(' · '); card.appendChild(f); }
+    const r = document.createElement('div'); r.className = 'recipe';
+    r.innerHTML = `<b>요청</b> ${describeChanges(s)}<br><b>정답</b> ${targetText(s)}`; card.appendChild(r);
+    out.appendChild(card);
+  }
+}
+async function loadJson() {
+  const st = $('status');
+  try {
+    const res = await fetch(JSON_PATH + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status);
+    DB = await res.json(); st.className = ''; st.textContent = `Assets/Resources/DialogueDB.json 읽음 (${new Date().toLocaleTimeString()}) — 말투 ${DB.personas.length} · 뼈대 ${DB.templates.length} · 힌트 ${DB.hints.length}`;
+    buildControls(); return true;
+  } catch (e) {
+    st.className = 'err'; st.textContent = 'JSON을 자동으로 못 읽었습니다 (file:// 로 열면 그렇습니다). Tools/dialogue_tester.bat 으로 열거나 [JSON 파일 고르기]로 직접 고르세요.';
+    return false;
+  }
+}
+$('gen').onclick = async () => { if (!(await loadJson()) && !DB) return; run(); };
+$('reload').onclick = loadJson;
+$('srcToggle').onclick = () => { document.body.classList.toggle('showsrc'); $('srcToggle').classList.toggle('on'); };
+$('pickFile').onclick = () => $('file').click();
+$('file').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  const fr = new FileReader();
+  fr.onload = () => { DB = JSON.parse(fr.result.replace(/^﻿/, '')); $('status').className = ''; $('status').textContent = f.name + ' 읽음 (파일 직접 선택 — 고친 뒤엔 다시 골라야 합니다)'; buildControls(); };
+  fr.readAsText(f);
+};
+$('copy').onclick = () => {
+  const txt = lastResults.map((s, i) => `[${i + 1}] ${s.persona.name} · 난이도 ${s.diff} · ${RAMEN_KO[s.ramen]}\n` + s.lines.map(l => '  ' + l.text).join('\n')).join('\n\n');
+  navigator.clipboard.writeText(txt).then(() => { $('copy').textContent = '복사됨'; setTimeout(() => $('copy').textContent = '결과 복사', 1200); });
+};
+loadJson();
+</script>
+</body>
+</html>

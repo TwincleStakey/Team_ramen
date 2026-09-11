@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -53,21 +53,19 @@ public sealed class DialogueWorkbookDatabase
         List<string> common = FindTemplates("Any", amountCode, difficulty);
         exact.AddRange(common);
 
-        // 게임 요구사항: 정확한 횟수·단위가 등장하는 엑셀 템플릿은 사용하지 않는다.
-        exact.RemoveAll(ContainsExactCountExpression);
+        // 단위 표현("한 점 더")은 기획서 5.2·19.4의 지원 유형이라 거르지 않는다. {unit}은 Render에서 치환된다.
         if (exact.Count > 0) return Pick(exact);
 
-        // 같은 난이도에 안전한 문장이 없으면, 같은 요청량의 안전한 문장으로 폴백한다.
+        // 같은 난이도에 문장이 없으면 같은 요청량의 다른 난이도 문장으로 폴백한다.
         List<string> fallback = new List<string>();
         foreach (TemplateRow row in db.templates)
-            if ((row.ingredient == ingredient || row.ingredient == "Any") &&
-                row.amount == amountCode && !ContainsExactCountExpression(row.template))
+            if ((row.ingredient == ingredient || row.ingredient == "Any") && row.amount == amountCode)
                 fallback.Add(row.template);
 
         if (fallback.Count == 0)
             return amountCode == -1 ? "{ing} {remove}." :
                    amountCode == -2 ? "{ing} {less}." :
-                   amountCode == -3 ? "면은 {ing}로 변경해{give}." : "{ing} {amt} {give}.";
+                   amountCode == -3 ? "면은 {ing}으로 바꿔서 {give}." : "{ing} {amt} {give}.";
         return Pick(fallback);
     }
 
@@ -101,6 +99,18 @@ public sealed class DialogueWorkbookDatabase
         return Pick(persona.amt3);
     }
 
+    /// <summary>재료별 수량 단위. 1은 unit1, 2는 unit2, 3 이상은 unit3. 단위가 없으면 빈 문자열.</summary>
+    public string PickUnit(string ingredient, int amount)
+    {
+        if (db.units == null) return string.Empty;
+        foreach (UnitRow row in db.units)
+        {
+            if (row.ingredient != ingredient) continue;
+            return amount <= 1 ? row.unit1 : amount == 2 ? row.unit2 : row.unit3;
+        }
+        return string.Empty;
+    }
+
     public string PickSpeech(PersonaRow persona, string key, bool connecting)
     {
         SpeechTokenRow[] rows = connecting ? persona.connecting : persona.terminal;
@@ -118,13 +128,6 @@ public sealed class DialogueWorkbookDatabase
             if (row.ingredient == ingredient && row.amount == amount && row.difficulty == difficulty)
                 result.Add(row.template);
         return result;
-    }
-
-    private static bool ContainsExactCountExpression(string text)
-    {
-        return text.Contains("{unit}") || text.Contains("하나 더") ||
-               text.Contains("두 개") || text.Contains("한 장") || text.Contains("1번") ||
-               text.Contains("2번") || text.Contains("3번") || text.Contains("회분");
     }
 
     private static bool Contains(string[] values, string target)
