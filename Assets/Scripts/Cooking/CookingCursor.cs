@@ -76,8 +76,11 @@ public class CookingCursor : MonoBehaviour
     /// <summary>국자 시트에서 국물이 담긴 채 세워진 칸.</summary>
     private const int LadleFullFrame = 0;
 
-    /// <summary>국자를 기울여 다 붓는 데 걸리는 시간(초).</summary>
-    private const float LadlePourSeconds = 0.7f;
+    /// <summary>
+    /// 국자를 기울여 다 붓는 데 걸리는 시간(초).
+    /// 그릇이 차오르는 길이도 여기에 맞춘다(Bowl.PlayPour). 두 곳에 따로 적으면 어긋난다.
+    /// </summary>
+    public const float LadlePourSeconds = 0.7f;
 
     /// <summary>면 소쿠리를 터는 속도(초당 장). 40칸이라 24면 한 바퀴가 1.7초쯤이다.</summary>
     private const float NoodleDrainFps = 24f;
@@ -477,9 +480,10 @@ public class CookingCursor : MonoBehaviour
     /// <summary>
     /// 그릇에 놓았을 때 부른다. 병은 기울여 뿌리는 동작을 보여 준다.
     ///
-    /// 동작이 다 끝나면 onDone 을 부른다. 넣어지는 판정을 그때 해야 하기 때문이다 —
-    /// 국자를 다 퍼야 담기는 것과 같은 규칙이다. 병은 뿌리는 동작이 끝나야 들어간다.
-    /// 국자는 통에서 이미 다 퍼 왔으므로 여기서는 곧바로다.
+    /// 병과 소쿠리는 동작이 다 끝나야 onDone 을 부른다. 넣어지는 판정을 그때 해야 하기
+    /// 때문이다 — 국자를 다 퍼야 담기는 것과 같은 규칙이다.
+    /// 국자만 예외로 기울이기 시작할 때 부른다. 그릇이 차오르는 것이 붓는 동작과 겹쳐
+    /// 보여야 한다.
     /// </summary>
     public void Deliver(System.Action onDone = null)
     {
@@ -572,13 +576,20 @@ public class CookingCursor : MonoBehaviour
     }
 
     /// <summary>
-    /// 국자를 기울여 다 붓는다. 다 붓고 나서야 그릇에 들어간다 —
-    /// 통에서 다 떠야 담기는 것과 같은 규칙이고, 시치미 병도 마찬가지다.
+    /// 국자를 기울여 다 붓는다. 병·소쿠리와 달리 기울이기 시작하는 순간 그릇에 들어간다.
+    /// 국물이 차오르는 것이 붓는 동작과 같이 보여야 하기 때문이다 — 다 붓고 나서 넣으면
+    /// 국자가 원위치한 뒤에야 그릇이 차서 따로 노는 것처럼 보인다.
+    ///
+    /// 그릇 쪽 차오름도 LadlePourSeconds 에 맞춰져 있어 둘이 같이 끝난다.
+    /// 못 넣는 재료였다면 붓는 도중에 그릇이 붉게 깜빡인다.
     /// </summary>
     private IEnumerator LadlePourRoutine(System.Action onDone)
     {
         IsHolding = false;   // 붓는 동안 또 넣지 못하게
         frozen = true;       // 국자가 마우스를 따라다니면 붓는 동작이 읽히지 않는다
+
+        // 기울이기 시작하는 순간 그릇이 차오르기 시작한다.
+        if (onDone != null) onDone();
 
         Sprite[] sheet = LadleSheet(Held);
         int last = sheet != null ? sheet.Length - 1 : 0;
@@ -594,9 +605,6 @@ public class CookingCursor : MonoBehaviour
         motion = null;
         frozen = false;
         Drop();
-
-        // 다 붓고 나서야 그릇에 들어간다.
-        if (onDone != null) onDone();
     }
 
     /// <summary>

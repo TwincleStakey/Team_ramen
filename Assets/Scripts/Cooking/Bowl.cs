@@ -36,7 +36,7 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     public Sprite[] tonkotsuToppingFrames;
 
     /// <summary>
-    /// 그릇에 얹는 재료 그림 29칸(토핑배치.png). 자리마다 기울기와 국물에 잠긴 깊이가
+    /// 그릇에 얹는 재료 그림 30칸(토핑배치.png). 자리마다 기울기와 국물에 잠긴 깊이가
     /// 이미 구워져 있어서, 런타임에는 Layouts 가 가리키는 칸을 골라 놓기만 한다.
     /// 칸 순서는 Layouts 의 SheetStart 와 맞춰야 한다.
     /// </summary>
@@ -49,11 +49,12 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     public IngredientToast toast;
 
     /// <summary>
-    /// 붓기 애니메이션 속도(초당 프레임). 값이 작을수록 느리다.
-    /// 인스펙터에서 바꾸면 바로 반영되지만 빌더를 다시 돌리면 이 기본값으로 되돌아간다.
-    /// 속도를 굳히려면 아래 숫자를 고칠 것.
+    /// 붓기 애니메이션 길이(초). 장수가 달라도 이 시간 안에 다 돈다.
+    ///
+    /// 국자가 기울어지는 동안 그릇이 꼭 맞게 차오르도록 국자 쪽 길이를 그대로 쓴다.
+    /// 타래는 4장, 육수는 3장이라 초당 장수로 맞추면 둘의 길이가 어긋난다.
     /// </summary>
-    public float pourFps = 10f;
+    private const float PourSeconds = CookingCursor.LadlePourSeconds;
 
     /// <summary>
     /// 찰랑임 속도(초당 프레임). 16장짜리라 붓기와 같은 속도로 돌리면 1.6초나 걸려 늘어진다.
@@ -96,15 +97,7 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     // 타래 3종은 합쳐서 1개. 하나라도 들어 있으면 전부 막으므로 "1회 제한"과 "교체 불가"가 동시에 걸린다.
     // 타래는 육수가 먼저 들어가야 넣을 수 있다. 빈 그릇에 타래만 붓는 상태를 만들지 않기 위해서다.
     private const int MaxBroth = 1;
-    private const int MaxNoodles = 1;   // B의 RecipeGenerator도 면을 항상 1로 둔다
-
-    /// <summary>
-    /// 토핑·조미료 상한은 그 메뉴의 기본 수량 + 3이다.
-    /// 시오의 멘마와 쇼유의 차슈는 기본이 2라 5개까지, 기본에 없는 재료는 3개까지 들어간다.
-    /// 상한을 정답 레시피에서 뽑으면 상한 자체가 힌트가 되므로, 레시피 책에 이미 공개된
-    /// 기본 레시피에서만 뽑는다.
-    /// </summary>
-    private const int ExtraOverBase = 3;
+    private const int MaxNoodles = 1;   // RecipeGenerator도 면을 항상 1로 둔다
 
     // ── 그릇 안 표시 ─────────────────────────────────────────────
     private const string ContentsName = "Contents";
@@ -183,9 +176,13 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     //         김만 예외로 위쪽으로 솟는다. 실제 라멘도 김은 테두리 위로 삐져나온다.
     //   소프트 국물 면 타원(중심 0,+2 / 반지름 47 x 21.5). 떠 있는 파·숙주·목이버섯이 지킨다.
     //
-    // 자리 수는 재료별 상한(그 메뉴 기본 수량 + 3)과 같게 맞췄다. 그래서 정상 플레이에서는
-    // 아래 lap 이 한 번도 돌지 않는다. lap 은 주문 없이 조리하는 디버그용 안전망이다.
-    // 상한: 차슈5 멘마5 계란4 숙주4 목이4 파4 김3.
+    // 자리 수는 재료별 상한 이상이다. 그래서 정상 플레이에서는 아래 lap 이 한 번도 돌지 않는다.
+    // lap 은 주문 없이 조리하는 디버그용 안전망이다.
+    //
+    // 상한은 전 재료 4다(RecipeGenerator.MAX_TOPPING_COUNT). 멘마·차슈만 자리가 5개인데,
+    // 상한이 "그 메뉴 기본 수량 + 3"이던 시절에 잡아 둔 것이라 5번째 자리는 이제 안 쓰인다.
+    // 김은 원래 3개였다. 돈코츠 기본에 김 1회가 들어오면서(기획서 v1.2 4.1) 정답이 4까지
+    // 나올 수 있게 되어 한 자리를 늘렸다. 자리를 늘리면 뒤따르는 SheetStart 가 전부 밀린다.
     //
     // 실제 라멘 사진의 정석 구성을 따랐다.
     //   김     뒤 왼쪽에 세워 테두리 위로 솟게
@@ -209,18 +206,19 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
             // 밑동은 국물에 잠기고 윗부분이 테두리 위로 솟는다.
             { IngredientType.Nori, new ToppingLayout(0, 0,
                 new Placement(-26f, 24f,  12f),
-                new Placement(-17f, 26f,   8f),
-                new Placement( -8f, 27f,   4f)) },
+                new Placement(-18f, 25f,   9f),
+                new Placement(-10f, 26f,   5f),
+                new Placement( -2f, 27f,   2f)) },
 
             // 계란: 뒤 오른쪽. 넓게 펴야 개수가 읽힌다. 좁게 두면 넷이 둘로 보인다.
-            { IngredientType.Egg, new ToppingLayout(1, 3,
+            { IngredientType.Egg, new ToppingLayout(1, 4,
                 new Placement(  9f, 17f, -10f),
                 new Placement( 21f, 15f,  -4f),
                 new Placement( 31f, 10f,   3f),
                 new Placement( 26f,  1f, -12f)) },
 
             // 멘마: 오른쪽 끝. 계란 아래로 비스듬히 세운다
-            { IngredientType.Menma, new ToppingLayout(2, 7,
+            { IngredientType.Menma, new ToppingLayout(2, 8,
                 new Placement( 33f,  4f, -18f),
                 new Placement( 28f, -1f, -24f),
                 new Placement( 34f,  9f, -12f),
@@ -228,7 +226,7 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
                 new Placement( 30f, 13f,  -8f)) },
 
             // 차슈: 왼쪽 허리에서 오른쪽 아래로 완만하게. 앞으로 더 내리면 그릇이 좁아져 안 들어간다.
-            { IngredientType.Chashu, new ToppingLayout(3, 12,
+            { IngredientType.Chashu, new ToppingLayout(3, 13,
                 new Placement(-24f,  7f,  28f),
                 new Placement(-18f,  5f,  29f),
                 new Placement(-12f,  3f,  30f),
@@ -236,21 +234,21 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
                 new Placement(  0f, -1f,  32f)) },
 
             // 숙주: 가운데
-            { IngredientType.BeanSprout, new ToppingLayout(4, 17,
+            { IngredientType.BeanSprout, new ToppingLayout(4, 18,
                 new Placement(  0f,  5f,   0f),
                 new Placement( -7f,  8f,   4f),
                 new Placement(  7f,  7f,  -4f),
                 new Placement(  0f, 11f,   2f)) },
 
             // 목이버섯: 숙주 앞, 가로로 퍼진다
-            { IngredientType.WoodEar, new ToppingLayout(5, 21,
+            { IngredientType.WoodEar, new ToppingLayout(5, 22,
                 new Placement( -4f, -5f,   0f),
                 new Placement(  6f, -7f,  -5f),
                 new Placement(-12f, -7f,   5f),
                 new Placement( 13f, -4f,  -8f)) },
 
             // 파: 맨 앞. 국물 위에 거의 떠 있다
-            { IngredientType.GreenOnion, new ToppingLayout(6, 25,
+            { IngredientType.GreenOnion, new ToppingLayout(6, 26,
                 new Placement( 15f, -7f,   0f),
                 new Placement( 22f, -3f,   0f),
                 new Placement(  9f,-10f,   0f),
@@ -470,19 +468,17 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         }
     }
 
-    /// <summary>이 재료를 몇 개까지 넣을 수 있는가. 기본 레시피 수량 + 3이다.</summary>
+    /// <summary>
+    /// 이 재료를 몇 개까지 넣을 수 있는가. 기획서 v1.2 3.2·10.1·11.3 — 재료를 가리지 않고 4다.
+    ///
+    /// 정답 수량의 상한(<see cref="RecipeGenerator.MAX_TOPPING_COUNT"/>)을 그대로 가져다 쓴다.
+    /// 여기에 4를 따로 적어 두면 두 곳이 말없이 어긋난다. 실제로 예전에 이 상한이
+    /// "기본 수량 + 3"이라 기본 2인 멘마·차슈가 5개까지 들어갔고, 정답은 4가 최대라
+    /// 5개째는 반드시 틀리는 헛투입이 됐다.
+    /// </summary>
     private int MaxCountFor(IngredientType type)
     {
-        RamenType? menu = CurrentMenu;
-
-        // 주문 없이 조리해 보는 중이면(디버그 테스터 등) 막을 근거가 없다.
-        if (menu == null) return int.MaxValue;
-
-        Dictionary<IngredientType, int> baseRecipe = RecipeGenerator.GetBaseRecipe(menu.Value);
-        int baseCount;
-        if (!baseRecipe.TryGetValue(type, out baseCount)) baseCount = 0;
-
-        return baseCount + ExtraOverBase;
+        return RecipeGenerator.MAX_TOPPING_COUNT;
     }
 
     private static bool IsTare(IngredientType type)
@@ -688,10 +684,11 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         }
     }
 
-    /// <summary>시트의 한 구간을 재생하고 지금 상태에 맞는 그림으로 안착한다.</summary>
+    /// <summary>시트의 한 구간을 PourSeconds 동안 재생하고 지금 상태에 맞는 그림으로 안착한다.</summary>
     private void PlayPour(Sprite[] frames, int first, int last)
     {
-        PlayPour(frames, first, last, pourFps);
+        int count = Mathf.Max(1, Mathf.Min(last, frames.Length - 1) - first + 1);
+        PlayPour(frames, first, last, count / PourSeconds);
     }
 
     private void PlayPour(Sprite[] frames, int first, int last, float fps)

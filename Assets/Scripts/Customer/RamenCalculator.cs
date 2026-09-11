@@ -4,8 +4,8 @@ using UnityEngine;
 
 public class RamenCalculator : MonoBehaviour
 {
-    // 1. 라멘 기본 정가 설정 (모든 라멘 종류 통일: 1,000원)
-    public const int BASE_PRICE = 1000;
+    // 1. 라멘 기본 정가 설정 (모든 라멘 종류 통일: 10,000원 · 기획서 v1.2 7.3)
+    public const int BASE_PRICE = 10000;
 
     // 2. 당일 총 이익 및 정확도 변수
     [Header("당일 통계")]
@@ -190,7 +190,8 @@ public class RamenCalculator : MonoBehaviour
         }
 
         // 4. 판매 금액 책정 (정가 * 정확도%)
-        int sellingPrice = Mathf.RoundToInt(basePrice * (accuracy / 100f));
+        // 기획서 v1.2 7.3 — 버림 한 번. 반올림하면 정가보다 많이 받는 그릇이 생긴다.
+        int sellingPrice = Mathf.FloorToInt(basePrice * (accuracy / 100f));
 
         // 5. 최근 결과 저장 및 당일 통계에 누적
         lastAccuracy = accuracy;

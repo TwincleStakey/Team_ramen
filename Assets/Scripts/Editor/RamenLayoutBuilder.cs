@@ -2970,7 +2970,7 @@ public static class RamenLayoutBuilder
         component.emptyBowlSprite = LoadSprite(BowlDir + "빈그릇.png");
 
         // 타래 종류마다 8프레임 시트가 한 장씩(4열 x 2행).
-        // 0~3 타래 / 4~6 육수 / 7 면. 재생 속도는 Bowl.pourFps로 조절한다.
+        // 0~3 타래 / 4~6 육수 / 7 면. 재생 길이는 Bowl.PourSeconds(국자 붓기와 같은 길이)로 정해진다.
         component.shioFrames = LoadSpriteSheet(BowlDir + "Sio_Ani.png", 128, 128);
         component.shoyuFrames = LoadSpriteSheet(BowlDir + "Syo_Ani.png", 128, 128);
         component.tonkotsuFrames = LoadSpriteSheet(BowlDir + "Don_Ani.png", 128, 128);
@@ -2980,7 +2980,7 @@ public static class RamenLayoutBuilder
         component.shoyuToppingFrames = LoadSpriteSheet(BowlDir + "Syo_Topping.png", 128, 128);
         component.tonkotsuToppingFrames = LoadSpriteSheet(BowlDir + "Don_Topping.png", 128, 128);
 
-        // 그릇에 얹는 재료 29칸. 자리마다 기울기와 국물에 잠긴 깊이가 구워져 있다.
+        // 그릇에 얹는 재료 30칸. 자리마다 기울기와 국물에 잠긴 깊이가 구워져 있다.
         // 칸 순서는 Bowl.Layouts 의 SheetStart 와 맞아야 한다. 자리를 옮기면 시트를 다시 구울 것.
         component.toppingFrames = LoadSpriteSheet(BowlDir + "토핑배치.png", 50, 50);
 

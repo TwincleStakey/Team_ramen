@@ -2083,6 +2083,7 @@
         "Chashu",
         "GreenOnion",
         "Egg",
+        "Nori",
         "BeanSprout",
         "WoodEar",
         "FlavorOil"
@@ -2868,7 +2869,7 @@
       "ingredient": "Menma",
       "amount": 1,
       "difficulty": 1,
-      "template": "{ing} 있으면 조금만 {give}."
+      "template": "{ing} 조금 더 {give}."
     },
     {
       "ingredient": "Menma",
@@ -2898,7 +2899,7 @@
       "ingredient": "Egg",
       "amount": 2,
       "difficulty": 2,
-      "template": "{ing} 두 개는 꼭 {give}."
+      "template": "{ing} 두 개 더 {give}."
     },
     {
       "ingredient": "BeanSprout",
@@ -3048,37 +3049,37 @@
       "ingredient": "Any",
       "amount": -3,
       "difficulty": 1,
-      "template": "면은 {ing}로 변경해{give}."
+      "template": "면은 {ing}으로 바꿔서 {give}."
     },
     {
       "ingredient": "Any",
       "amount": -3,
       "difficulty": 1,
-      "template": "{ing}로 바꿔{give}."
+      "template": "{ing}으로 바꿔서 {give}."
     },
     {
       "ingredient": "Any",
       "amount": -3,
       "difficulty": 2,
-      "template": "면은 {ing}가 {good}."
+      "template": "면은 {ing}이 {good}."
     },
     {
       "ingredient": "Any",
       "amount": -3,
       "difficulty": 2,
-      "template": "면을 {ing}로 변경해{give}."
+      "template": "면은 {ing}으로 {make}."
     },
     {
       "ingredient": "Any",
       "amount": -3,
       "difficulty": 3,
-      "template": "{ing_desc}으로 말아{give}."
+      "template": "면은 {ing_desc}, 그걸로 {make}."
     },
     {
       "ingredient": "Any",
       "amount": -3,
       "difficulty": 3,
-      "template": "{ing} 식감이 {crave}."
+      "template": "{ing} 식감이 {crave}. 면은 그걸로 {make}."
     }
   ],
   "keywords": [
@@ -3390,10 +3391,62 @@
   ],
   "fillers": [
     "나머지 토핑은 기본으로 {make}.",
-    "면은 기본으로 {make}.",
-    "너무 짜지 않게 {make}.",
-    "국물은 따뜻하게 {make}.",
-    "다른 건 그대로 {make}.",
-    "면은 살짝 단단하게 {make}."
+    "다른 건 그대로 {make}."
+  ],
+  "units": [
+    {
+      "ingredient": "Chashu",
+      "unit1": "한 점",
+      "unit2": "두 점",
+      "unit3": "세 점"
+    },
+    {
+      "ingredient": "Nori",
+      "unit1": "한 장",
+      "unit2": "두 장",
+      "unit3": "세 장"
+    },
+    {
+      "ingredient": "Egg",
+      "unit1": "하나",
+      "unit2": "두 개",
+      "unit3": "세 개"
+    },
+    {
+      "ingredient": "Menma",
+      "unit1": "한 줌",
+      "unit2": "두 줌",
+      "unit3": "한가득"
+    },
+    {
+      "ingredient": "GreenOnion",
+      "unit1": "한 줌",
+      "unit2": "두 줌",
+      "unit3": "한가득"
+    },
+    {
+      "ingredient": "BeanSprout",
+      "unit1": "한 줌",
+      "unit2": "두 줌",
+      "unit3": "한가득"
+    },
+    {
+      "ingredient": "WoodEar",
+      "unit1": "몇 개",
+      "unit2": "한 줌",
+      "unit3": "한가득"
+    },
+    {
+      "ingredient": "FlavorOil",
+      "unit1": "한 바퀴",
+      "unit2": "두 바퀴",
+      "unit3": "세 바퀴"
+    },
+    {
+      "ingredient": "ChiliPowder",
+      "unit1": "한 꼬집",
+      "unit2": "두 꼬집",
+      "unit3": "세 꼬집"
+    }
   ]
 }

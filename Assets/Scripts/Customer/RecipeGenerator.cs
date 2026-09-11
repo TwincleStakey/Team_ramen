@@ -1,8 +1,11 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 public class RecipeGenerator
 {
+    /// <summary>토핑·조미료 하나의 정답 최대 수량 (기획서 v1.2 3.2).</summary>
+    public const int MAX_TOPPING_COUNT = 4;
+
     // 손님 주문을 기반으로 최종 정답(타깃) 레시피를 생성한다.
     public Dictionary<IngredientType, int> GenerateTargetRecipe(CustomerOrder order)
     {
@@ -26,6 +29,13 @@ public class RecipeGenerator
                 if (targetRecipe[request.ingredient] < 0)
                 {
                     targetRecipe[request.ingredient] = 0;
+                }
+
+                // 기획서 3.2·19.3 — 토핑·조미료 정답은 최대 4. 기본 2에 +3이 붙으면 5가 되는데
+                // 조리 화면도 4까지만 받으므로 그대로 두면 100%가 불가능한 주문이 생긴다.
+                if (targetRecipe[request.ingredient] > MAX_TOPPING_COUNT)
+                {
+                    targetRecipe[request.ingredient] = MAX_TOPPING_COUNT;
                 }
             }
         }
@@ -68,6 +78,7 @@ public class RecipeGenerator
                 recipe[IngredientType.ThickNoodles] = 1;
                 recipe[IngredientType.Chashu] = 1;
                 recipe[IngredientType.Egg] = 1;
+                recipe[IngredientType.Nori] = 1;
                 recipe[IngredientType.BeanSprout] = 1;
                 recipe[IngredientType.WoodEar] = 1;
                 recipe[IngredientType.GreenOnion] = 1;
