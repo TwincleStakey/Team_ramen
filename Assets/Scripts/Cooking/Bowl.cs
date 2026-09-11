@@ -10,7 +10,7 @@ using UnityEngine.UI;
 /// 담긴 수량 데이터(bowl)와 그릇 위 표시(Contents 아이콘)는 분리해서 관리한다. (기획서 15장)
 /// 국물은 아이콘이 아니라 그릇 그림 자체를 바꿔서 표현한다.
 /// </summary>
-public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDragHandler, IDragHandler, IEndDragHandler
+public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler
 {
     /// <summary>아직 아무것도 안 들어간 그릇. 타래를 붓기 전까지는 이 그림이다.</summary>
     public Sprite emptyBowlSprite;
@@ -49,6 +49,12 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     public IngredientToast toast;
 
     /// <summary>
+    /// 시치미·향미유 개수 배지. 마찬가지로 빌더가 꽂아 준다.
+    /// 이 둘은 아래 AddIcon 이 조미료로 보고 걸러서 그릇 그림이 그대로다. 그래서 따로 센다.
+    /// </summary>
+    public SeasoningBadges badges;
+
+    /// <summary>
     /// 붓기 애니메이션 길이(초). 장수가 달라도 이 시간 안에 다 돈다.
     ///
     /// 국자가 기울어지는 동안 그릇이 꼭 맞게 차오르도록 국자 쪽 길이를 그대로 쓴다.
@@ -75,17 +81,14 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
 
     private Coroutine brothPour;
 
-    /// <summary>국물 위 기름이 계속 흘러다니게 도는 찰랑임. 면이 들어간 뒤로 늘 돈다.</summary>
+    /// <summary>
+    /// 토핑을 얹었을 때 국물이 한 바퀴 찰랑이는 연출. 도는 중에만 값이 들어 있고,
+    /// 다 돌면 스스로 null 로 돌아간다. 쉬는 동안에는 찰랑임 시트의 첫 장이 그대로 서 있다.
+    /// </summary>
     private Coroutine rippleLoop;
 
     /// <summary>상한을 정하려면 지금 손님이 시킨 메뉴를 알아야 한다. 처음 쓸 때 한 번 찾아 둔다.</summary>
     private OrderManager orderManager;
-
-    /// <summary>제출 영역. 끌 때마다 겹치는지 물어본다. 처음 쓸 때 한 번 찾아 둔다.</summary>
-    private SubmitZone submitZone;
-
-    /// <summary>드래그 전 그리기 순서. 끝나면 여기로 돌려놓는다.</summary>
-    private int siblingIndexBeforeDrag = -1;
 
     // 지금 그릇에 담긴 재료
     private readonly Dictionary<IngredientType, int> bowl = new Dictionary<IngredientType, int>();
@@ -261,21 +264,17 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
 
     private RectTransform rect;
     private Image image;
-    private CanvasGroup canvasGroup;
     private Canvas canvas;
     private Transform contents;
-    private Vector2 homePosition;
     private Coroutine blink;
 
     private void Awake()
     {
         rect = GetComponent<RectTransform>();
         image = GetComponent<Image>();
-        canvasGroup = GetComponent<CanvasGroup>();
         canvas = GetComponentInParent<Canvas>();
         contents = transform.Find(ContentsName);
 
-        homePosition = rect.anchoredPosition;
         RefreshBowlSprite();
 
         if (contents == null)
@@ -356,6 +355,10 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     {
         bool added = AddToBowl(type, icon);
 
+        // 튜토리얼은 실제로 들어간 뒤에만 다음 차례로 넘어간다.
+        // 거부당한 투입으로 차례가 밀리면 안내가 그릇 상태와 어긋난다.
+        if (added && TutorialManager.Instance != null) TutorialManager.Instance.NotifyAdded(type);
+
         // 이어하기로 그릇을 되채우는 중에는 남기지 않는다. 복원하면서 저장을 다시 쓰면 헛일이다.
         if (added && !SaveSystem.Restoring && GameManager.Instance != null) GameManager.Instance.SaveNow();
 
@@ -373,6 +376,7 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         int count = CountIn(bowl, type) + 1;
         bowl[type] = count;
         AddIcon(type, icon, count);
+        RefreshBadges();
 
         // 앞의 연출이 남아 있으면 새 상태를 덮어쓴다. 여기서 확실히 끊는다.
         StopBrothPour();
@@ -392,7 +396,7 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         if (ripple != null && !IsNoodle(type) && NoodleCount > 0)
         {
             // 처음부터 다시 돌린다. 기름이 가운데에서 확 퍼지는 장이 첫머리라 그게 곧 "얹은" 표시가 된다.
-            StartRipple(ripple, true);
+            StartRipple(ripple);
             return true;
         }
 
@@ -429,6 +433,13 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
 
     private bool IsAllowed(IngredientType type)
     {
+        // 튜토리얼에서는 안내한 재료만 받는다.
+        //
+        // 통 쪽에서도 막지만 여기가 마지막 관문이다. 재료가 그릇에 닿는 길은 통 셋 말고도
+        // 커서에 들린 채 그릇을 클릭하는 길과 디버그 테스터가 있어서, 입구마다 따로 막으면
+        // 하나씩 새기 쉽다. 실제로 통에서 OnPointerDown 만 막았더니 OnBeginDrag 로 다 들어왔다.
+        if (!TutorialManager.CanPick(type)) return false;
+
         // 베이스는 타래 → 육수 → 면 순서로만 넣을 수 있다.
         if (IsTare(type))
         {
@@ -524,82 +535,6 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     }
 
     // ── 그릇 드래그 → 제출 ────────────────────────────────────────
-
-    /// <summary>
-    /// 128칸 그림 안에서 그릇이 실제로 그려지는 자리. (4,24)에서 120 x 80이다.
-    /// 빈 그릇도 면까지 담긴 마지막 프레임도 같은 자리라 값 하나로 충분하다.
-    ///
-    /// 상자는 256인데 그림은 그보다 작다. 상자로 판정하면 아직 안 닿아 보이는데 반응하고,
-    /// 그림으로 판정하면 눈에 닿는 순간과 반응하는 순간이 정확히 맞는다.
-    /// </summary>
-    private static readonly Rect ArtInFrame = new Rect(4f / 128f, 24f / 128f, 120f / 128f, 80f / 128f);
-
-    /// <summary>제출 판정에 쓸 "눈에 보이는 그릇"의 화면 사각형.</summary>
-    public Rect VisibleScreenRect()
-    {
-        var corners = new Vector3[4];
-        rect.GetWorldCorners(corners);   // 0 좌하, 1 좌상, 2 우상, 3 우하
-
-        float left = corners[0].x, bottom = corners[0].y;
-        float w = corners[2].x - left, h = corners[2].y - bottom;
-
-        // ArtInFrame은 그림 좌표(위에서 아래)라 유니티 좌표(아래에서 위)로 뒤집는다.
-        return new Rect(left + w * ArtInFrame.x,
-                        bottom + h * (1f - ArtInFrame.y - ArtInFrame.height),
-                        w * ArtInFrame.width,
-                        h * ArtInFrame.height);
-    }
-
-    /// <summary>지금 그릇이 제출 영역에 걸쳐 있는가. 1픽셀만 겹쳐도 참이다.</summary>
-    private bool TouchingSubmitZone()
-    {
-        if (submitZone == null) submitZone = FindFirstObjectByType<SubmitZone>();
-        if (submitZone == null) return false;
-
-        return VisibleScreenRect().Overlaps(submitZone.ScreenRect(), true);
-    }
-
-    public void OnBeginDrag(PointerEventData eventData)
-    {
-        // 이걸 끄지 않으면 그릇이 자기 밑의 SubmitZone을 가려서 제출이 영영 안 된다.
-        if (canvasGroup != null) canvasGroup.blocksRaycasts = false;
-
-        // 끄는 동안에만 맨 위로 올린다. 끝나고 되돌리지 않으면 그릇이 커서와 결과창까지
-        // 영원히 덮어 버려서, 마우스 위치도 안 보이고 결과창 버튼도 안 눌린다.
-        siblingIndexBeforeDrag = transform.GetSiblingIndex();
-        transform.SetAsLastSibling();
-    }
-
-    public void OnDrag(PointerEventData eventData)
-    {
-        // delta는 실제 화면 픽셀, anchoredPosition은 캔버스 기준 단위라 스케일로 나눈다.
-        float scale = canvas != null ? canvas.scaleFactor : 1f;
-        rect.anchoredPosition += eventData.delta / scale;
-
-        // 그릇 윗부분이 제출 영역에 닿는 순간 불이 들어온다. 마우스가 아니라 그릇이 기준이다.
-        if (submitZone == null) submitZone = FindFirstObjectByType<SubmitZone>();
-        if (submitZone != null) submitZone.SetHighlight(TouchingSubmitZone());
-    }
-
-    public void OnEndDrag(PointerEventData eventData)
-    {
-        if (canvasGroup != null) canvasGroup.blocksRaycasts = true;
-
-        // 불이 켜져 있었으면 제출한다. 보이는 것과 동작이 어긋나지 않도록 판정 기준을 같이 쓴다.
-        bool submit = TouchingSubmitZone();
-        if (submitZone != null) submitZone.SetHighlight(false);
-        if (submit) Submit();
-
-        // 제출됐든 아니든 그릇은 원래 자리로 돌아간다.
-        rect.anchoredPosition = homePosition;
-
-        if (siblingIndexBeforeDrag >= 0)
-        {
-            transform.SetSiblingIndex(siblingIndexBeforeDrag);
-            siblingIndexBeforeDrag = -1;
-        }
-    }
-
     /// <summary>SubmitZone이 부른다. 넘기고 나면 다음 손님을 위해 그릇과 폐기 기록을 모두 비운다.</summary>
     public void Submit()
     {
@@ -623,6 +558,9 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     }
 
     // ── 폐기 ─────────────────────────────────────────────────────
+
+    /// <summary>아무것도 안 들어간 그릇인가. 폐기 확인창이 물어볼 것이 있는지 판단할 때 쓴다.</summary>
+    public bool IsEmpty => bowl.Count == 0;
 
     /// <summary>폐기 버튼. 그릇 내용을 폐기 기록에 누적하고 비운다. 주문은 그대로 유지된다.</summary>
     public void Discard()
@@ -699,20 +637,18 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     }
 
     /// <summary>
-    /// 국물 찰랑임을 계속 돌린다. 움직이는 것은 국물 위에 뜬 기름 띠뿐이고 나머지는 고정이라,
-    /// 계속 돌아도 그릇이 흔들려 보이지 않는다.
+    /// 국물 찰랑임을 한 바퀴 돌린다. 움직이는 것은 국물 위에 뜬 기름 띠뿐이고 나머지는 고정이다.
+    /// 다 돌면 첫 장에 서서 멈춘다.
     ///
-    /// 예전에는 토핑을 얹을 때 한 바퀴만 돌고 멈췄다. 멈춰 있으면 기름이 굳어 사진처럼 보인다.
+    /// 한때 끝없이 돌렸다. 멈춰 있으면 기름이 굳어 사진처럼 보인다는 이유였는데,
+    /// 계속 도는 쪽은 두 가지가 나빴다. 아무것도 안 했는데 그릇이 늘 움직여 눈이 끌리고,
+    /// 코루틴이 매 프레임 그릇 그림을 덮어써서 폐기해도 빈 그릇으로 안 바뀌었다.
     /// </summary>
-    private void StartRipple(Sprite[] frames, bool restart)
+    private void StartRipple(Sprite[] frames)
     {
         if (frames == null || frames.Length == 0) return;
 
-        if (rippleLoop != null)
-        {
-            if (!restart) return;   // 이미 돌고 있으면 그대로 둔다
-            StopCoroutine(rippleLoop);
-        }
+        if (rippleLoop != null) StopCoroutine(rippleLoop);
 
         StopBrothPour();
         rippleLoop = StartCoroutine(RippleRoutine(frames));
@@ -729,14 +665,17 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
     private IEnumerator RippleRoutine(Sprite[] frames)
     {
         float perFrame = 1f / Mathf.Max(0.1f, rippleFps);
-        int i = RippleFirstFrame;
+        int end = Mathf.Min(RippleLastFrame, frames.Length - 1);
 
-        while (true)
+        for (int i = RippleFirstFrame; i <= end; i++)
         {
             if (frames[i] != null) image.sprite = frames[i];
-            i = i + 1 > RippleLastFrame ? RippleFirstFrame : i + 1;
             yield return new WaitForSeconds(perFrame);
         }
+
+        // 0번과 15번이 같은 그림이라 여기서 서면 첫 장에 선 것과 같다.
+        if (frames[RippleFirstFrame] != null) image.sprite = frames[RippleFirstFrame];
+        rippleLoop = null;
     }
 
     private void StopBrothPour()
@@ -773,6 +712,10 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         Sprite[] sheet = CurrentSheet;
         if (sheet == null || sheet.Length <= NoodleFrame)
         {
+            // 찰랑임을 먼저 끊는다. 예전에는 이 분기가 그냥 빠져나가서, 폐기한 뒤에도
+            // 돌고 있던 찰랑임이 다음 프레임에 그릇 그림을 도로 덮어썼다.
+            // 빈 그릇으로 안 바뀌던 것이 이것 때문이다.
+            StopRipple();
             if (emptyBowlSprite != null) image.sprite = emptyBowlSprite;
             return;
         }
@@ -790,7 +733,9 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
             Sprite[] ripple = CurrentRippleSheet;
             if (ripple != null && ripple[RippleFirstFrame] != null)
             {
-                StartRipple(ripple, false);
+                // 한 바퀴 도는 중이면 건드리지 않는다. 다 돌면 스스로 첫 장에 선다.
+                // 쉬고 있을 때는 돌리지 않고 첫 장을 그대로 얹기만 한다.
+                if (rippleLoop == null) image.sprite = ripple[RippleFirstFrame];
                 return;
             }
         }
@@ -918,7 +863,12 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         StopBrothPour();
 
         bowl.Clear();
+
+        // 그릇이 비었으니 튜토리얼 차례도 처음으로 돌아간다.
+        if (TutorialManager.Instance != null) TutorialManager.Instance.NotifyBowlCleared();
+
         RefreshBowlSprite();
+        RefreshBadges();
         image.color = Color.white;
 
         if (contents == null) return;
@@ -927,6 +877,15 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler, IBeginDra
         {
             Destroy(contents.GetChild(i).gameObject);
         }
+    }
+
+    /// <summary>그릇 옆 시치미·향미유 개수를 지금 담긴 것에 맞춘다.</summary>
+    private void RefreshBadges()
+    {
+        if (badges == null) return;
+
+        badges.Refresh(CountIn(bowl, IngredientType.FlavorOil),
+                       CountIn(bowl, IngredientType.ChiliPowder));
     }
 
     private static int CountIn(Dictionary<IngredientType, int> dict, IngredientType type)

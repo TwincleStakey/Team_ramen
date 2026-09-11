@@ -38,6 +38,21 @@ public class OrderScreenUI : MonoBehaviour
     [SerializeField] private CustomerAppearance customerAppearance;
 
     /// <summary>
+    /// 주문 화면이 떠 있는 동안 내려 둘 조리 화면 물건.
+    ///
+    /// 그릇은 튜토리얼 어두운 판 위로 올리려고 Canvas 가 따로 얹혀 있다(RamenLayoutBuilder 의
+    /// LiftCanvas). 그래서 계층 순서를 무시하고 주문 화면 위로 떠올라 손님 얼굴을 덮는다.
+    /// 손님을 보는 동안에는 조리대가 필요 없으니 통째로 내린다.
+    /// </summary>
+    [SerializeField] private GameObject[] hiddenWhileOpen;
+
+    /// <summary>
+    /// 손님 앞에 놓이는 라멘 그릇. 라멘을 낸 뒤에만 보인다 —
+    /// 주문받는 동안 놓여 있으면 이미 준 것처럼 보인다.
+    /// </summary>
+    [SerializeField] private GameObject servedBowl;
+
+    /// <summary>
     /// 밤 배경(뒷판). 밀려 올라갈 때 같이 걷힌다.
     ///
     /// 이 판은 화면(640x360)이 아니라 1920x1080 이다. 16:9 가 아닌 창에서 판 바깥이
@@ -51,6 +66,12 @@ public class OrderScreenUI : MonoBehaviour
     /// 0.28 은 툭 떨어지는 느낌이었다. 스르르 흐르려면 이만큼 걸려야 한다.
     /// </summary>
     [SerializeField] private float slideSeconds = 0.6f;
+
+    /// <summary>조리대로 내려갈 때 걸리는 시간(초). 올라올 때보다 짧아야 휙 빠지는 맛이 난다.</summary>
+    [SerializeField] private float closeSeconds = 0.34f;
+
+    /// <summary>[제조하기] 를 누르고 화면이 움직이기까지 두는 짬(초).</summary>
+    [SerializeField] private float closeDelay = 0.12f;
 
     /// <summary>먹는 동안 말풍선에 띄우는 말. 표정 그림이 들어오면 이 자리에 연출이 붙는다.</summary>
     private const string EatingLine = "…";
@@ -152,17 +173,32 @@ public class OrderScreenUI : MonoBehaviour
         Vector2 from = opening ? SlideAway : slideHome;
         Vector2 to = opening ? slideHome : SlideAway;
 
-        float elapsed = 0f;
-        while (elapsed < slideSeconds)
-        {
-            float t = elapsed / slideSeconds;
+        // 조리대로 내려갈 때는 한 박자 멈췄다 간다. [제조하기] 를 누른 손이 화면보다
+        // 반 박자 빨라서, 곧바로 움직이면 누르자마자 끌려간 것처럼 읽힌다.
+        if (!opening && closeDelay > 0f) yield return new WaitForSecondsRealtime(closeDelay);
 
-            // 시작과 끝을 모두 부드럽게. 등속으로 움직이면 고개를 숙이는 게 아니라
-            // 판이 기계처럼 밀리는 느낌이 난다.
-            //
-            // smoothstep(3t^2-2t^3) 보다 한 단계 더 완만한 곡선을 쓴다. 시작과 끝에서
-            // 속도가 더 천천히 붙고 빠져서, 툭 멈추지 않고 스르르 흘러 선다.
-            t = t * t * t * (t * (t * 6f - 15f) + 10f);
+        float duration = opening ? slideSeconds : closeSeconds;
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            float t = elapsed / duration;
+
+            if (opening)
+            {
+                // 손님에게 시선이 올라올 때. 시작과 끝을 모두 부드럽게 —
+                // 등속으로 움직이면 고개를 드는 게 아니라 판이 기계처럼 밀린다.
+                //
+                // smoothstep(3t^2-2t^3) 보다 한 단계 완만한 곡선이라 툭 멈추지 않고 스르르 선다.
+                t = t * t * t * (t * (t * 6f - 15f) + 10f);
+            }
+            else
+            {
+                // 조리대로 내려갈 때. 천천히 떼었다가 끝에서 확 빠진다.
+                // 양끝을 다 부드럽게 하면 "스르르" 가 되는데, 여기서는 시선을 휙 내리는
+                // 동작이라 가속이 붙어야 "슈슉" 으로 읽힌다.
+                t = t * t * t;
+            }
 
             SetSlide(Vector2.Lerp(from, to, t), opening ? t : 1f - t);
             elapsed += Time.unscaledDeltaTime;
@@ -188,6 +224,17 @@ public class OrderScreenUI : MonoBehaviour
             c.a = backdropAlpha;
             backdrop.color = c;
         }
+    }
+
+    /// <summary>
+    /// 미끄러지는 중이면 끊고 열린 자리에 바로 세운다.
+    ///
+    /// 가게 문을 여는 장면에서 쓴다. 그때는 화면이 검게 덮여 있어 미끄러짐이 보이지도 않는데,
+    /// 걷히는 동안 판이 흘러 들어오면 "이미 가게에 와 있다" 가 아니라 "무언가 지나갔다" 로 읽힌다.
+    /// </summary>
+    public void SnapOpen()
+    {
+        SnapSlide(true);
     }
 
     /// <summary>미끄러짐 없이 그 자리로. 켜지기 전이나 씬을 막 띄웠을 때 쓴다.</summary>
@@ -216,6 +263,10 @@ public class OrderScreenUI : MonoBehaviour
         bool wasOpen = screenRoot != null && screenRoot.activeSelf;
 
         if (screenRoot != null) screenRoot.SetActive(true);
+        ShowCookingProps(false);
+
+        // 아직 안 만들었다. 그릇은 내고 나서야 놓인다.
+        if (servedBowl != null) servedBowl.SetActive(false);
 
         // 새 손님이다. 얼굴을 다시 뽑는 곳은 여기 하나뿐이다.
         // 스러짐도 여기서 되돌린다. 앞 손님이 사라진 채로 끝났어도 새 손님은 보여야 한다.
@@ -223,7 +274,9 @@ public class OrderScreenUI : MonoBehaviour
         EnsureAppearance();
         if (customerAppearance != null)
         {
-            customerAppearance.Randomize();
+            // 말투마다 그림이 하나씩 있다. 그림이 없는 말투는 SetPersona 안에서
+            // 예전처럼 얼굴·몸통을 무작위로 짝지어 세운다.
+            customerAppearance.SetPersona(CurrentPersonaId);
             customerAppearance.SetFade(0f);
         }
 
@@ -265,6 +318,10 @@ public class OrderScreenUI : MonoBehaviour
         bool wasOpen = screenRoot != null && screenRoot.activeSelf;
 
         if (screenRoot != null) screenRoot.SetActive(true);
+        ShowCookingProps(false);
+
+        // 라멘을 냈다. 이제 손님 앞에 그릇이 놓인다.
+        if (servedBowl != null) servedBowl.SetActive(true);
 
         if (wasOpen) SnapSlide(true);
         else StartSlide(true);
@@ -293,6 +350,34 @@ public class OrderScreenUI : MonoBehaviour
 
         dialogueText.text = line;
         LayoutDialogue();
+    }
+
+    /// <summary>
+    /// 말풍선에 한 줄을 한 글자씩 찍기 시작한다. 찍는 동안 돌아온다 — 끝났는지는
+    /// <see cref="IsBubbleTyping"/> 으로 본다.
+    ///
+    /// SetBubbleLine 은 통째로 띄운다. 컷마다 갈아 끼우는 데는 그쪽이 맞고,
+    /// 이것은 마지막 컷처럼 "지금 말하고 있다"가 보여야 할 때 쓴다.
+    /// </summary>
+    public void StartTypingBubble(string line)
+    {
+        SetBubbleLine(line);
+        if (dialogueText == null) return;
+
+        typing = gameObject.activeInHierarchy ? StartCoroutine(TypeLine()) : null;
+        if (typing == null) dialogueText.maxVisibleCharacters = int.MaxValue;
+    }
+
+    /// <summary>아직 찍는 중인가.</summary>
+    public bool IsBubbleTyping
+    {
+        get { return typing != null; }
+    }
+
+    /// <summary>찍다 말고 한 번에 다 보여 준다. 다 읽은 사람이 누르면 기다릴 이유가 없다.</summary>
+    public void FinishBubbleLine()
+    {
+        FinishTyping();
     }
 
     /// <summary>인스펙터가 비어 있으면(빌더를 안 돌린 씬) 화면 안에서 한 번 찾아 둔다.</summary>
@@ -333,6 +418,7 @@ public class OrderScreenUI : MonoBehaviour
     {
         // 찍던 것을 안 멈추면 화면이 꺼진 뒤에도 코루틴이 남아 소리가 난다.
         FinishTyping();
+        ShowCookingProps(true);
 
         // 꺼져 있거나 아직 살아나기 전이면 미끄러뜨릴 것도 없다.
         // Awake 에서도 이 함수를 부르는데, 거기서 코루틴을 돌리면 시작하지 못하고 끊긴다.
@@ -381,6 +467,18 @@ public class OrderScreenUI : MonoBehaviour
         }
 
         Close();
+    }
+
+    /// <summary>
+    /// 지금 줄을 처음부터 다시 친다.
+    ///
+    /// 가게 문을 여는 장면에서 쓴다. 그때는 말풍선을 감춘 채로 화면을 차려 두는데,
+    /// 감춰 둔 동안에도 타자기는 돌아서 손님이 드러날 무렵에는 이미 다 찍혀 있다.
+    /// 드러난 뒤에 다시 쳐야 첫 마디가 찍히는 것이 보인다.
+    /// </summary>
+    public void ReplayCurrentLine()
+    {
+        ShowLine();
     }
 
     private void ShowLine()
@@ -545,8 +643,53 @@ public class OrderScreenUI : MonoBehaviour
         {
             bubble.sizeDelta = new Vector2(w + bubblePadding.x * 2f,
                                            h + bubblePadding.y * 2f);
+            PlaceBubble(bubble);
         }
     }
+
+    /// <summary>
+    /// 말풍선을 손님 머리 높이에 맞춰 왼쪽 위에 둔다.
+    ///
+    /// 손님마다 키가 다르다 — 어린이는 낮고 사극 손님은 갓 때문에 높다. 자리를 숫자로 박아 두면
+    /// 누구에겐 머리에 겹치고 누구에겐 멀리 뜬다. 그래서 지금 손님 머리 꼭대기에서 잰다.
+    ///
+    /// 피벗이 오른쪽 위라, 여기 넣는 자리가 곧 말풍선의 오른쪽 위 모서리다.
+    /// 글이 길어지면 아래왼쪽으로만 자라므로 머리 높이는 그대로 지킨다.
+    /// </summary>
+    private void PlaceBubble(RectTransform bubble)
+    {
+        EnsureAppearance();
+        if (customerAppearance == null) return;
+
+        var slot = customerAppearance.transform as RectTransform;
+        if (slot == null) return;
+
+        // 자리 아래변(카운터 선)에서 잰 귀 높이를 화면 높이로 옮긴다.
+        float ear = slot.anchoredPosition.y - slot.rect.height * 0.5f
+                    + customerAppearance.EarInSlot;
+
+        // 피벗이 오른쪽 위라, 상자 한가운데가 귀에 오도록 절반만큼 올려 둔다.
+        bubble.anchoredPosition = new Vector2(BubbleRightX, ear + bubble.rect.height * 0.5f);
+    }
+
+    /// <summary>조리 화면 물건을 껐다 켠다. 손님을 보는 동안에는 조리대가 필요 없다.</summary>
+    private void ShowCookingProps(bool show)
+    {
+        if (hiddenWhileOpen == null) return;
+
+        for (int i = 0; i < hiddenWhileOpen.Length; i++)
+        {
+            if (hiddenWhileOpen[i] != null) hiddenWhileOpen[i].SetActive(show);
+        }
+    }
+
+    /// <summary>
+    /// 말풍선 오른쪽 끝이 놓이는 자리.
+    ///
+    /// 얼굴(가운데 150 남짓)에 딱 붙이면 답답하고, 자리(300) 바깥까지 빼면 꼬리가
+    /// 허공을 가리킨다. 그 사이에 둔다.
+    /// </summary>
+    private const float BubbleRightX = -130f;
 
     /// <summary>대사를 줄 단위로 자른다. 빈 줄은 버린다.</summary>
     private static string[] SplitLines(string dialogue)

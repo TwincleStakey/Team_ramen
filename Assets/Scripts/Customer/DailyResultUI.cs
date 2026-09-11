@@ -25,6 +25,10 @@ public class DailyResultUI : MonoBehaviour
     [SerializeField]
     private TextMeshProUGUI averageAccuracyText;
 
+    [Tooltip("당일 100% 그릇 수 표시 텍스트 (기획서 v1.2 10장 '일일 결과 - 완벽 주문 기록')")]
+    [SerializeField]
+    private TextMeshProUGUI perfectCountText;
+
     [Tooltip("다음 날로 넘어가기 위한 [확인] 버튼")]
     [SerializeField]
     private Button confirmButton;
@@ -54,7 +58,8 @@ public class DailyResultUI : MonoBehaviour
     /// <param name="day">현재 일차</param>
     /// <param name="todayProfit">당일 총 누적 수익</param>
     /// <param name="averageAccuracy">당일 평균 정확도 (%)</param>
-    public void OpenPopup(int day, int todayProfit, float averageAccuracy)
+    /// <param name="perfectCount">당일 100% 그릇 수. 누계가 아니라 오늘치다</param>
+    public void OpenPopup(int day, int todayProfit, float averageAccuracy, int perfectCount)
     {
         if (popupRoot != null)
         {
@@ -75,6 +80,19 @@ public class DailyResultUI : MonoBehaviour
         {
             averageAccuracyText.text = $"평균 정확도 : {averageAccuracy:F1}%";
         }
+
+        if (perfectCountText != null)
+        {
+            perfectCountText.text = $"완벽한 한 그릇 : {perfectCount}건";
+        }
+    }
+
+    /// <summary>
+    /// 기본 호출 오버로드 (완벽 그릇 수 생략 시)
+    /// </summary>
+    public void OpenPopup(int day, int todayProfit, float averageAccuracy)
+    {
+        OpenPopup(day, todayProfit, averageAccuracy, 0);
     }
 
     /// <summary>
@@ -82,7 +100,7 @@ public class DailyResultUI : MonoBehaviour
     /// </summary>
     public void OpenPopup(int day, int todayProfit)
     {
-        OpenPopup(day, todayProfit, 0f);
+        OpenPopup(day, todayProfit, 0f, 0);
     }
 
     /// <summary>

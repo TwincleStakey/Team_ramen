@@ -118,6 +118,7 @@ public static class SaveSystem
             data.todayProfit = GetInt(calc, "todayTotalProfit");
             data.todayAccuracySum = GetFloat(calc, "todayTotalAccuracy");
             data.todayServed = GetInt(calc, "todayServedCount");
+            data.todayPerfect = GetInt(calc, "todayPerfectCount");
         }
 
         CaptureOrder(data, order);
@@ -194,6 +195,7 @@ public static class SaveSystem
             SetField(calc, "todayTotalProfit", data.todayProfit);
             SetField(calc, "todayTotalAccuracy", data.todayAccuracySum);
             SetField(calc, "todayServedCount", data.todayServed);
+            SetField(calc, "todayPerfectCount", data.todayPerfect);
         }
 
         ApplyOrder(data, order);
@@ -400,6 +402,7 @@ public class SaveData
     public int todayProfit;
     public float todayAccuracySum;
     public int todayServed;
+    public int todayPerfect;
 
     // 현재 주문. 정답 레시피는 담지 않는다 — 불러올 때 다시 계산한다.
     public bool hasOrder;

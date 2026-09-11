@@ -143,6 +143,22 @@ public class OrderManager : MonoBehaviour
         return currentScenario.order;
     }
 
+    /// <summary>
+    /// 만들어 둔 주문을 그대로 꽂는다. 튜토리얼처럼 무작위 생성을 거치지 않는 주문에 쓴다.
+    /// 채점·주문서·Tab 원문이 전부 currentScenario 하나를 보므로 이 자리만 채우면 된다.
+    /// </summary>
+    public void SetScenario(DialogueScenario scenario)
+    {
+        currentScenario = scenario;
+
+        if (dialogueText != null && scenario != null)
+        {
+            dialogueText.text = scenario.Dialogue;
+        }
+
+        LogOrderDetails(scenario);
+    }
+
     // 주문에 대한 상세 정보(기본 재료, 변경 재료 및 변화량, 최종 정답 레시피, 대사)를 콘솔에 출력합니다.
     private void LogOrderDetails(DialogueScenario scenario)
     {

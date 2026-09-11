@@ -120,12 +120,13 @@ public class DayManager : MonoBehaviour
     {
         int todayProfit = (ramenCalculator != null) ? ramenCalculator.TodayTotalProfit : 0;
         float todayAvgAccuracy = (ramenCalculator != null) ? ramenCalculator.TodayAverageAccuracy : 0f;
+        int todayPerfect = (ramenCalculator != null) ? ramenCalculator.TodayPerfectCount : 0;
 
-        Debug.Log($"[DayManager] Day {currentDay} 영업 마감! (당일 총 수익: {todayProfit:N0}원, 평균 정확도: {todayAvgAccuracy:F1}%)");
+        Debug.Log($"[DayManager] Day {currentDay} 영업 마감! (당일 총 수익: {todayProfit:N0}원, 평균 정확도: {todayAvgAccuracy:F1}%, 완벽한 한 그릇: {todayPerfect}건)");
 
         if (dailyResultUI != null)
         {
-            dailyResultUI.OpenPopup(currentDay, todayProfit, todayAvgAccuracy);
+            dailyResultUI.OpenPopup(currentDay, todayProfit, todayAvgAccuracy, todayPerfect);
         }
         else
         {

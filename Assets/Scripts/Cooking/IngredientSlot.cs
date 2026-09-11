@@ -78,6 +78,9 @@ public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
     /// </summary>
     public void OnPointerDown(PointerEventData eventData)
     {
+        // 튜토리얼 중에는 안내한 재료 말고는 아예 집히지 않는다(기획서 v1.2 9장).
+        if (!TutorialManager.CanPick(type)) return;
+
         CreateGhost(eventData.position);
     }
 
@@ -89,6 +92,10 @@ public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
 
     public void OnBeginDrag(PointerEventData eventData)
     {
+        // OnPointerDown 에서 막아도 여기로 다시 들어온다. 그쪽에서 거부하면 ghost 가 null 로
+        // 남아 있어서 아래 줄이 그대로 만들어 버린다. 두 곳 다 막아야 한다.
+        if (!TutorialManager.CanPick(type)) return;
+
         // 누를 때 이미 만들어 뒀다. 눌림을 놓친 경우에만 여기서 만든다.
         if (ghost == null) CreateGhost(eventData.position);
     }

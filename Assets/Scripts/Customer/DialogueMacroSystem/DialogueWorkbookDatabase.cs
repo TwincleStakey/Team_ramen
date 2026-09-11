@@ -16,9 +16,23 @@ public sealed class DialogueWorkbookDatabase
             throw new InvalidOperationException("DialogueDB.json을 읽지 못했거나 persona 데이터가 없습니다.");
     }
 
+    /// <summary>
+    /// 그림이 없는 말투는 뽑지 않는다. 지금은 장난꾸러기(Joker) 하나뿐이다 —
+    /// 손님 그림 14장이 나머지 말투와 1:1로 맞고 이 말투만 짝이 없다.
+    /// 데이터는 그대로 두고 뽑기에서만 뺀다. 그림이 들어오면 이 목록에서 지우면 된다.
+    /// </summary>
+    private static readonly string[] DisabledPersonaIds = { "Joker" };
+
     public PersonaRow RandomPersona()
     {
-        return Pick(db.personas);
+        var usable = new List<PersonaRow>();
+        foreach (PersonaRow row in db.personas)
+        {
+            if (Array.IndexOf(DisabledPersonaIds, row.personaId) < 0) usable.Add(row);
+        }
+
+        // 전부 빠져 버렸으면 막지 않는다. 손님이 아예 안 나오는 것보다 낫다.
+        return usable.Count > 0 ? Pick(usable.ToArray()) : Pick(db.personas);
     }
 
     public RamenRow GetRamen(RamenType ramenType)

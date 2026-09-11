@@ -7,11 +7,21 @@ public class RamenCalculator : MonoBehaviour
     // 1. 라멘 기본 정가 설정 (모든 라멘 종류 통일: 10,000원 · 기획서 v1.2 7.3)
     public const int BASE_PRICE = 10000;
 
+    /// <summary>
+    /// "완벽한 한 그릇"으로 치는 정확도(기획서 v1.2 7.3·13). 정확히 100을 비교하지 않는 이유는
+    /// 정확도가 float 나눗셈으로 나와 100.0 이 99.99999 로 떨어질 수 있어서다.
+    ///
+    /// 오차가 1 만 있어도 이 값 아래로 내려간다. 정답 총수량은 토핑·조미료 9종 x 4회 = 36 이
+    /// 최대이고, 오차 1/36 이면 97.2% 다. 실제 주문은 분모가 5~10 근처라 훨씬 더 내려간다.
+    /// </summary>
+    public const float PERFECT_ACCURACY = 99.95f;
+
     // 2. 당일 총 이익 및 정확도 변수
     [Header("당일 통계")]
     [SerializeField] private int todayTotalProfit = 0;
     [SerializeField] private float todayTotalAccuracy = 0f;
     [SerializeField] private int todayServedCount = 0;
+    [SerializeField] private int todayPerfectCount = 0;
 
     // 최근 서빙한 라멘의 정확도 및 판매가, 오차 개수
     private float lastAccuracy = 0f;
@@ -21,6 +31,9 @@ public class RamenCalculator : MonoBehaviour
 
     public int TodayTotalProfit => todayTotalProfit;
     public int TodayServedCount => todayServedCount;
+
+    /// <summary>오늘 100%로 낸 그릇 수. 하루 마감 정산에 쓴다. NextDay가 0으로 지운다.</summary>
+    public int TodayPerfectCount => todayPerfectCount;
     public float TodayAverageAccuracy => todayServedCount > 0 ? (todayTotalAccuracy / todayServedCount) : 0f;
     public float LastAccuracy => lastAccuracy;
     public int LastSellingPrice => lastSellingPrice;
@@ -202,6 +215,7 @@ public class RamenCalculator : MonoBehaviour
         todayTotalProfit += sellingPrice;
         todayTotalAccuracy += accuracy;
         todayServedCount++;
+        if (accuracy >= PERFECT_ACCURACY) todayPerfectCount++;
 
         Debug.Log($"[라멘 평가: 정상 통과] 종류: {ramenType} | 정가: {basePrice:N0}원 | " +
                   $"토핑 오차: {toppingErrorCount}/{toppingTargetCount}개 | " +
@@ -224,6 +238,7 @@ public class RamenCalculator : MonoBehaviour
         todayTotalProfit = 0;
         todayTotalAccuracy = 0f;
         todayServedCount = 0;
+        todayPerfectCount = 0;
         lastAccuracy = 0f;
         lastSellingPrice = 0;
         lastTotalErrorCount = 0;

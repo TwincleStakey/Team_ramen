@@ -108,15 +108,25 @@ public class CookingCursor : MonoBehaviour
     private const float DipDepth = 12f;
 
     // ── 병으로 뿌리는 동작 ───────────────────────────────────────
-    private const float PourTiltSeconds = 0.14f;
-    private const float PourHoldSeconds = 0.10f;
+    //
+    // 칸을 프레임마다 보간하지 않고 한 칸씩 끊어 넘긴다. 손으로 툭툭 터는 동작이라
+    // 매끄럽게 도는 것보다 칸이 보이는 편이 맞다. 예전에는 0.14초 동안 세 칸을
+    // 프레임 수만큼 나눠 보간해서, 빠른 화면에서는 기울어지는 중간이 안 보이고
+    // 통째로 순간이동한 것처럼 읽혔다.
+    private const float BottleTiltStepSeconds = 0.07f;
+
+    /// <summary>터는 자세 하나를 버티는 시간. 이 값이 "툭" 한 번의 길이다.</summary>
+    private const float ShakeStepSeconds = 0.10f;
+
     private const int ShakeCount = 3;
-    private const float ShakeSeconds = 0.07f;
+    private const float PourHoldSeconds = 0.14f;
 
     // 병 시트의 칸. 각도가 0·15·30·45·58도라 한 칸이 대략 15도다.
-    // 흔들기는 붓는 자세에서 한 칸 위아래로 오가는 것이고, 예전 ±13도와 같은 폭이다.
     private const int BottleUprightStep = 0;
     private const int BottlePourStep = 3;
+
+    /// <summary>터는 끝 자세. 붓는 자세에서 한 칸 더 기울인 칸이다.</summary>
+    private const int BottleShakeStep = 4;
 
     private enum Mode { Chopsticks, Ladle, Bottle, Noodle }
 
@@ -517,34 +527,30 @@ public class CookingCursor : MonoBehaviour
         IsHolding = false;   // 붓는 동안 또 넣지 못하게
         frozen = true;       // 병이 마우스를 따라다니면 뿌리는 동작이 읽히지 않는다
 
-        // 세운 자세에서 붓는 자세까지 기울인다
-        for (float t = 0f; t < PourTiltSeconds; t += Time.unscaledDeltaTime)
+        // 세운 자세에서 붓는 자세까지 한 칸씩 끊어 기울인다.
+        for (int step = BottleUprightStep + 1; step <= BottlePourStep; step++)
         {
-            float k = t / PourTiltSeconds;
-            image.sprite = BottleSprite(Mathf.RoundToInt(k * BottlePourStep));
-            yield return null;
+            image.sprite = BottleSprite(step);
+            yield return new WaitForSecondsRealtime(BottleTiltStepSeconds);
         }
-        image.sprite = BottleSprite(BottlePourStep);
 
-        // 탈탈 턴다. 사인 한 바퀴가 붓는 자세 → 한 칸 위 → 붓는 자세 → 한 칸 아래 → 붓는 자세다.
+        // 탈탈 턴다. 붓는 자세와 터는 끝 자세를 오가며 "툭" 을 ShakeCount 번 찍는다.
         for (int i = 0; i < ShakeCount; i++)
         {
-            for (float t = 0f; t < ShakeSeconds; t += Time.unscaledDeltaTime)
-            {
-                float swing = Mathf.Sin(t / ShakeSeconds * Mathf.PI * 2f);
-                image.sprite = BottleSprite(BottlePourStep + Mathf.RoundToInt(swing));
-                yield return null;
-            }
+            image.sprite = BottleSprite(BottleShakeStep);
+            yield return new WaitForSecondsRealtime(ShakeStepSeconds);
+
+            image.sprite = BottleSprite(BottlePourStep);
+            yield return new WaitForSecondsRealtime(ShakeStepSeconds);
         }
 
-        image.sprite = BottleSprite(BottlePourStep);
         yield return new WaitForSecondsRealtime(PourHoldSeconds);
 
-        for (float t = 0f; t < PourTiltSeconds; t += Time.unscaledDeltaTime)
+        // 세운 자세로 되돌린다. 내려올 때와 같은 간격이라 한쪽만 빨라 보이지 않는다.
+        for (int step = BottlePourStep - 1; step >= BottleUprightStep; step--)
         {
-            float k = t / PourTiltSeconds;
-            image.sprite = BottleSprite(Mathf.RoundToInt((1f - k) * BottlePourStep));
-            yield return null;
+            image.sprite = BottleSprite(step);
+            yield return new WaitForSecondsRealtime(BottleTiltStepSeconds);
         }
 
         motion = null;

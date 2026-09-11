@@ -21,21 +21,24 @@ public class RecipeBookUI : MonoBehaviour
 {
     // 아래는 RamenLayoutBuilder가 씬을 만들 때 꽂아 준다.
     [SerializeField] private GameObject root;
-    [SerializeField] private TextMeshProUGUI recipeNames;
-    [SerializeField] private TextMeshProUGUI recipeValues;
+    /// <summary>메뉴 순서(<see cref="Menus"/>)대로 이름 글상자와 재료 글상자. 이름은 한 단계 큰 글자다.</summary>
+    [SerializeField] private TextMeshProUGUI[] menuNameTexts;
+    [SerializeField] private TextMeshProUGUI[] menuValueTexts;
     [SerializeField] private Button closeButton;
 
     /// <summary>아래에서 올라오는 판. 이것만 움직이고 root는 껐다 켜기만 한다.</summary>
     [SerializeField] private RectTransform panel;
 
-    /// <summary>다 올라왔을 때 판이 설 자리.</summary>
-    [SerializeField] private Vector2 shownPosition = new Vector2(0f, -20f);
+    /// <summary>다 올라왔을 때 판이 설 자리. 화면 아래쪽에 살짝만 띄운다 —
+    /// 판 316 높이의 아래끝이 화면 아래(-270)에서 20칸 위에 온다.</summary>
+    [SerializeField] private Vector2 shownPosition = new Vector2(0f, -92f);
 
-    /// <summary>숨었을 때 자리. 화면 아래 바깥이라 판이 안 보인다.</summary>
-    [SerializeField] private Vector2 hiddenPosition = new Vector2(0f, -400f);
+    /// <summary>숨었을 때 자리. 화면 아래 바깥이라 판이 안 보인다.
+    /// 판이 316 높이라 -400 이면 위쪽 코일이 28칸 비친다. 화면 반높이 270 + 판 반높이 158 보다 아래여야 한다.</summary>
+    [SerializeField] private Vector2 hiddenPosition = new Vector2(0f, -440f);
 
-    /// <summary>미끄러지는 데 걸리는 시간.</summary>
-    [SerializeField] private float slideSeconds = 0.18f;
+    /// <summary>미끄러지는 데 걸리는 시간. 0.18 은 툭 튀어나오는 느낌이라 늦췄다.</summary>
+    [SerializeField] private float slideSeconds = 0.4f;
 
     private Coroutine sliding;
 
@@ -57,7 +60,9 @@ public class RecipeBookUI : MonoBehaviour
     };
 
     private static readonly RamenType[] Menus = { RamenType.Shio, RamenType.Shoyu, RamenType.Tonkotsu };
-    private static readonly string[] MenuNames = { "시오", "쇼유", "돈코츠" };
+
+    /// <summary>빌더(RamenLayoutBuilder.BuildRecipeBook)도 읽는다 — 이름 글자 수로 밑줄 폭을 고른다.</summary>
+    public static readonly string[] MenuNames = { "시오", "쇼유", "돈코츠" };
 
     public bool IsOpen
     {
@@ -158,20 +163,26 @@ public class RecipeBookUI : MonoBehaviour
         return new Vector2(Mathf.Round(v.x), Mathf.Round(v.y));
     }
 
-    /// <summary>기본 레시피는 B의 RecipeGenerator에서 그대로 읽는다. 사본을 두지 않는다.</summary>
+    /// <summary>
+    /// 기본 레시피는 RecipeGenerator에서 그대로 읽는다. 사본을 두지 않는다.
+    ///
+    /// 공책에 손으로 적은 모양이다. 메뉴마다 글상자가 둘이다(빌더가 자리와 크기를 잡는다).
+    ///   돈코츠 :                              <- 이름 글상자, 한 단계 큰 글자, 밑에 빨간 물결 밑줄 그림
+    ///   차슈 2 + 파 2 + 김 1 + 계란 1 + 목이버섯 1   <- 재료 글상자, 길면 "+" 뒤 빈칸에서 접힌다
+    /// </summary>
     private void FillRecipeTable()
     {
-        if (recipeNames == null || recipeValues == null) return;
-
-        var names = new StringBuilder();
-        var values = new StringBuilder();
+        if (menuNameTexts == null || menuValueTexts == null) return;
 
         for (int i = 0; i < Menus.Length; i++)
         {
-            if (i > 0) { names.Append('\n'); values.Append('\n'); }
-            names.Append(MenuNames[i]);
+            if (i < menuNameTexts.Length && menuNameTexts[i] != null)
+                menuNameTexts[i].text = MenuNames[i] + " :";
+
+            if (i >= menuValueTexts.Length || menuValueTexts[i] == null) continue;
 
             Dictionary<IngredientType, int> recipe = RecipeGenerator.GetBaseRecipe(Menus[i]);
+            var sb = new StringBuilder();
 
             bool first = true;
             foreach (IngredientType topping in Toppings)
@@ -179,15 +190,13 @@ public class RecipeBookUI : MonoBehaviour
                 int amount;
                 if (!recipe.TryGetValue(topping, out amount) || amount <= 0) continue;
 
-                if (!first) values.Append("   ");
-                values.Append(KoreanNames[topping]).Append(' ').Append(amount);
+                if (!first) sb.Append(" + ");
+                sb.Append(KoreanNames[topping]).Append(' ').Append(amount);
                 first = false;
             }
 
-            if (first) values.Append("(토핑 없음)");
+            if (first) sb.Append("(토핑 없음)");
+            menuValueTexts[i].text = sb.ToString();
         }
-
-        recipeNames.text = names.ToString();
-        recipeValues.text = values.ToString();
     }
 }

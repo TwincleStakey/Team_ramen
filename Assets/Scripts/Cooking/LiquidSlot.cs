@@ -44,6 +44,9 @@ public class LiquidSlot : MonoBehaviour, IPointerEnterHandler, IPointerDownHandl
     /// <summary>누르는 순간 푸는 동작이 시작된다. 다 퍼야 담긴 상태가 된다.</summary>
     public void OnPointerDown(PointerEventData eventData)
     {
+        // 튜토리얼 중에는 안내한 재료 말고는 아예 집히지 않는다(기획서 v1.2 9장).
+        if (!TutorialManager.CanPick(type)) return;
+
         if (CookingCursor.Instance == null)
         {
             Debug.LogWarning("[LiquidSlot] 씬에 커서가 없습니다. Tools > Ramen > Build Cooking Layout을 다시 실행해 주세요.");
@@ -58,6 +61,10 @@ public class LiquidSlot : MonoBehaviour, IPointerEnterHandler, IPointerDownHandl
     /// <summary>누를 때 이미 펐다. 눌림을 놓친 경우에만 여기서 뜬다.</summary>
     public void OnBeginDrag(PointerEventData eventData)
     {
+        // OnPointerDown 에서 막아도 여기로 다시 들어온다. 눌림이 거부되면 picking 이 false 로
+        // 남아 있어서 아래 검사를 그냥 지나친다. 두 곳 다 막아야 한다.
+        if (!TutorialManager.CanPick(type)) return;
+
         if (picking || CookingCursor.Instance == null) return;
 
         delivered = false;
