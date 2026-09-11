@@ -5,6 +5,8 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 using UnityEngine.TextCore.LowLevel;
 using UnityEngine.UI;
@@ -139,6 +141,7 @@ public static class RamenLayoutBuilder
     private static readonly Vector2 Center = new Vector2(0.5f, 0.5f);
     private static readonly Vector2 BottomRight = new Vector2(1f, 0f);
     private static readonly Vector2 BottomLeft = new Vector2(0f, 0f);
+    private static readonly Vector2 BottomCenter = new Vector2(0.5f, 0f);
 
     // 원본 픽셀의 몇 배로 띄울지를 실제 물건 크기 느낌에 맞춰 정한 것.
     // 냄비 > 재료통·타래통 > 조미료병 순서고, 면 튀김기가 제일 큰 장비다.
@@ -147,6 +150,9 @@ public static class RamenLayoutBuilder
 
     // 주문서 색. 영수증 종이라 상단바 판(흰색)보다 살짝 누렇다.
     private static readonly Color NotePaperColor = new Color32(250, 244, 227, 255);
+
+    /// <summary>비법서 글 색. 수첩 그림(Tools/make_recipe_book.py)의 먹색과 같다.</summary>
+    private static readonly Color RecipeInkColor = new Color32(60, 42, 30, 255);
     private static readonly Color NoteShadeColor = new Color32(206, 190, 158, 255);
     private static readonly Color NoteOutlineColor = new Color32(0, 0, 0, 255);
 
@@ -185,6 +191,70 @@ public static class RamenLayoutBuilder
     /// </summary>
     private static readonly bool ClipUnderBroth = false;
     private static readonly Vector2 BowlSize = new Vector2(128f * BowlScale, 128f * BowlScale);
+
+    /// <summary>우주 배경 한 변. 화면 대각선(√(960²+540²) ≈ 1101)보다 커야 돌려도 구석이 안 비친다.</summary>
+    private static readonly Vector2 CosmosSize = new Vector2(1104f, 1104f);
+
+    /// <summary>
+    /// 손님 그림 한 변. Tools/bake_customers.py 가 굽는 크기와 같아야 한다.
+    /// 원본은 397 인데 화면에서 그만큼 크면 노렌 창을 넘어선다.
+    /// </summary>
+    private const float CustomerPortraitSize = 300f;
+
+    /// <summary>
+    /// 손님 앞에 놓는 그릇. 손님이 300 이라 120 으로는 장난감처럼 작아 보였다.
+    /// 조리 화면 중앙 그릇(256)보다는 작게 두어 그것과 헷갈리지 않게 한다.
+    /// </summary>
+    private const float CustomerBowlSize = 220f;
+
+    /// <summary>
+    /// 그 그릇의 높이. 카운터 선 바로 아래라 손님 앞에 놓인 것으로 읽힌다.
+    /// 더 올리면 손님 가슴을 덮어 들고 있는 것처럼 보인다.
+    /// </summary>
+    private const float CustomerBowlY = -75f;
+
+    /// <summary>
+    /// 땀방울 크기와 자리(손님 자리 안에서의 상대값).
+    ///
+    /// 원본이 32칸이라 그대로 쓴다. 16칸으로 그렸을 때는 손님이 300칸이라 화면에서 거의 안 보였다.
+    /// 자리는 얼굴 오른쪽 바깥, 눈썹 높이다 —
+    /// 얼굴 안에 얹으면 뺨에 붙은 점으로 보이고, 너무 벌리면 허공에 뜬다.
+    /// </summary>
+    private static readonly Vector2 SweatSize = new Vector2(32f, 32f);
+    private static readonly Vector2 SweatPos = new Vector2(88f, 10f);
+
+    /// <summary>
+    /// 까마귀 한 칸. Tools/make_crow.py 가 굽는 48칸 4프레임 시트를 그대로 쓴다.
+    /// 0 다묾 · 1 반쯤 · 2 까악 · 3 반쯤 순서다.
+    /// </summary>
+    private static readonly Vector2 CrowSize = new Vector2(48f, 48f);
+
+    /// <summary>
+    /// 침묵의 점 셋. 손님 머리 위에 가로로 늘어선다.
+    ///
+    /// 222 에 두었더니 상단바(아래변이 210 근처)와 겹쳤다. 시네마틱 동안에는 상단바가 꺼지지만
+    /// 그 밖에서도 쓸 수 있어야 하므로 판 아래로 내린다.
+    ///
+    /// 손님 그림 아래변이 카운터 선(−72)에서 14칸 더 내려간 −86 이라, 머리 꼭대기는
+    /// 제일 큰 손님(사극, 291칸)이 205, 보통은 190 안팎이다. 188 이면 머리 바로 위에 얹힌다.
+    ///
+    /// 간격은 넓게 둔다. 까마귀가 점 사이를 건너는 시간이 곧 점이 찍히는 간격이라,
+    /// 좁으면 세 점이 한꺼번에 툭 떠 버린다.
+    /// </summary>
+    private static readonly Vector2 DotSize = new Vector2(28f, 28f);
+    private const float DotY = 188f;
+    private const float DotGap = 90f;
+
+    // 조미료 배지(시치미·향미유). 그릇 오른쪽 위 빈 나무판에 두 줄로 쌓는다.
+    // 그릇 오른쪽 끝과 시치미 병 사이가 비어 있어 거기 들어간다.
+    // 모두 캔버스 한가운데 기준 상대값이다. 화면이 커져도 같이 따라간다.
+    // 아이콘은 원본이 24x24다. 16으로 그렸더니 옆 글자보다 작아 눈에 안 들어왔다.
+    // 늘려 쓰지 않고 그 크기로 다시 그렸다 — 정수배가 아니면 획이 반칸에 걸린다.
+    private static readonly Vector2 BadgeIconSize = new Vector2(24f, 24f);
+    private const float BadgeX = 150f;
+    private const float BadgeTopY = 118f;
+    private const float BadgeRowGap = 34f;
+    private const float BadgeCountX = 42f;   // 아이콘 중심에서 글자 상자 중심까지
 
     // 주문 화면 대사창. 손님 대사 세 마디가 보이게 잡은 값이다.
     //
@@ -231,11 +301,9 @@ public static class RamenLayoutBuilder
     /// <summary>
     /// 말풍선 글자가 쓸 수 있는 최대 폭.
     ///
-    /// 말풍선 왼쪽 위가 화면 (8,60)에 고정이다. 손님 자리가 판 한가운데(417부터)라
-    /// 340 + 여백 12 = 352 면 오른쪽 끝이 360 으로 손님을 안 건드린다.
-    ///
-    /// 판이 640 에서 960 으로 넓어졌는데 224 그대로 두었더니 상자만 그 자리에 작게 남아,
-    /// 한 마디가 세 줄로 접히고 "왔습니 / 다!" 처럼 어색하게 끊겼다.
+    /// 말풍선은 손님 얼굴 왼쪽에 붙고 높이는 그 손님 머리에 맞춘다(OrderScreenUI.PlaceBubble).
+    /// 오른쪽 끝이 -100 이고 화면 왼쪽 끝(-480)까지 380 이 남는다. 좌우 여백 10 씩을 빼고,
+    /// 화면 가장자리에 딱 붙지 않게 조금 더 줄인 값이다.
     /// </summary>
     private const float BubbleMaxTextWidth = 340f;
 
@@ -345,6 +413,9 @@ public static class RamenLayoutBuilder
     /// </summary>
     private const float BubbleTailTop = 24f;
 
+    /// <summary>말풍선 윗변의 화면 y. 꼬리 한가운데가 손님 귀(y 98)에 서도록 잡은 값이다.</summary>
+    private const float BubbleTopY = 130f;
+
     // 말풍선이 Order UI.png 안에서 차지하는 자리. 왼쪽 아래가 (0,0)이다.
     private const int BubbleBodyX = 7;
     private const int BubbleBodyY = 19;
@@ -430,7 +501,9 @@ public static class RamenLayoutBuilder
     /// <summary>상단 바에서 만들어 두고 나중에 다른 것과 연결해야 하는 것들.</summary>
     private class TopBarRefs
     {
+        public Transform Root;     // 시네마틱 동안 통째로 꺼진다
         public Image Discard;      // 그릇이 생긴 뒤 onClick을 붙인다
+        public Image Submit;       // 마무리 버튼. 마찬가지로 나중에 붙인다
         public Image Help;         // ? 버튼. 눌리면 주문 화면을 다시 연다
         public TextMeshProUGUI DayText;       // GameManager가 일차를 써 넣는다
         public TextMeshProUGUI RevenueText;   // GameManager가 누적 매출을 써 넣는다
@@ -477,8 +550,8 @@ public static class RamenLayoutBuilder
     private class RecipeBookRefs
     {
         public GameObject Root;
-        public TextMeshProUGUI RecipeNames;
-        public TextMeshProUGUI RecipeValues;
+        public TextMeshProUGUI[] MenuNameTexts;
+        public TextMeshProUGUI[] MenuValueTexts;
         public Button Close;
 
         /// <summary>아래에서 올라오는 판.</summary>
@@ -526,6 +599,7 @@ public static class RamenLayoutBuilder
         public TextMeshProUGUI Title;
         public TextMeshProUGUI Profit;
         public TextMeshProUGUI Accuracy;
+        public TextMeshProUGUI Perfect;
         public Button Confirm;
     }
 
@@ -744,12 +818,33 @@ public static class RamenLayoutBuilder
         // 거부 안내는 그릇 위에 떠야 하므로 그릇보다 뒤에 만든다.
         bowl.toast = BuildIngredientToast(canvas);
 
+        // 시치미·향미유는 그릇에 그림이 안 올라가서 넣었는지 알 길이 없다. 개수를 옆에 따로 센다.
+        bowl.badges = BuildSeasoningBadges(canvas);
+
         // 팻말을 여기서 맨 뒤로 보낸다. 통과 그릇보다는 위에, 팝업들보다는 아래에 있어야 한다.
         // 통보다 아래면 팻말이 통에 가리고, 팝업보다 위면 팝업 위에 이름이 떠 버린다.
         nameplate.transform.SetAsLastSibling();
 
-        // 폐기 버튼은 그릇보다 먼저 만들어지므로 둘이 다 생긴 뒤에 연결한다.
-        WireDiscardButton(topBar.Discard, bowl);
+        // 튜토리얼 어두운 판. 그릇은 늘 판 위에 둔다 — 채워지는 것을 봐야 한다.
+        BuildTutorialDim(canvas);
+
+        Canvas bowlCanvas = LiftCanvas(bowl.gameObject);
+        bowlCanvas.overrideSorting = true;
+        bowlCanvas.sortingOrder = TutorialLiftOrder;
+
+        // 확인창 둘. 폐기·마무리 버튼은 그릇보다 먼저 만들어지므로 다 생긴 뒤에 연결한다.
+        ConfirmDialogUI discardConfirm = BuildConfirmDialog(canvas, bowl, "DiscardConfirm",
+                                                           "정말 폐기하시겠습니까?", false);
+        UnityEventTools.AddVoidPersistentListener(
+            DialogConfirmEvent(discardConfirm), new UnityEngine.Events.UnityAction(bowl.Discard));
+        WireDialogButton(topBar.Discard, discardConfirm);
+
+        ConfirmDialogUI submitConfirm = BuildConfirmDialog(canvas, bowl, "SubmitConfirm",
+                                                          "마무리 하시겠습니까?", true);
+        UnityEventTools.AddVoidPersistentListener(
+            DialogConfirmEvent(submitConfirm), new UnityEngine.Events.UnityAction(bowl.Submit));
+        WireDialogButton(topBar.Submit, submitConfirm);
+
 
         // 정산 팝업. 커서보다 아래여야 하므로 DragLayer보다 먼저 만든다.
         ResultPopupRefs popup = BuildResultPopup(canvas);
@@ -763,6 +858,24 @@ public static class RamenLayoutBuilder
 
         // 주문을 만들어 줄 B의 컴포넌트들을 씬에 올리고 GameManager와 잇는다.
         OrderSystemRefs orderSystem = EnsureOrderSystem(popup, finalPopup, orderScreen, recipeBook, orderResult, orderNote);
+        // 키 안내 아이콘. 조리 화면 위에 늘 떠 있다.
+        BuildKeyHints(canvas);
+
+        // 100% 팻말. 결과창보다 앞이어야 한다.
+        BuildPerfectSign(canvas);
+
+        // 화면 전환 판. 시작 화면보다 뒤여야 한다 — 덮개가 시작 화면까지 가리면
+        // [게임시작] 을 누른 뒤 시작 화면이 걷히는 것이 안 보인다.
+        BuildScreenFade(canvas);
+
+        // 시작 화면을 GameManager 배선보다 먼저 만든다. 배선이 씬에서 찾아 꽂는 방식이라
+        // 나중에 만들면 그때는 아직 없어서 빈 채로 남는다.
+        BuildTitleScreen(canvas);
+
+        // 도입부 내레이션과 아이리스. 둘 다 전환 판보다 앞이라 나중에 만든다.
+        BuildOpeningNarration(canvas);
+        BuildIrisFade(canvas);
+
         WireGameManager(orderSystem, topBar);
 
         // DragLayer는 반드시 마지막. 그래야 드래그 고스트와 커서가 항상 모든 UI 위에 그려진다.
@@ -779,6 +892,13 @@ public static class RamenLayoutBuilder
         // 그레인은 DragLayer 보다 뒤에 만든다. 나중에 만든 것이 위에 그려지므로
         // 커서와 드래그 고스트 위에까지 덮인다. 화면 전체에 고르게 깔려야 하기 때문이다.
         BuildScreenGrain(canvas);
+
+        // 시네마틱 동안 감출 판. 다 만들어진 뒤라야 전부 찾을 수 있어서 여기서 모은다.
+        //
+        // 두 군데에 흩어져 있다.
+        //   조리 화면  주문 화면 그림이 화면 위쪽만 덮어서, 바 사이로 육수 냄비와 재료통이 비친다.
+        //   주문 화면  "영업 시간 / 누적 수익" 판. 바를 푸는 동안 아래 끄트머리가 삐져나온다.
+        WireCinematicHiding(canvas, orderScreen);
 
         // 더티 표시만 하면 디스크 파일은 그대로라, 이 상태로 커밋하면 옛 씬이 올라간다.
         // 실제로 한 번 그렇게 커밋돼서 클론 시 주문 시스템이 없는 씬이 나갔다. 그래서 바로 저장한다.
@@ -798,7 +918,12 @@ public static class RamenLayoutBuilder
         Undo.RegisterCreatedObjectUndo(go, UndoLabel);
 
         var canvas = go.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+
+        // Overlay 가 아니라 카메라에 물린다. Overlay 는 카메라가 다 그린 뒤에 따로 얹혀서
+        // 카메라 후처리를 통과하지 않는다 — 색보정(ScreenGrade)이 UI 에 안 먹는다.
+        canvas.renderMode = RenderMode.ScreenSpaceCamera;
+        canvas.worldCamera = EnsureScreenGrade();
+        canvas.planeDistance = CanvasPlaneDistance;
 
         // 그리는 자리를 픽셀 경계에 맞춰 끊는다. 글자는 줄 길이가 홀수면 반칸에서 시작하는데,
         // 반칸에 걸린 그림은 어떤 획은 3픽셀, 어떤 획은 4픽셀로 찍혀 굵기가 들쭉날쭉해진다.
@@ -810,6 +935,114 @@ public static class RamenLayoutBuilder
 
         return go.transform;
     }
+
+    // ── 화면 색보정 ───────────────────────────────────────────────
+    //
+    // 다 그려진 화면에 감마 곡선을 한 번 먹여 빛바랜 필름처럼 만든다.
+    // 카메라에 붙는 후처리라 캔버스가 Screen Space - Camera 여야 통과한다.
+
+    /// <summary>캔버스를 카메라 앞 얼마에 세울까. 카메라의 near 와 far 사이면 된다.</summary>
+    private const float CanvasPlaneDistance = 100f;
+
+    /// <summary>기본 눈금. 0~10 중 6 이 녹화에서 나왔던 그 색이다.</summary>
+    private const int ScreenGradeStep = 6;
+
+    /// <summary>ScreenGrade 와 같은 값을 쓴다. 한쪽만 고치면 에디터와 실행 화면이 어긋난다.</summary>
+    private const float ScreenGradeGammaPerStep = 0.21f;
+
+    private const string ScreenFilterProfilePath = "Assets/Settings/ScreenFilter.asset";
+
+    /// <summary>
+    /// 화면을 그릴 카메라를 찾아 후처리를 켜고, 색보정 Volume 을 달아 준다.
+    ///
+    /// 이 프로젝트는 GraphicsSettings 기본값은 빌트인인데 품질 설정에 URP 에셋이 물려 있어
+    /// 실제로는 URP 로 돈다. 그래서 OnRenderImage 방식은 쓸 수 없고 Volume 으로 간다.
+    /// </summary>
+    private static Camera EnsureScreenGrade()
+    {
+        Camera cam = Camera.main;
+        if (cam == null) cam = Object.FindFirstObjectByType<Camera>();
+
+        if (cam == null)
+        {
+            var go = new GameObject("Main Camera", typeof(Camera));
+            Undo.RegisterCreatedObjectUndo(go, UndoLabel);
+            go.tag = "MainCamera";
+
+            cam = go.GetComponent<Camera>();
+            cam.orthographic = true;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = Color.black;
+        }
+
+        var data = cam.GetComponent<UniversalAdditionalCameraData>();
+        if (data == null) data = Undo.AddComponent<UniversalAdditionalCameraData>(cam.gameObject);
+        data.renderPostProcessing = true;
+
+        BuildScreenFilter();
+
+        return cam;
+    }
+
+    /// <summary>
+    /// 색보정 Volume. 전역이라 카메라가 어디에 있든 걸린다.
+    ///
+    /// 프로파일은 에셋으로 둔다. 실행 중에는 ScreenGrade 가 Volume.profile 로 사본을 떠서
+    /// 만지므로, 플레이하며 고친 값이 이 에셋에 남지 않는다.
+    /// </summary>
+    private static void BuildScreenFilter()
+    {
+        VolumeProfile profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(ScreenFilterProfilePath);
+
+        if (profile == null)
+        {
+            profile = ScriptableObject.CreateInstance<VolumeProfile>();
+            AssetDatabase.CreateAsset(profile, ScreenFilterProfilePath);
+        }
+
+        LiftGammaGain grade;
+        if (!profile.TryGet(out grade))
+        {
+            grade = profile.Add<LiftGammaGain>(true);
+
+            // 프로파일 안의 효과는 따로 하위 에셋으로 박아 줘야 파일에 남는다.
+            // 이걸 빼먹으면 에디터에서는 멀쩡히 보이다가, 다시 읽을 때 효과가 통째로 사라진다.
+            grade.hideFlags = HideFlags.HideInHierarchy;
+            AssetDatabase.AddObjectToAsset(grade, profile);
+        }
+
+        grade.active = ScreenGradeStep > 0;
+        grade.gamma.overrideState = true;
+        grade.gamma.value = new Vector4(1f, 1f, 1f, ScreenGradeGammaPerStep * ScreenGradeStep);
+
+        EditorUtility.SetDirty(grade);
+        EditorUtility.SetDirty(profile);
+        AssetDatabase.SaveAssets();
+
+        GameObject existing = GameObject.Find(ScreenFilterName);
+        if (existing != null) Undo.DestroyObjectImmediate(existing);
+
+        // 예전에 카메라에 붙여 두었던 것까지 싹 치운다. 하나라도 남으면 ScreenGrade.Instance 가
+        // 그쪽을 가리킬 수 있고, 그 컴포넌트에는 Volume 이 안 꽂혀 있어 설정이 아무 데도 안 닿는다.
+        foreach (var stale in Object.FindObjectsByType<ScreenGrade>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            Undo.DestroyObjectImmediate(stale);
+        }
+
+        var go = new GameObject(ScreenFilterName, typeof(Volume));
+        Undo.RegisterCreatedObjectUndo(go, UndoLabel);
+
+        var volume = go.GetComponent<Volume>();
+        volume.isGlobal = true;
+        volume.priority = 100f;
+        volume.sharedProfile = profile;
+
+        var script = Undo.AddComponent<ScreenGrade>(go);
+        SetPrivateReference(script, "volume", volume);
+        SetPrivateInt(script, "step", ScreenGradeStep);
+    }
+
+    private const string ScreenFilterName = "ScreenFilter";
 
     /// <summary>
     /// 화면을 짜는 640×360 판. 모든 UI가 이 안에 들어간다.
@@ -1002,12 +1235,16 @@ public static class RamenLayoutBuilder
         var dayText = CreateTmpText("Label", day.transform, Center, Vector2.zero,
                                     new Vector2(174f, 38f), "1일차", TextTitle, tmpFont);
 
-        // 제출 영역. 와이어프레임의 회색 가로 바.
+        // 마무리 버튼. 예전에는 그릇을 끌어다 놓는 영역이었고 글자도 "완성하기" 였다.
         Image submit = CreateImage("SubmitZone", bar, TopCenter, new Vector2(0f, -24f), new Vector2(200f, 36f),
                                    Color.white, icons.SubmitBar);
         Undo.AddComponent<SubmitZone>(submit.gameObject);
         var submitLabel = CreateTmpText("Label", submit.transform, Center, Vector2.zero,
-                                        new Vector2(174f, 38f), "완성하기", TextTitle, tmpFont);
+                                        new Vector2(174f, 38f), "마무리", TextTitle, tmpFont);
+
+        // 튜토리얼 안내 테두리. 재료를 다 넣어 제출만 남았을 때 켜진다.
+        // 글자보다 뒤에 만들어야 테두리가 "마무리" 를 덮지 않는다.
+        BuildSubmitOutline(submit, icons.SubmitBar);
         submitLabel.color = PopupInkColor;
 
         // 누적 매출. 재료비와 자본은 기획 확정으로 제거되어 누적 매출만 표시한다.
@@ -1022,7 +1259,8 @@ public static class RamenLayoutBuilder
                                     Color.white, icons.Trash);
 
         // 손님 대사 줄. 주문 화면(B)이 아직 없어서 조리 화면 위에 글자로만 띄운다.
-        return new TopBarRefs { Discard = discard, Help = help, DayText = dayText, RevenueText = revenueText };
+        return new TopBarRefs { Root = bar, Discard = discard, Submit = submit, Help = help,
+                                DayText = dayText, RevenueText = revenueText };
     }
 
     /// <summary>
@@ -1041,22 +1279,26 @@ public static class RamenLayoutBuilder
         TMP_FontAsset tmpFont = EnsureTmpFont();
 
         Transform root = CreateGroup("ResultPopup", canvas);
+        LiftPopup(root.gameObject);
 
         // 뒷판. raycastTarget을 켜 두어야 팝업이 떠 있는 동안 아래 조리 UI가 눌리지 않는다.
         var backdrop = CreateImage("Backdrop", root, Center, Vector2.zero, ScreenCover, new Color(0f, 0f, 0f, 0.6f));
         backdrop.raycastTarget = true;
 
-        Image panel = CreateImage("Panel", root, Center, Vector2.zero, new Vector2(253f, 153f),
+        // 줄이 셋에서 넷으로 늘어 판을 26 키웠다(153 → 180). 줄 간격 23은 그대로다.
+        Image panel = CreateImage("Panel", root, Center, Vector2.zero, new Vector2(253f, 180f),
                                   Hex("#FFF8E7"), PanelSprite());
 
-        var title = CreateTmpText("TitleText", panel.transform, Center, new Vector2(0f, 50f),
+        var title = CreateTmpText("TitleText", panel.transform, Center, new Vector2(0f, 56f),
                                   new Vector2(233f, 27f), "Day 1 정산", TextTitle, tmpFont);
-        var profit = CreateTmpText("ProfitText", panel.transform, Center, new Vector2(0f, 13f),
+        var profit = CreateTmpText("ProfitText", panel.transform, Center, new Vector2(0f, 19f),
                                    new Vector2(233f, 20f), "당일 총 수익 : 0원", TextBody, tmpFont);
-        var accuracy = CreateTmpText("AverageAccuracyText", panel.transform, Center, new Vector2(0f, -10f),
+        var accuracy = CreateTmpText("AverageAccuracyText", panel.transform, Center, new Vector2(0f, -4f),
                                      new Vector2(233f, 20f), "평균 정확도 : 0.0%", TextBody, tmpFont);
+        var perfect = CreateTmpText("PerfectCountText", panel.transform, Center, new Vector2(0f, -27f),
+                                    new Vector2(233f, 20f), "완벽한 한 그릇 : 0건", TextBody, tmpFont);
 
-        Image confirmImage = CreateImage("ConfirmButton", panel.transform, Center, new Vector2(0f, -50f),
+        Image confirmImage = CreateImage("ConfirmButton", panel.transform, Center, new Vector2(0f, -62f),
                                          new Vector2(87f, 27f), Hex("#7BB661"), PanelSprite());
         var confirm = Undo.AddComponent<Button>(confirmImage.gameObject);
         confirm.targetGraphic = confirmImage;
@@ -1073,6 +1315,7 @@ public static class RamenLayoutBuilder
             Title = title,
             Profit = profit,
             Accuracy = accuracy,
+            Perfect = perfect,
             Confirm = confirm
         };
     }
@@ -1086,6 +1329,7 @@ public static class RamenLayoutBuilder
         IconSprites icons = LoadIconSprites();
 
         Transform root = CreateGroup("OrderResult", canvas);
+        LiftPopup(root.gameObject);
 
         var backdrop = CreateImage("Backdrop", root, Center, Vector2.zero, ScreenCover, new Color(0f, 0f, 0f, 0.7f));
         backdrop.raycastTarget = true;
@@ -1297,6 +1541,7 @@ public static class RamenLayoutBuilder
         TMP_FontAsset tmpFont = EnsureTmpFont();
 
         Transform root = CreateGroup("OrderNote", canvas);
+        LiftOverlay(root.gameObject);
 
         // 종이.
         //
@@ -1559,9 +1804,12 @@ public static class RamenLayoutBuilder
     {
         if (icon == null) return;
 
-        const float overlap = 3f;
+        // 아이콘 가운데를 판의 왼쪽 외곽선에 얹는다. 반은 판 안으로, 반은 밖으로 걸친다.
+        // 예전에는 아이콘을 판 왼쪽 바깥에 세워 3칸만 물렸다. 판마다 아이콘 너비가 달라
+        // 걸치는 정도가 제각각으로 보였다. 이제 너비와 무관하게 외곽선이 늘 한가운데다.
+        //
         // 반칸이 남으면 아이콘 전체가 픽셀 격자에서 반 칸 밀린다. 정수로 끊는다.
-        float x = Mathf.Round(-(panel.rectTransform.sizeDelta.x + size.x) * 0.5f + overlap);
+        float x = Mathf.Round(-panel.rectTransform.sizeDelta.x * 0.5f);
 
         Image image = CreateImage("Icon", panel.transform, Center, new Vector2(x, 0f), size, Color.white, icon);
         image.preserveAspect = true;
@@ -1584,6 +1832,48 @@ public static class RamenLayoutBuilder
     /// 손님 부위 그림을 번호 순서대로 불러온다. body_0 · head_0 처럼 이름이 붙어 있다.
     /// 중간에 빠진 번호가 있으면 거기서 멈춘다.
     /// </summary>
+    /// <summary>
+    /// 리뉴얼된 손님 그림을 전부 한 줄로 모은다.
+    ///
+    /// 파일 이름이 곧 personaId 다(Polite.png → Polite). 잘린 스프라이트는 "Polite_0" 처럼
+    /// 이름이 붙으므로, 런타임에서 앞머리만 보고 어느 손님 것인지 가를 수 있다.
+    /// 장난꾸러기(Joker)는 그림이 없다 — 그 말투는 대사 DB 에서 빠져 있다.
+    /// </summary>
+    private static Sprite[] LoadCustomerPortraits()
+    {
+        string folder = "Assets/Art/손님/";
+        var all = new System.Collections.Generic.List<Sprite>();
+
+        foreach (string id in CustomerPersonaIds)
+        {
+            string path = folder + id + ".png";
+            if (!System.IO.File.Exists(path))
+            {
+                Debug.LogWarning("[RamenLayoutBuilder] 손님 그림이 없습니다: " + path);
+                continue;
+            }
+
+            // 손님마다 키가 달라 시트 높이가 다르다. 머리 위 빈 줄을 잘라 냈기 때문인데,
+            // 덕분에 스프라이트 높이가 곧 머리 꼭대기가 된다(말풍선을 그 위에 올린다).
+            var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            if (texture == null) continue;
+
+            all.AddRange(LoadSpriteSheet(path, (int)CustomerPortraitSize, texture.height));
+        }
+
+        if (all.Count == 0)
+            Debug.LogWarning("[RamenLayoutBuilder] 손님 그림을 하나도 못 찾았습니다: " + folder);
+
+        return all.ToArray();
+    }
+
+    /// <summary>그림이 있는 말투. 대사 DB 의 personaId 와 글자까지 같아야 한다.</summary>
+    private static readonly string[] CustomerPersonaIds =
+    {
+        "Polite", "Formal", "Gyeongsang", "Chungcheong", "Jeolla", "Otaku", "Military",
+        "Sageuk", "Grandma", "Grandpa", "Youtuber", "Gourmet", "Emotional", "Child"
+    };
+
     private static Sprite[] LoadCustomerParts(string kind)
     {
         var list = new System.Collections.Generic.List<Sprite>();
@@ -1850,6 +2140,898 @@ public static class RamenLayoutBuilder
         return outPath;
     }
 
+    /// <summary>튜토리얼 테두리 두께(원본 픽셀).</summary>
+    private const int TutorialOutlineThickness = 2;
+
+    // 튜토리얼 어두운 판과 그 위로 올라오는 것들의 그리기 순서.
+    // 판보다 큰 값이어야 판 위에 그려진다.
+    private const int TutorialDimOrder = 100;
+    private const int TutorialLiftOrder = 101;
+
+    /// <summary>
+    /// 튜토리얼 안내 판. 어두운 판(100)과 올라온 통(101)보다 앞이다.
+    /// 무엇을 하라는 글이 어두워지면 읽을 수가 없다.
+    /// </summary>
+    private const int TutorialPromptOrder = 110;
+
+    /// <summary>
+    /// Tab 주문서와 B 레시피북. 그릇이 늘 어두운 판 위에 서 있어서(101),
+    /// 그냥 두면 펼친 책이 그릇 뒤로 들어간다.
+    /// </summary>
+    private const int OverlayPanelOrder = 150;
+
+    /// <summary>
+    /// 주문 화면. 조리 화면의 모든 것보다 앞이어야 한다.
+    ///
+    /// 그릇과 재료통이 튜토리얼 때문에 자기 Canvas 로 앞에 나와 있어서(101), 그냥 두면
+    /// 주문 화면이 미끄러져 올라오는 동안 그릇만 그 위에 떠 있다.
+    /// 판이 한 덩어리로 움직이려면 주문 화면이 그것들보다 앞이어야 한다.
+    /// </summary>
+    private const int OrderScreenOrder = 180;
+
+    /// <summary>
+    /// 결과창·정산창처럼 주문 화면 위에 떠야 하는 팝업.
+    ///
+    /// 손님별 결과창은 먹는 화면 위에 뜬다. 주문 화면이 자기 Canvas(180)를 갖게 된 뒤로는
+    /// 계층에서 뒤에 놓는 것만으로는 덮을 수 없다 — 실제로 결과창이 통째로 가려져 있었다.
+    /// </summary>
+    private const int PopupOrder = 185;
+
+    /// <summary>시작 화면. 튜토리얼 어두운 판보다도 앞이어야 한다.</summary>
+    private const int TitleOrder = 200;
+
+    // 얇은면 바구니 자리. 통 그림 첫 칸을 줄 단위로 훑어 잰 값이다.
+    // 바구니는 x 26~59 · y 59~79, 주황 손잡이는 x 20~32 · y 85~100 이었다.
+    // 통 그림을 바꾸면 다시 재야 한다.
+    private const int BasketSeedX = 42;
+    private const int BasketSeedY = 66;
+    private const int GripFromY = 82;
+    private const int BasketFillFromY = 55;
+    private const int BasketFillToY = 82;
+    private const int RodRadius = 3;
+
+    // ── 화면 전환 · 키 안내 ───────────────────────────────────────
+
+    /// <summary>전환 판. 시작 화면(200)보다 앞이되 그 위에서 덮는다.</summary>
+    private const int ScreenFadeOrder = 300;
+
+    private static void BuildScreenFade(Transform canvas)
+    {
+        Transform root = CreateGroup("ScreenFade", canvas);
+
+        var own = Undo.AddComponent<Canvas>(root.gameObject);
+        own.overrideSorting = true;
+        own.sortingOrder = ScreenFadeOrder;
+        Undo.AddComponent<GraphicRaycaster>(root.gameObject);
+
+        Image cover = CreateImage("Cover", root, Center, Vector2.zero, ScreenCover,
+                                  new Color(0f, 0f, 0f, 0f));
+        cover.enabled = false;
+
+        var fade = Undo.AddComponent<ScreenFade>(root.gameObject);
+        SetPrivateReference(fade, "cover", cover);
+    }
+
+    // ── 도입부 내레이션 ───────────────────────────────────────────
+    //
+    // 스토리 모드를 고르면 검은 화면에서 먼저 돈다. 줄은 위에서부터 쌓이고,
+    // 한 줄이 끝나면 그 밑에 ▼ 가 깜빡인다.
+
+    /// <summary>내레이션. 전환 판(300)보다 앞이어야 검게 덮인 위에 글자가 보인다.</summary>
+    private const int NarrationOrder = 310;
+
+    /// <summary>글 덩이의 윗변. 화면 위쪽에서 시작해 아래로 쌓인다.</summary>
+    private const float NarrationTopY = 170f;
+
+    private static readonly Vector2 NarrationBlockSize = new Vector2(560f, 300f);
+
+    /// <summary>
+    /// ▼ 크기. 구운 그림이 9x5 라 정수배인 두 배로 띄운다.
+    /// 소수배로 늘리면 삼각형 빗변이 반칸에 걸려 가장자리가 지저분해진다.
+    /// </summary>
+    private static readonly Vector2 NarrationPromptSize = new Vector2(18f, 10f);
+
+    private static void BuildOpeningNarration(Transform canvas)
+    {
+        TMP_FontAsset tmpFont = EnsureTmpFont();
+
+        Transform root = CreateGroup("OpeningNarration", canvas);
+
+        var own = Undo.AddComponent<Canvas>(root.gameObject);
+        own.overrideSorting = true;
+        own.sortingOrder = NarrationOrder;
+        Undo.AddComponent<GraphicRaycaster>(root.gameObject);
+
+        // 껐다 켜는 것은 이 안쪽이다. 스크립트가 붙은 root 를 끄면 코루틴이 같이 멈춘다.
+        Transform panel = CreateGroup("Panel", root);
+
+        // 자기 검은 판을 든다. 전환 판이 걷혀도 글자 뒤는 검어야 한다.
+        Image backdrop = CreateImage("Backdrop", panel, Center, Vector2.zero, ScreenCover, Color.black);
+        backdrop.raycastTarget = true;
+
+        // 검은 화면에 이 글만 있다. 본문 크기로는 허전해서 제목 크기를 쓴다.
+        var label = CreateTmpText("LineText", panel, Center, new Vector2(0f, NarrationTopY),
+                                  NarrationBlockSize, string.Empty, TextTitle, tmpFont);
+
+        // 피벗을 위로 올린다. 그래야 줄이 늘어도 윗변이 제자리에 있고 아래로만 자란다.
+        label.rectTransform.pivot = new Vector2(0.5f, 1f);
+        label.rectTransform.anchoredPosition = new Vector2(0f, NarrationTopY);
+        label.alignment = TextAlignmentOptions.TopLeft;
+        label.color = Color.white;
+
+        Image prompt = CreateImage("Prompt", panel, Center, Vector2.zero, NarrationPromptSize,
+                                   Color.white, TriangleSprite());
+        prompt.rectTransform.pivot = new Vector2(0.5f, 1f);
+        prompt.raycastTarget = false;
+        prompt.enabled = false;
+
+        var narration = Undo.AddComponent<OpeningNarration>(root.gameObject);
+        SetPrivateReference(narration, "root", panel.gameObject);
+        SetPrivateReference(narration, "label", label);
+        SetPrivateReference(narration, "promptRect", prompt.rectTransform);
+        SetPrivateReference(narration, "prompt", prompt);
+
+        panel.gameObject.SetActive(false);
+    }
+
+    /// <summary>아래를 가리키는 작은 삼각형. 맨 윗줄이 제일 넓고 한 줄씩 좁아진다.</summary>
+    private static Sprite TriangleSprite()
+    {
+        const int W = 9;
+        const int H = 5;
+
+        var made = new Color[W * H];
+        var clear = new Color(0f, 0f, 0f, 0f);
+        for (int i = 0; i < made.Length; i++) made[i] = clear;
+
+        for (int row = 0; row < H; row++)
+        {
+            // 그림은 아래에서 위로 쌓이므로 첫 줄이 제일 높은 y 다.
+            int y = H - 1 - row;
+            for (int x = row; x < W - row; x++) made[y * W + x] = Color.white;
+        }
+
+        string path = SaveGenerated("PromptArrow", EncodePng(made, W, H));
+        return path == null ? null : LoadSprite(path);
+    }
+
+    // ── 아이리스 전환 ─────────────────────────────────────────────
+    //
+    // 가운데부터 바깥으로 밝아진다. 구멍 뚫린 판 한 장과 그 바깥을 메우는 띠 넷으로 만든다.
+
+    /// <summary>아이리스. 내레이션(310)까지 덮어야 넘겨받는 순간이 안 보인다.</summary>
+    private const int IrisOrder = 320;
+
+    /// <summary>
+    /// 바깥을 메우는 띠 하나의 크기. 화면(960x540)보다 한참 커야 판이 작을 때도 바깥이 남지 않는다.
+    /// </summary>
+    private static readonly Vector2 IrisBarSize = new Vector2(4000f, 4000f);
+
+    private static void BuildIrisFade(Transform canvas)
+    {
+        Transform root = CreateGroup("IrisFade", canvas);
+
+        var own = Undo.AddComponent<Canvas>(root.gameObject);
+        own.overrideSorting = true;
+        own.sortingOrder = IrisOrder;
+        Undo.AddComponent<GraphicRaycaster>(root.gameObject);
+
+        Transform panel = CreateGroup("Panel", root);
+
+        // 구멍 뚫린 판. 크기는 IrisFade 가 매 프레임 정한다.
+        Image hole = CreateImage("Hole", panel, Center, Vector2.zero, Vector2.zero,
+                                 Color.black, IrisSprite());
+        hole.raycastTarget = false;
+
+        // 띠 넷. 피벗을 안쪽 변에 두어 자리만 옮기면 바깥이 덮인다.
+        string[] names = { "BarTop", "BarBottom", "BarLeft", "BarRight" };
+        var pivots = new[]
+        {
+            new Vector2(0.5f, 0f), new Vector2(0.5f, 1f), new Vector2(1f, 0.5f), new Vector2(0f, 0.5f)
+        };
+
+        var bars = new RectTransform[names.Length];
+
+        for (int i = 0; i < names.Length; i++)
+        {
+            Image bar = CreateImage(names[i], panel, Center, Vector2.zero, IrisBarSize, Color.black);
+            bar.rectTransform.pivot = pivots[i];
+
+            // 전환이 도는 동안 뒤쪽 버튼이 눌리지 않게 막는다.
+            bar.raycastTarget = true;
+            bars[i] = bar.rectTransform;
+        }
+
+        var iris = Undo.AddComponent<IrisFade>(root.gameObject);
+        SetPrivateReference(iris, "root", panel.gameObject);
+        SetPrivateReference(iris, "hole", hole.rectTransform);
+        SetPrivateArray(iris, "bars", bars);
+
+        panel.gameObject.SetActive(false);
+    }
+
+    /// <summary>
+    /// 가운데가 동그랗게 뚫린 네모 판.
+    ///
+    /// 구멍 반지름을 판 절반의 절반으로 잡는다 — IrisFade 의 holeToHalf 2 가 이 값이다.
+    /// 가장자리는 한 칸 남짓 흐린다. 화면에서는 네 배 넘게 늘려 쓰는 그림이라
+    /// 딱 끊으면 원 둘레에 계단이 진다.
+    /// </summary>
+    private static Sprite IrisSprite()
+    {
+        const int N = 512;
+        const float Radius = N * 0.25f;
+        const float Edge = 1.5f;
+
+        var made = new Color[N * N];
+        float c = (N - 1) * 0.5f;
+
+        for (int y = 0; y < N; y++)
+        {
+            for (int x = 0; x < N; x++)
+            {
+                float dx = x - c;
+                float dy = y - c;
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+
+                made[y * N + x] = new Color(1f, 1f, 1f, Mathf.Clamp01((d - Radius) / Edge));
+            }
+        }
+
+        // 픽셀아트가 아니라 크게 늘려 쓰는 그림이라 보간을 켠 채로 읽는다.
+        string path = SaveGenerated("Iris", EncodePng(made, N, N));
+        return path == null ? null : LoadPhotoSprite(path);
+    }
+
+    // 키 안내 아이콘. Tab 은 왼쪽 가운데, B 는 아래쪽 가운데.
+    private static readonly Vector2 KeyHintIconSize = new Vector2(32f, 32f);
+    private static readonly Vector2 KeyHintTabPos = new Vector2(28f, 0f);
+    private static readonly Vector2 KeyHintBookPos = new Vector2(0f, 30f);
+
+    /// <summary>
+    /// 아이콘 아래 글자가 앉는 자리. 아이콘 한가운데에서 이만큼 내린다.
+    ///
+    /// 글자 윗줄이 영수증 톱니에 한두 칸 물리는 값이다. 더 내리면(-24) 아이콘과 따로 놀고,
+    /// 더 올리면(-18) 도장까지 덮어 답답하다.
+    /// </summary>
+    private const float KeyHintLabelY = -20f;
+
+    /// <summary>
+    /// Tab·B 키가 있다는 것을 알리는 아이콘 둘.
+    ///
+    /// 화면 어디에도 이 두 키에 대한 단서가 없어서, 튜토리얼에서 배운 뒤 잊으면 다시 알 길이 없다.
+    /// 늘 보이게 둔다.
+    /// </summary>
+    private static void BuildKeyHints(Transform canvas)
+    {
+        TMP_FontAsset tmpFont = EnsureTmpFont();
+
+        BuildKeyHint(canvas, "KeyHint_Tab", "Icon_Bill.png", "Tab", MidLeft, KeyHintTabPos, tmpFont);
+        BuildKeyHint(canvas, "KeyHint_Book", "Icon_Book.png", "B", BottomCenter, KeyHintBookPos, tmpFont);
+    }
+
+    private static void BuildKeyHint(Transform canvas, string name, string iconFile, string key,
+                                     Vector2 anchor, Vector2 pos, TMP_FontAsset tmpFont)
+    {
+        Image icon = CreateImage(name, canvas, anchor, pos, KeyHintIconSize,
+                                 Color.white, LoadSprite(GeneratedDir + iconFile));
+        icon.preserveAspect = true;
+        icon.raycastTarget = false;
+
+        // 주문 화면에서는 감춘다. 거기서는 두 키가 안 먹는다.
+        Undo.AddComponent<CanvasGroup>(icon.gameObject);
+        Undo.AddComponent<KeyHintVisibility>(icon.gameObject);
+
+        // 본문(12)이 쓸 수 있는 가장 작은 크기다. 사이 값은 획이 반칸에 걸려 흐려진다.
+        var label = CreateTmpText("Label", icon.transform, Center, new Vector2(0f, KeyHintLabelY),
+                                  new Vector2(48f, 18f), key, TextBody, tmpFont);
+        label.alignment = TextAlignmentOptions.Center;
+        label.raycastTarget = false;
+        label.color = Color.white;
+
+        AttachPixelOutline(label, icon.transform, new Vector2(0f, KeyHintLabelY), tmpFont);
+
+        // 튜토리얼에서 "이 키를 눌러 보세요" 할 때 빛난다.
+        //
+        // 다른 것들처럼 실루엣에서 테두리를 새로 뜨지 않는다. 이 아이콘은 이미 흰 테를 두른
+        // 스티커라, 그 흰 테만 떠서 겹쳐 놓고 색을 돌리면 원래 테가 무지개로 물드는 것처럼 보인다.
+        // 테두리를 하나 더 두르면 흰 테 바깥에 또 한 겹이 생겨 두툼해진다.
+        Sprite rim = WhiteRimSprite(icon.sprite, name);
+        if (rim == null) return;
+
+        Image glow = CreateImage("TutorialOutline", icon.transform, Center, Vector2.zero,
+                                 KeyHintIconSize, Color.white, rim);
+        glow.preserveAspect = true;
+        glow.raycastTarget = false;
+        glow.enabled = false;
+
+        var mark = Undo.AddComponent<TutorialOutline>(glow.gameObject);
+        mark.kind = key == "Tab" ? TutorialOutline.Kind.TabKey : TutorialOutline.Kind.BookKey;
+        mark.lift = LiftCanvas(icon.gameObject);
+    }
+
+    // ── 완벽한 한 그릇 팻말 ───────────────────────────────────────
+
+    /// <summary>결과창보다 앞, 시작 화면보다는 뒤.</summary>
+    private const int PerfectSignOrder = 190;
+
+    private static readonly Vector2 PerfectSignSize = new Vector2(300f, 56f);
+
+    /// <summary>흩어지는 반짝임 한 개의 크기.</summary>
+    private static readonly Vector2 PerfectSparkleSize = new Vector2(13f, 13f);
+
+    /// <summary>팻말이 서는 자리. 그릇보다 위, 손님 얼굴은 안 가리는 높이다.</summary>
+    private const float PerfectSignY = 40f;
+
+    /// <summary>
+    /// 반짝임 한 장. 십자에 네 귀퉁이 점을 찍은 13x13 이다.
+    ///
+    /// 픽셀아트라 부드러운 빛 그림은 결이 안 맞는다. 획이 한 칸인 십자가 이 화면에 어울린다.
+    /// </summary>
+    private static Sprite SparkleSprite()
+    {
+        const int S = 13;
+        int c = S / 2;
+
+        var made = new Color[S * S];
+        var clear = new Color(0f, 0f, 0f, 0f);
+        var warm = new Color(1f, 0.94f, 0.63f, 1f);
+
+        for (int i = 0; i < made.Length; i++) made[i] = clear;
+
+        for (int i = 0; i < S; i++)
+        {
+            made[c * S + i] = warm;   // 가로획
+            made[i * S + c] = warm;   // 세로획
+        }
+
+        // 네 귀퉁이에 점을 찍어 십자가 아니라 반짝임으로 읽히게 한다.
+        made[(c - 1) * S + (c - 1)] = warm;
+        made[(c - 1) * S + (c + 1)] = warm;
+        made[(c + 1) * S + (c - 1)] = warm;
+        made[(c + 1) * S + (c + 1)] = warm;
+
+        string path = SaveGenerated("Sparkle", EncodePng(made, S, S));
+        return path == null ? null : LoadSprite(path);
+    }
+
+    /// <summary>
+    /// 정확도 100% 일 때 팍 떴다가 스윽 사라지는 팻말(기획서 v1.2 7.3).
+    ///
+    /// 시작 화면 버튼과 같은 나무판을 쓴다. 새 그림을 만들지 않고도 결이 맞는다.
+    /// </summary>
+    private static void BuildPerfectSign(Transform canvas)
+    {
+        TMP_FontAsset tmpFont = EnsureTmpFont();
+
+        Transform root = CreateGroup("PerfectSign", canvas);
+
+        var own = Undo.AddComponent<Canvas>(root.gameObject);
+        own.overrideSorting = true;
+        own.sortingOrder = PerfectSignOrder;
+
+        IconSprites icons = LoadIconSprites();
+
+        Image board = CreateImage("Board", root, Center, new Vector2(0f, PerfectSignY), PerfectSignSize,
+                                  TitleButtonTint, icons.Wood);
+        board.type = Image.Type.Sliced;
+        board.pixelsPerUnitMultiplier = 1f;
+        board.raycastTarget = false;
+
+        var label = CreateTmpText("Label", board.transform, Center, Vector2.zero,
+                                  new Vector2(PerfectSignSize.x - 24f, 32f),
+                                  "완벽한 한 그릇!", TextTitle, tmpFont);
+        label.color = Color.white;
+        label.raycastTarget = false;
+
+        AttachPixelOutline(label, board.transform, Vector2.zero, tmpFont);
+
+        var group = Undo.AddComponent<CanvasGroup>(board.gameObject);
+        group.blocksRaycasts = false;
+        group.interactable = false;
+
+        // 뜨는 순간 화면을 한 번 덮는 흰 판. 팻말보다 먼저 만들어 뒤에 둔다 —
+        // 앞에 두면 번쩍이는 동안 팻말 글자가 하얗게 묻힌다.
+        Image flash = CreateImage("Flash", root, Center, Vector2.zero, ScreenCover,
+                                  new Color(1f, 1f, 1f, 0f));
+        flash.raycastTarget = false;
+        flash.enabled = false;
+        flash.transform.SetAsFirstSibling();
+
+        // 바깥으로 흩어지는 반짝임 여덟. 자리는 PerfectSign 이 매 프레임 잡는다.
+        var sparkles = new RectTransform[8];
+        for (int i = 0; i < sparkles.Length; i++)
+        {
+            Image spark = CreateImage("Sparkle" + i, board.transform, Center, Vector2.zero,
+                                      PerfectSparkleSize, Color.white, SparkleSprite());
+            spark.raycastTarget = false;
+            spark.gameObject.SetActive(false);
+            sparkles[i] = spark.rectTransform;
+        }
+
+        var sign = Undo.AddComponent<PerfectSign>(root.gameObject);
+        SetPrivateReference(sign, "sign", board.rectTransform);
+        SetPrivateReference(sign, "group", group);
+        SetPrivateReference(sign, "flash", flash);
+        SetPrivateArray(sign, "sparkles", sparkles);
+
+        board.gameObject.SetActive(false);
+    }
+
+    // ── 시작 화면 ─────────────────────────────────────────────────
+    //
+    // 로고는 가운데 위, 버튼 넷은 아래에 한 줄로 왼쪽부터 나란히.
+    // 나무판 버튼은 Icon_Wood / Icon_WoodDown 두 장을 유니티 Button 의 SpriteSwap 에 물린다.
+    // 눌린 그림이 따로 있는 이유가 그것이라, 코드로 색을 어둡게 하는 것보다 결이 맞는다.
+
+    /// <summary>로고 크기. 원본 1983x793 의 비율(2.5:1)을 지켜 줄인 값이다.</summary>
+    private static readonly Vector2 TitleLogoSize = new Vector2(620f, 248f);
+
+    private const float TitleLogoY = 70f;
+    private const float TitleButtonY = -190f;
+    private static readonly Vector2 TitleButtonSize = new Vector2(200f, 44f);
+    private const float TitleButtonGap = 20f;
+
+    /// <summary>나무판에 곱하는 색. 1 이면 원본이고 낮출수록 어두워져 흰 글자가 또렷해진다.</summary>
+    private static readonly Color TitleButtonTint = new Color(0.78f, 0.78f, 0.78f, 1f);
+
+    private static void BuildTitleScreen(Transform canvas)
+    {
+        TMP_FontAsset tmpFont = EnsureTmpFont();
+
+        Transform root = CreateGroup("TitleScreen", canvas);
+
+        // 자기 Canvas 로 맨 앞에 그린다. 튜토리얼 어두운 판보다도 앞이어야 한다.
+        var own = Undo.AddComponent<Canvas>(root.gameObject);
+        own.overrideSorting = true;
+        own.sortingOrder = TitleOrder;
+        Undo.AddComponent<GraphicRaycaster>(root.gameObject);
+
+        // 배경. 조리 화면 배경과 같은 포장마차 밤 풍경이다.
+        Image back = CreateImage("Background", root, Center, Vector2.zero, ScreenCover,
+                                 Color.white, LoadPhotoSprite(ScreenDir + "주문화면 배경.png"));
+        back.raycastTarget = true;   // 뒤쪽 조리 화면이 눌리지 않게 막는다
+
+        // 로고. 픽셀아트가 아니라 그린 그림이라 줄일 때 보간이 있어야 깨끗하다.
+        Image logo = CreateImage("Logo", root, Center, new Vector2(0f, TitleLogoY), TitleLogoSize,
+                                 Color.white, LoadPhotoSprite(UiDir + "게임로고.png"));
+        logo.preserveAspect = true;
+        logo.raycastTarget = false;
+
+        IconSprites icons = LoadIconSprites();
+
+        // 버튼은 줄 단위로 만든다. 처음 줄과 모드를 고르는 줄이 같은 자리에 겹쳐 있다가
+        // [게임시작] 을 누르면 갈아 끼워진다. 화면을 새로 띄우지 않아 흐름이 끊기지 않는다.
+        Transform mainRow = CreateGroup("MainRow", root);
+        Button[] mainButtons = MakeButtonRow(mainRow, new[] { "게임시작", "설정", "크레딧", "나가기" },
+                                             icons, tmpFont);
+
+        Transform modeRow = CreateGroup("ModeRow", root);
+        Button[] modeButtons = MakeButtonRow(modeRow, new[] { "스토리 모드", "무한 모드", "뒤로" },
+                                             icons, tmpFont);
+        modeRow.gameObject.SetActive(false);
+
+        // 설정·크레딧을 눌렀을 때 뜨는 쪽지. 아직 내용이 없다.
+        Transform notice = CreateGroup("Notice", root);
+
+        var noticeBack = CreateImage("Backdrop", notice, Center, Vector2.zero, ScreenCover,
+                                     new Color(0f, 0f, 0f, 0.6f));
+        noticeBack.raycastTarget = true;
+
+        Image noticePanel = CreateImage("Panel", notice, Center, Vector2.zero, new Vector2(300f, 120f),
+                                        Hex("#FFF8E7"), DialogBoxSprite());
+        noticePanel.type = Image.Type.Sliced;
+        noticePanel.pixelsPerUnitMultiplier = 1f;
+
+        var noticeLabel = CreateTmpText("MessageText", noticePanel.transform, Center, new Vector2(0f, 18f),
+                                        new Vector2(280f, 40f), "", TextBody, tmpFont);
+        noticeLabel.color = PopupInkColor;
+
+        Button noticeClose = MakeDialogButton("CloseButton", noticePanel.transform, new Vector2(0f, -26f),
+                                              "닫기", Hex("#7BA7C7"), tmpFont);
+
+        notice.gameObject.SetActive(false);
+
+        SettingsUI settings = BuildSettingsPanel(root, tmpFont);
+
+        var ui = Undo.AddComponent<TitleScreenUI>(root.gameObject);
+        SetPrivateReference(ui, "root", root.gameObject);
+        SetPrivateReference(ui, "settings", settings);
+        SetPrivateReference(ui, "mainRow", mainRow.gameObject);
+        SetPrivateReference(ui, "modeRow", modeRow.gameObject);
+        SetPrivateReference(ui, "startButton", mainButtons[0]);
+        SetPrivateReference(ui, "settingsButton", mainButtons[1]);
+        SetPrivateReference(ui, "creditsButton", mainButtons[2]);
+        SetPrivateReference(ui, "quitButton", mainButtons[3]);
+        SetPrivateReference(ui, "storyButton", modeButtons[0]);
+        SetPrivateReference(ui, "endlessButton", modeButtons[1]);
+        SetPrivateReference(ui, "backButton", modeButtons[2]);
+        SetPrivateReference(ui, "noticeRoot", notice.gameObject);
+        SetPrivateReference(ui, "noticeText", noticeLabel);
+        SetPrivateReference(ui, "noticeCloseButton", noticeClose);
+    }
+
+    // ── 설정 창 ───────────────────────────────────────────────────
+    //
+    // 지금은 화면 필터 세기 하나뿐이다. 시작 화면 위에 떠서, 고르는 동안 뒤쪽 화면이
+    // 바로 바뀌는 것이 보인다.
+
+    private static readonly Vector2 SettingsPanelSize = new Vector2(320f, 150f);
+    private static readonly Vector2 StepButtonSize = new Vector2(32f, 32f);
+
+    private static SettingsUI BuildSettingsPanel(Transform parent, TMP_FontAsset tmpFont)
+    {
+        Transform root = CreateGroup("Settings", parent);
+
+        // 껐다 켜는 것은 이 안쪽이다. 스크립트가 붙은 root 를 끄면 Awake 가 아예 안 돌아
+        // 버튼에 손이 안 붙는다(실제로 한 번 그렇게 만들어 눌러도 반응이 없었다).
+        Transform sheet = CreateGroup("Sheet", root);
+
+        var backdrop = CreateImage("Backdrop", sheet, Center, Vector2.zero, ScreenCover,
+                                   new Color(0f, 0f, 0f, 0.6f));
+        backdrop.raycastTarget = true;
+
+        Image panel = CreateImage("Panel", sheet, Center, Vector2.zero, SettingsPanelSize,
+                                  Hex("#FFF8E7"), DialogBoxSprite());
+        panel.type = Image.Type.Sliced;
+        panel.pixelsPerUnitMultiplier = 1f;
+
+        var title = CreateTmpText("TitleText", panel.transform, Center, new Vector2(0f, 52f),
+                                  new Vector2(280f, 28f), "설정", TextTitle, tmpFont);
+        title.color = PopupInkColor;
+
+        var label = CreateTmpText("FilterLabel", panel.transform, Center, new Vector2(-98f, 8f),
+                                  new Vector2(110f, 20f), "화면 필터", TextBody, tmpFont);
+        label.color = PopupInkColor;
+
+        // 화살표는 글꼴에 없다. 안내용으로 구워 둔 삼각형을 돌려 쓴다 —
+        // 90도는 픽셀이 칸에 그대로 떨어져서 돌려도 안 뭉갠다.
+        Button minus = MakeStepButton("MinusButton", panel.transform, new Vector2(6f, 8f), 270f);
+        Button plus = MakeStepButton("PlusButton", panel.transform, new Vector2(98f, 8f), 90f);
+
+        var value = CreateTmpText("ValueText", panel.transform, Center, new Vector2(52f, 8f),
+                                  new Vector2(52f, 20f), "6", TextBody, tmpFont);
+        value.color = PopupInkColor;
+
+        Button close = MakeDialogButton("CloseButton", panel.transform, new Vector2(0f, -50f),
+                                        "닫기", Hex("#7BA7C7"), tmpFont);
+
+        var ui = Undo.AddComponent<SettingsUI>(root.gameObject);
+        SetPrivateReference(ui, "root", sheet.gameObject);
+        SetPrivateReference(ui, "valueText", value);
+        SetPrivateReference(ui, "minusButton", minus);
+        SetPrivateReference(ui, "plusButton", plus);
+        SetPrivateReference(ui, "closeButton", close);
+
+        sheet.gameObject.SetActive(false);
+
+        return ui;
+    }
+
+    /// <summary>한 칸씩 옮기는 작은 네모 버튼. 안에 돌린 삼각형이 들어간다.</summary>
+    private static Button MakeStepButton(string name, Transform parent, Vector2 pos, float rotation)
+    {
+        Image image = CreateImage(name, parent, Center, pos, StepButtonSize,
+                                  Hex("#7BA7C7"), DialogBoxSprite());
+        image.type = Image.Type.Sliced;
+        image.pixelsPerUnitMultiplier = 1f;
+
+        var button = Undo.AddComponent<Button>(image.gameObject);
+        button.targetGraphic = image;
+        StyleButton(button);
+
+        Image arrow = CreateImage("Arrow", image.transform, Center, Vector2.zero,
+                                  NarrationPromptSize, Color.white, TriangleSprite());
+        arrow.raycastTarget = false;
+        arrow.rectTransform.localEulerAngles = new Vector3(0f, 0f, rotation);
+
+        return button;
+    }
+
+    /// <summary>버튼 한 줄. 가운데에 모아 놓고 좌우로 고르게 펼친다.</summary>
+    private static Button[] MakeButtonRow(Transform parent, string[] labels,
+                                          IconSprites icons, TMP_FontAsset tmpFont)
+    {
+        var buttons = new Button[labels.Length];
+
+        float span = TitleButtonSize.x * labels.Length + TitleButtonGap * (labels.Length - 1);
+        float first = -span * 0.5f + TitleButtonSize.x * 0.5f;
+
+        for (int i = 0; i < labels.Length; i++)
+        {
+            float x = first + i * (TitleButtonSize.x + TitleButtonGap);
+            buttons[i] = MakeWoodButton(labels[i], parent, new Vector2(x, TitleButtonY), icons, tmpFont);
+        }
+
+        return buttons;
+    }
+
+    /// <summary>
+    /// 나무판 버튼 하나. 눌리면 그림이 어두운 판으로 바뀐다.
+    ///
+    /// 색을 곱하는 기본 방식(ColorTint) 대신 SpriteSwap 을 쓴다. 눌린 그림이 따로 그려져 있어서,
+    /// 색만 어둡게 하는 것보다 나뭇결과 그림자가 실제로 눌린 모양이 된다.
+    /// </summary>
+    private static Button MakeWoodButton(string label, Transform parent, Vector2 pos,
+                                         IconSprites icons, TMP_FontAsset tmpFont)
+    {
+        // 나무판을 조금 어둡게 깔고 글자는 순백으로 둔다. 대비로 또렷하게 만드는 방법이다.
+        // 굵게(Bold)는 쓰지 않는다 — Galmuri 는 래스터 픽셀 폰트라 진짜 굵은 글꼴이 없고,
+        // TMP 가 셰이더로 획을 부풀려 흉내 내면 획이 반픽셀에 걸려 가장자리에 회색이 낀다.
+        Image image = CreateImage("Button_" + label, parent, Center, pos, TitleButtonSize,
+                                  TitleButtonTint, icons.Wood);
+        image.type = Image.Type.Sliced;
+        image.pixelsPerUnitMultiplier = 1f;
+
+        var button = Undo.AddComponent<Button>(image.gameObject);
+        button.targetGraphic = image;
+
+        // 내려가는 반응과 흰 테두리는 다른 버튼과 같게. 색 변화는 SpriteSwap 이 대신하므로
+        // StyleButton 이 넣는 ColorBlock 은 쓰이지 않는다.
+        StyleButton(button);
+        button.transition = Selectable.Transition.SpriteSwap;
+
+        SpriteState state = button.spriteState;
+        state.pressedSprite = icons.WoodPressed;
+        state.selectedSprite = icons.Wood;
+        state.highlightedSprite = icons.Wood;
+        button.spriteState = state;
+
+        var text = CreateTmpText("Label", image.transform, Center, Vector2.zero,
+                                 new Vector2(TitleButtonSize.x - 24f, 28f), label, TextTitle, tmpFont);
+        text.color = Color.white;
+
+        return button;
+    }
+
+    /// <summary>
+    /// 튜토리얼이 도는 동안 화면 전체를 덮는 어두운 판.
+    ///
+    /// 클릭은 통과시킨다(raycastTarget 끔). 막으면 정작 눌러야 할 통까지 안 눌린다.
+    /// 자기 Canvas 를 달아 계층과 무관하게 거의 맨 앞에 그린다. 위로 올라오는 것은
+    /// 이보다 큰 sortingOrder 를 켜는 쪽뿐이다.
+    /// </summary>
+    private static void BuildTutorialDim(Transform canvas)
+    {
+        Transform root = CreateGroup("TutorialDim", canvas);
+
+        var own = Undo.AddComponent<Canvas>(root.gameObject);
+        own.overrideSorting = true;
+        own.sortingOrder = TutorialDimOrder;
+
+        Image cover = CreateImage("Cover", root, Center, Vector2.zero, ScreenCover,
+                                  new Color(0f, 0f, 0f, 0.55f));
+        cover.raycastTarget = false;
+        cover.enabled = false;
+
+        var dim = Undo.AddComponent<TutorialDim>(root.gameObject);
+        SetPrivateReference(dim, "cover", cover);
+    }
+
+    /// <summary>
+    /// Tab 주문서·B 레시피북처럼 잠깐 펼쳐지는 판을 그릇보다 앞으로 올린다.
+    ///
+    /// 그릇이 튜토리얼 때문에 늘 어두운 판 위에 서 있어서(overrideSorting 켜짐),
+    /// 그냥 두면 화면 계층상 뒤에 있는 그릇이 펼친 책을 덮는다.
+    /// </summary>
+    private static void LiftOverlay(GameObject target)
+    {
+        var canvas = target.GetComponent<Canvas>();
+        if (canvas == null) canvas = Undo.AddComponent<Canvas>(target);
+
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = OverlayPanelOrder;
+
+        if (target.GetComponent<GraphicRaycaster>() == null) Undo.AddComponent<GraphicRaycaster>(target);
+    }
+
+    /// <summary>
+    /// 주문 화면(180) 위로 팝업을 올린다.
+    ///
+    /// GraphicRaycaster 를 같이 단다. Canvas 만 달면 그 아래 버튼이 클릭을 못 받는다 —
+    /// 그림은 가장 가까운 Canvas 에 등록되고 레이캐스터는 자기 Canvas 것만 훑기 때문이다.
+    /// </summary>
+    private static void LiftPopup(GameObject target)
+    {
+        var canvas = target.GetComponent<Canvas>();
+        if (canvas == null) canvas = Undo.AddComponent<Canvas>(target);
+
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = PopupOrder;
+
+        if (target.GetComponent<GraphicRaycaster>() == null) Undo.AddComponent<GraphicRaycaster>(target);
+    }
+
+    /// <summary>
+    /// 어두운 판 위로 끌어올릴 수 있게 Canvas 를 하나 달아 둔다.
+    ///
+    /// 화면 계층에서 통들은 어두운 판보다 앞에 있어서 그냥 두면 판에 덮인다.
+    /// overrideSorting 을 켜면 계층과 무관하게 sortingOrder 순서로 그려진다.
+    /// 평소에는 꺼 두므로 그리기 순서가 지금과 달라지지 않는다.
+    /// </summary>
+    private static Canvas LiftCanvas(GameObject target)
+    {
+        var canvas = target.GetComponent<Canvas>();
+        if (canvas == null) canvas = Undo.AddComponent<Canvas>(target);
+
+        // overrideSorting 이 꺼져 있으면 sortingOrder 를 넣어도 남지 않는다(부모 값을 따라 0 으로 읽힌다).
+        // 켜 두고 값을 넣은 다음 다시 끈다. 그래야 나중에 켤 때 이 값이 살아 있다.
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = TutorialLiftOrder;
+        canvas.overrideSorting = false;
+
+        // Canvas 를 붙이면 그 밑의 그림이 이 Canvas 쪽으로 따로 등록된다. 그러면 위쪽
+        // GraphicRaycaster 가 더 이상 찾지 못해 클릭이 아예 안 닿는다.
+        // 실제로 이것 때문에 재료통이 하나도 안 집혔다. 자기 몫의 레이캐스터를 같이 달아 준다.
+        if (target.GetComponent<GraphicRaycaster>() == null) Undo.AddComponent<GraphicRaycaster>(target);
+
+        return canvas;
+    }
+
+    /// <summary>
+    /// 마무리 버튼에 튜토리얼 안내 테두리를 얹는다. 재료통과 달리 재료가 아니라
+    /// "제출만 남은 상태" 에 반응한다.
+    /// </summary>
+    private static void BuildSubmitOutline(Image button, Sprite bar)
+    {
+        Sprite outline = OutlineFromSprite(bar, "Submit", TutorialOutlineThickness);
+        if (outline == null) return;
+
+        Image glow = CreateImage("TutorialOutline", button.transform, Center, Vector2.zero,
+                                 button.rectTransform.sizeDelta, Color.white, outline);
+        glow.raycastTarget = false;
+        glow.enabled = false;
+
+        var mark = Undo.AddComponent<TutorialOutline>(glow.gameObject);
+        mark.kind = TutorialOutline.Kind.Submit;
+        mark.lift = LiftCanvas(button.gameObject);
+    }
+
+    /// <summary>
+    /// 아틀라스에서 잘라 온 그림의 테두리를 뜬다. 아이콘들은 한 장에 여러 칸이 들어 있어
+    /// 파일 전체가 아니라 그 칸(textureRect)만 봐야 한다.
+    /// </summary>
+    private static Sprite OutlineFromSprite(Sprite source, string name, int thickness)
+    {
+        if (source == null) return null;
+
+        string path = AssetDatabase.GetAssetPath(source);
+        if (string.IsNullOrEmpty(path)) return null;
+
+        return OutlineSprite(path, name, source.textureRect, thickness);
+    }
+
+    /// <summary>
+    /// 스티커 그림에 이미 둘러 있는 흰 테만 떠 온다. 크기·자리가 원본과 같아 그대로 겹쳐 놓으면
+    /// 흰 테 자리에 정확히 포개진다. 색은 TutorialOutline 이 입힌다.
+    ///
+    /// 흰 테는 순백(255,255,255)이고 종이·속지는 가장 밝은 곳도 파랑이 227 이라 그 사이에서 갈린다.
+    /// 색 압축 때문에 몇 단계씩 흔들릴 수 있어 넉넉히 잡았다.
+    /// </summary>
+    private static Sprite WhiteRimSprite(Sprite source, string name)
+    {
+        if (source == null) return null;
+
+        string sourcePath = AssetDatabase.GetAssetPath(source);
+        if (string.IsNullOrEmpty(sourcePath)) return null;
+
+        Texture2D texture = ReadableTexture(sourcePath);
+        if (texture == null) return null;
+
+        Rect crop = source.textureRect;
+        int x0 = Mathf.RoundToInt(crop.x);
+        int y0 = Mathf.RoundToInt(crop.y);
+        int w = Mathf.RoundToInt(crop.width);
+        int h = Mathf.RoundToInt(crop.height);
+
+        if (w <= 0 || h <= 0) return null;
+
+        Color[] src = texture.GetPixels(x0, y0, w, h);
+        var made = new Color[w * h];
+        var clear = new Color(0f, 0f, 0f, 0f);
+
+        for (int i = 0; i < made.Length; i++)
+        {
+            Color c = src[i];
+            bool white = c.a > 0.5f && c.r > 0.93f && c.g > 0.93f && c.b > 0.93f;
+            made[i] = white ? Color.white : clear;
+        }
+
+        string path = SaveGenerated("Rim_" + name, EncodePng(made, w, h));
+        return path == null ? null : LoadSprite(path);
+    }
+
+    /// <summary>
+    /// 통 위에 튜토리얼 안내 테두리를 얹는다. 통과 크기·자리가 같아야 실루엣이 맞으므로
+    /// 사방을 통에 붙여 늘린다. 처음에는 꺼져 있고 TutorialOutline 이 자기 차례에 켠다.
+    /// </summary>
+    private static void BuildTutorialOutline(Image bin, SlotDef def)
+    {
+        // 돌아가는 통(육수 냄비)은 한 장에 네 칸이 나란히 들어 있는 시트다. 통째로 뜨면
+        // 네 칸의 윤곽이 한 그림에 겹쳐 찍혀 손잡이가 냄비 한가운데에 줄줄이 그려진다.
+        // 화면에 나오는 것은 첫 칸뿐이므로 거기만 떠야 한다.
+        Rect crop = def.CropRect;
+        if (def.LoopCell > 0)
+        {
+            Texture2D sheet = ReadableTexture(def.BinPath);
+            if (sheet == null) return;
+
+            // 칸은 왼쪽 위부터 센다. 텍스처 좌표는 아래가 0 이라 첫 줄이 맨 위에 있다.
+            crop = new Rect(0f, sheet.height - def.LoopCell, def.LoopCell, def.LoopCell);
+        }
+
+        Sprite outline = OutlineSprite(def.BinPath, def.Type + (def.IdSuffix ?? ""),
+                                       crop, TutorialOutlineThickness);
+        if (outline == null) return;
+
+        Image glow = CreateImage("TutorialOutline", bin.transform, Center, Vector2.zero, def.Size,
+                                 Color.white, outline);
+        glow.preserveAspect = bin.preserveAspect;
+        glow.raycastTarget = false;
+        glow.enabled = false;
+
+        var mark = Undo.AddComponent<TutorialOutline>(glow.gameObject);
+        mark.type = def.Type;
+        mark.lift = LiftCanvas(bin.gameObject);
+    }
+
+    /// <summary>
+    /// 통 그림의 실루엣에서 테두리만 떠 온다. 튜토리얼에서 "지금 이걸 집으세요" 표시로 쓴다.
+    ///
+    /// 안쪽으로 두른다. 바깥으로 두르면 그림이 사방 2씩 커져서, 통마다 다른 배율·여백을
+    /// 다시 계산해야 하고 한 칸이라도 어긋나면 테두리가 통에서 떠 보인다.
+    /// 안쪽은 원본과 크기가 같아 같은 상자에 그대로 겹쳐 놓으면 끝난다.
+    ///
+    /// 나오는 그림은 흰색 한 장이다. 색은 TutorialOutline 이 입힌다.
+    /// </summary>
+    private static Sprite OutlineSprite(string sourcePath, string name, Rect crop, int thickness)
+    {
+        Texture2D texture = ReadableTexture(sourcePath);
+        if (texture == null) return null;
+
+        int x0 = crop.width > 0f ? Mathf.RoundToInt(crop.x) : 0;
+        int y0 = crop.width > 0f ? Mathf.RoundToInt(crop.y) : 0;
+        int w = crop.width > 0f ? Mathf.RoundToInt(crop.width) : texture.width;
+        int h = crop.width > 0f ? Mathf.RoundToInt(crop.height) : texture.height;
+
+        if (w <= 0 || h <= 0) return null;
+
+        Color[] src = texture.GetPixels(x0, y0, w, h);
+        var made = new Color[w * h];
+        var clear = new Color(0f, 0f, 0f, 0f);
+
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                int i = y * w + x;
+                made[i] = clear;
+
+                // 그림이 없는 자리는 테두리도 없다.
+                if (src[i].a <= 0.1f) continue;
+
+                // 두께 안에 빈 자리(또는 그림 바깥)가 하나라도 있으면 가장자리다.
+                bool edge = false;
+                for (int dy = -thickness; dy <= thickness && !edge; dy++)
+                {
+                    for (int dx = -thickness; dx <= thickness && !edge; dx++)
+                    {
+                        int nx = x + dx;
+                        int ny = y + dy;
+
+                        if (nx < 0 || ny < 0 || nx >= w || ny >= h) { edge = true; break; }
+                        if (src[ny * w + nx].a <= 0.1f) edge = true;
+                    }
+                }
+
+                if (edge) made[i] = Color.white;
+            }
+        }
+
+        string path = SaveGenerated("Outline_" + name, EncodePng(made, w, h));
+        return path == null ? null : LoadSprite(path);
+    }
+
     /// <summary>
     /// 주문서 종이. 9-슬라이스로 쓸 6x6 이다.
     ///
@@ -2020,35 +3202,64 @@ public static class RamenLayoutBuilder
         TMP_FontAsset tmpFont = EnsureTmpFont();
 
         Transform root = CreateGroup("RecipeBook", canvas);
+        LiftOverlay(root.gameObject);
 
         // 뒷배경을 어둡게 덮지 않는다. B를 누르고 있는 동안만 잠깐 올라오는 것이라
         // 화면을 가릴 이유가 없고, 조리하던 손이 끊긴다.
 
         // 기본 레시피 표 하나만 남아 판이 절반으로 줄었다. 재료 속성표는 사실상 정답지라 뺐다.
         //
-        // 자리는 RecipeBookUI 가 정한다(숨은 자리 아래 -400, 올라온 자리 -20).
+        // 자리는 RecipeBookUI 가 정한다(숨은 자리 아래 -440, 올라온 자리 -20).
         // 여기서는 숨은 자리로 두고, B를 누르면 아래에서 미끄러져 올라온다.
-        // 폭 320. 가장 긴 줄인 돈코츠(재료 여섯)가 10칸 글자로 약 250칸이라, 이름 열과 여백까지
-        // 넣으면 이만큼 필요하다. 예전 360x150 에 12칸 글자로는 오른쪽으로 글이 삐져나왔다.
-        Image panel = CreateImage("Panel", root, Center, new Vector2(0f, -400f), new Vector2(320f, 120f),
-                                  Hex("#FFF8E7"), PanelSprite());
+        // 판은 세로 메모 수첩 그림(Tools/make_recipe_book.py, 256x316)이다. 종이는 그림 안 (8,12)~(247,311)
+        // 240x300 이고, 위 12칸은 코일 자리다.
+        // 아래 좌표는 전부 "그림 픽셀 자리 - 판 중심(128,158)" 으로 적었다. 그림을 바꾸면 같이 옮긴다.
+        //
+        Image panel = CreateImage("Panel", root, Center, new Vector2(0f, -440f), new Vector2(256f, 316f),
+                                  Color.white, LoadSprite(GeneratedDir + "RecipeBook.png"));
 
-        CreateTmpText("Title", panel.transform, Center, new Vector2(0f, 42f),
-                      new Vector2(200f, 20f), "기본 레시피", TextHead, tmpFont);
+        // 제목은 코일 아래, 도장(오른쪽 위) 왼쪽에 온다.
+        var title = CreateTmpText("Title", panel.transform, Center, new Vector2(-16f, 128f),
+                                  new Vector2(140f, 20f), "기본 레시피", TextHead, tmpFont);
+        title.color = RecipeInkColor;
 
-        // 이름 열은 오른쪽 정렬, 값 열은 왼쪽 정렬로 가운데에서 맞물린다.
-        // 판 안쪽 폭은 좌우 여백 10을 뺀 300이고, 이름 40 + 값 260 으로 나눈다.
-        var recipeNames = CreateTmpText("RecipeNames", panel.transform, Center, new Vector2(-130f, 6f),
-                                        new Vector2(40f, 54f), "", TextSmall, tmpFont);
-        recipeNames.alignment = TextAlignmentOptions.TopRight;
-        var recipeValues = CreateTmpText("RecipeValues", panel.transform, Center, new Vector2(20f, 6f),
-                                         new Vector2(260f, 54f), "", TextSmall, tmpFont);
-        recipeValues.alignment = TextAlignmentOptions.TopLeft;
+        // 메뉴마다 한 덩어리씩, 위에서 아래로 64칸(가로 줄 네 칸) 간격이다.
+        //   이름 글상자  "돈코츠 :"  한 단계 큰 글자(TextBody). 그림 x=44 에서 시작, 블록 맨 위 줄.
+        //   밑줄 그림    빨간 크레파스 물결(RecipeUnderline_N.png, N = 이름 글자 수). 이름 바로 밑.
+        //   재료 글상자  "차슈 2 + 파 2 + ..."  작은 글자(TextSmall), 폭 200 에서 접힌다. 두 줄 자리.
+        // 글은 RecipeBookUI.FillRecipeTable 이 채운다. 세 블록이 그림 y 56~232 를 쓰고,
+        // 그 아래는 낙서 자리다. 빨간 여백선(그림 x=38) 오른쪽 6칸에서 시작한다.
+        string[] menuNames = RecipeBookUI.MenuNames;
+        var menuNameTexts = new TextMeshProUGUI[menuNames.Length];
+        var menuValueTexts = new TextMeshProUGUI[menuNames.Length];
+        for (int i = 0; i < menuNames.Length; i++)
+        {
+            float top = 56f + 64f * i;                       // 블록 맨 위(그림 y)
 
-        // 줄바꿈이 생기면 왼쪽 이름 열과 줄이 어긋난다. 한 메뉴는 반드시 한 줄이어야 한다.
-        recipeValues.textWrappingMode = TextWrappingModes.NoWrap;
+            var nameText = CreateTmpText("MenuName" + i, panel.transform, Center,
+                                         new Vector2(-54f, 158f - (top + 7f)),
+                                         new Vector2(60f, 14f), menuNames[i] + " :", TextBody, tmpFont);
+            nameText.alignment = TextAlignmentOptions.MidlineLeft;
+            nameText.color = RecipeInkColor;
+            menuNameTexts[i] = nameText;
 
-        Image closeImage = CreateImage("CloseButton", panel.transform, Center, new Vector2(0f, -44f),
+            // 밑줄은 글자 수 x 12 + 4 폭이고 이름보다 2칸 왼쪽에서 시작한다(크레파스가 삐져나온 것).
+            int underlineWidth = menuNames[i].Length * 12 + 4;
+            CreateImage("Underline" + i, panel.transform, Center,
+                        new Vector2(42f + underlineWidth / 2f - 128f, 158f - (top + 15f)),
+                        new Vector2(underlineWidth, 8f), Color.white,
+                        LoadSprite(GeneratedDir + "RecipeUnderline_" + menuNames[i].Length + ".png"));
+
+            var valueText = CreateTmpText("MenuValue" + i, panel.transform, Center,
+                                          new Vector2(16f, 158f - (top + 35f)),
+                                          new Vector2(200f, 34f), "", TextSmall, tmpFont);
+            valueText.alignment = TextAlignmentOptions.TopLeft;
+            valueText.color = RecipeInkColor;
+            menuValueTexts[i] = valueText;
+        }
+
+        // 닫기는 종이 아래쪽 가운데. 왼쪽 아래 계란 낙서와 오른쪽 아래 그릇 낙서 사이.
+        Image closeImage = CreateImage("CloseButton", panel.transform, Center, new Vector2(0f, -132f),
                                        new Vector2(70f, 20f), Hex("#7BB661"), PanelSprite());
         var close = Undo.AddComponent<Button>(closeImage.gameObject);
         close.targetGraphic = closeImage;
@@ -2062,8 +3273,8 @@ public static class RamenLayoutBuilder
         return new RecipeBookRefs
         {
             Root = root.gameObject,
-            RecipeNames = recipeNames,
-            RecipeValues = recipeValues,
+            MenuNameTexts = menuNameTexts,
+            MenuValueTexts = menuValueTexts,
             Close = close,
             Panel = panel.rectTransform
         };
@@ -2078,6 +3289,13 @@ public static class RamenLayoutBuilder
         TMP_FontAsset tmpFont = EnsureTmpFont();
 
         Transform root = CreateGroup("OrderScreen", canvas);
+
+        // 그릇·재료통이 자기 Canvas 로 앞에 나와 있어서, 주문 화면도 자기 Canvas 로
+        // 그보다 앞에 서야 한 덩어리로 미끄러진다. 안 그러면 그릇만 판 위에 떠서 따라온다.
+        var ownCanvas = Undo.AddComponent<Canvas>(root.gameObject);
+        ownCanvas.overrideSorting = true;
+        ownCanvas.sortingOrder = OrderScreenOrder;
+        Undo.AddComponent<GraphicRaycaster>(root.gameObject);
 
         // 밤 배경. 불투명이라 조리 화면을 완전히 가리고, 레이캐스트도 여기서 막힌다.
         // 그림보다 크게 잡아 두어, 16:9가 아닌 창에서 판 바깥이 비어 보이지 않게 한다.
@@ -2098,10 +3316,20 @@ public static class RamenLayoutBuilder
         // Scenery 와 달리 LoadPhotoSprite 를 쓰면 안 된다. 그쪽은 Bilinear 로 넣는데,
         // 1671x941 짜리를 640 으로 줄여 쓰는 그림에는 그게 맞지만 이 그림은 640x360 픽셀아트다.
         // 보간하면 1픽셀 별이 뭉개지고, 압축까지 걸리면 디더 무늬에 얼룩이 생긴다.
-        Image cosmos = CreateImage("Cosmos", root, Center, Vector2.zero, DesignResolution,
+        //
+        // 판이 아니라 네모(1104)로 잡는다. 연출이 이 판을 천천히 돌리는데, 판 크기 그대로 두면
+        // 돌릴 때 구석이 비어 검은 삼각형이 드러난다. 한 변은 화면 대각선(약 1101)보다 커야 한다.
+        // 그림도 같은 크기로 찍혀 있어 1:1로 얹힌다(Tools/makeart.py).
+        Image cosmos = CreateImage("Cosmos", root, Center, Vector2.zero, CosmosSize,
                                    Color.white, LoadSprite(ScreenDir + "우주 배경.png"));
         cosmos.raycastTarget = false;
         cosmos.enabled = false;
+
+        // 확대 직전에 가게를 어둡게 덮는 검은 판. 손님보다 뒤에 있어야 얼굴은 밝게 남는다.
+        Image dim = CreateImage("Dim", root, Center, Vector2.zero, ScreenCover,
+                                new Color(0f, 0f, 0f, 0f));
+        dim.raycastTarget = false;
+        dim.enabled = false;
 
         // 번개 한 방. 11시에서 5시로 가는 방향이 그림에 이미 구워져 있어 돌리지 않는다.
         // 손님보다 먼저 만들어 뒤에 깔리게 한다. 앞에 두면 번쩍일 때 얼굴을 가린다.
@@ -2142,12 +3370,20 @@ public static class RamenLayoutBuilder
         // 상단바 바로 아래. 판이 커지면 상단바도 위로 따라가므로 같이 계산한다.
         float CustomerTopY = Mathf.Round(DesignResolution.y * 0.5f - 24f - PanelBarHeight * 0.5f - 4f);
 
+        // 어색한 침묵에 지나가는 까마귀. **손님보다 먼저** 만들어야 손님 뒤로 지나간다.
+        // 앞으로 지나가면 얼굴을 덮어서, 웃기기 전에 거슬린다.
+        Image crow = CreateImage("Crow", root, Center, new Vector2(-600f, 40f),
+                                 CrowSize, Color.white);
+        crow.raycastTarget = false;
+        crow.enabled = false;
+
         var slot = (RectTransform)CreateGroup("CustomerSlot", root);
         slot.anchorMin = Center;
         slot.anchorMax = Center;
         slot.pivot = Center;
         slot.anchoredPosition = new Vector2(0f, (CustomerTopY + CounterLineY) * 0.5f);
-        slot.sizeDelta = new Vector2(126f, CustomerTopY - CounterLineY);
+        // 손님 그림이 300칸이라 자리도 그만큼 넓어야 한다. 126 으로 두면 마스크가 좌우를 잘라 낸다.
+        slot.sizeDelta = new Vector2(CustomerPortraitSize, CustomerTopY - CounterLineY);
 
         // 자리 밖으로 나간 부분을 잘라 낸다. 손님을 카운터 선 아래로 내려 두면
         // 여기서 잘려서 카운터 뒤에 서 있는 것처럼 보인다.
@@ -2159,11 +3395,68 @@ public static class RamenLayoutBuilder
         bodyImage.raycastTarget = false;
         headImage.raycastTarget = false;
 
+        // 리뉴얼된 통짜 손님 그림. 얼굴·몸통보다 나중에 만들어 앞에 그린다.
+        Image portrait = CreateImage("Portrait", slot, Center, Vector2.zero,
+                                     new Vector2(CustomerPortraitSize, CustomerPortraitSize), Color.white);
+        portrait.raycastTarget = false;
+        portrait.enabled = false;
+
+        // 갸웃할 때 관자놀이에 맺히는 땀방울. 손님 자리의 자식이라 확대·이동을 같이 탄다.
+        // 얼굴 바로 오른쪽 바깥이다 — 얼굴 위에 얹으면 뺨에 붙은 점처럼 보인다.
+        Image sweat = CreateImage("Sweat", slot, Center, SweatPos, SweatSize, Color.white);
+        sweat.raycastTarget = false;
+        sweat.enabled = false;
+
         var look = Undo.AddComponent<CustomerAppearance>(slot.gameObject);
         SetPrivateReference(look, "bodyImage", bodyImage);
         SetPrivateReference(look, "headImage", headImage);
+        SetPrivateReference(look, "portraitImage", portrait);
         SetPrivateArray(look, "bodies", LoadCustomerParts("body"));
         SetPrivateArray(look, "heads", LoadCustomerParts("head"));
+        SetPrivateArray(look, "portraits", LoadCustomerPortraits());
+
+        // 카운터(테이블)를 한 겹 떼어 손님 **위에** 덮는다. Tools/split_counter.py 가 배경에서 잘라 굽는다.
+        //
+        // 배경 한 장에 카운터까지 들어 있을 때는 손님을 카운터 뒤로 보낼 방법이 없어서,
+        // 자리 마스크로 아래를 잘라 뒤에 선 척을 시켰다. 이제는 진짜로 뒤에 선다.
+        // 그릇·젓가락은 이 뒤에 만들어 카운터 앞에 놓이게 한다.
+        //
+        // 그림은 이미 화면 크기(960 폭)라 늘리지 않는다. 배경처럼 Bilinear 로 넣으면
+        // 1:1 인데도 한 겹 뭉개진다.
+        float counterHeight = CounterLineY + DesignResolution.y * 0.5f;
+        Image counter = CreateImage("Counter", root, Center,
+                                    new Vector2(0f, CounterLineY - counterHeight * 0.5f),
+                                    new Vector2(DesignResolution.x, counterHeight), Color.white,
+                                    LoadSprite(ScreenDir + "주문화면 카운터.png"));
+        counter.raycastTarget = false;
+
+        // 침묵의 점 셋. 손님보다 나중에 만들어 머리 위에 얹힌다.
+        // 까마귀는 손님 뒤라 점 뒤로 지나가고, 점은 까마귀가 지날 때 하나씩 찍힌다.
+        Sprite dotSprite = LoadSprite(EtcDir + "침묵점.png");
+        var dots = new Image[3];
+        for (int i = 0; i < dots.Length; i++)
+        {
+            dots[i] = CreateImage("SilenceDot" + i, root, Center,
+                                  new Vector2((i - 1) * DotGap, DotY), DotSize,
+                                  Color.white, dotSprite);
+            dots[i].raycastTarget = false;
+            dots[i].enabled = false;
+        }
+
+        // 손님 앞 카운터에 놓인 김 나는 그릇. 카운터보다 나중에 만들어 그 앞에 그린다.
+        // 가운데에 두면 손님과 한 축에 서서 "이 손님 앞에 놓인 그릇"으로 읽힌다.
+        Image customerBowl = CreateImage("CustomerBowl", root, Center,
+                                         new Vector2(0f, CustomerBowlY),
+                                         new Vector2(CustomerBowlSize, CustomerBowlSize), Color.white);
+        customerBowl.raycastTarget = false;
+
+        // 라멘을 내기 전에는 없다. 주문받는 동안 그릇이 놓여 있으면 이미 준 것처럼 보인다.
+        customerBowl.gameObject.SetActive(false);
+
+        var bowlLoop = Undo.AddComponent<SpriteLoop>(customerBowl.gameObject);
+        bowlLoop.frames = LoadSpriteSheet(EtcDir + "손님그릇.png", (int)CustomerBowlSize, (int)CustomerBowlSize);
+        bowlLoop.fps = 6f;   // 김이 천천히 피어오른다
+        if (bowlLoop.frames.Length > 0) customerBowl.sprite = bowlLoop.frames[0];
 
         // 손님이 걸어오는 소리. 오디오 파일이 없어 파형을 코드로 만들어 쓴다.
         // AudioSource 는 RequireComponent 가 같이 붙여 준다.
@@ -2183,7 +3476,13 @@ public static class RamenLayoutBuilder
         // 잡는다 — 판 크기가 바뀌어도 손님과의 거리가 그대로 유지된다.
         // 꼬리 끝이 오른쪽 변에서 23칸 더 나가므로, 오른쪽 변을 -67 에 두면 꼬리 끝이 -44 다.
         // 손님 머리 왼쪽 끝이 -36 언저리라 8칸쯤 띄운 셈이다.
-        Image bubble = CreateImage("Bubble", root, Center, new Vector2(-67f, 102f),
+        // 세로 자리는 꼬리가 손님 귀와 나란히 서도록 잡는다.
+        //
+        // 손님 그림을 재 보니 머리끝에서 목까지가 170칸이고 가장 넓은 곳이 90칸이었다.
+        // 귀는 그 사이, 머리끝에서 100칸쯤이다. 그림 맨 위가 화면 y 198 이므로 귀는 y 98.
+        // 꼬리는 상자 윗변에서 BubbleTailTop(24) 내려가 15칸을 차지하니, 꼬리 한가운데를
+        // 귀에 맞추려면 상자 윗변이 98 + 24 + 7.5 = 130 이다.
+        Image bubble = CreateImage("Bubble", root, Center, new Vector2(-67f, BubbleTopY),
                                    new Vector2(BubbleMaxTextWidth + BubblePaddingX * 2f, BubbleHeight),
                                    Color.white, SpeechBubbleBodySprite());
         bubble.rectTransform.pivot = new Vector2(1f, 1f);
@@ -2261,16 +3560,18 @@ public static class RamenLayoutBuilder
 
         // 넘기기 버튼. 말풍선 "바깥" 아래에 매단다. 상자 안은 글자만 쓴다.
         //
-        // 자리를 상자 아래변이 아니라 "윗변"에 건다. 상자 높이가 말 길이에 따라 변하는데
-        // 아래변에 걸면 버튼이 마디마다 위아래로 뛴다. 윗변은 고정이라 안 움직인다.
+        // 자리를 상자 "아래변"에 건다. 오른쪽 끝을 맞추는 것은 꼬리와 같은 쪽이라
+        // 시선이 한 줄로 떨어지기 때문이다.
         //
-        // 내려오는 거리는 가장 긴 마디가 들어갔을 때의 상자 높이(BubbleHeight)다.
-        // 그래서 버튼은 늘 "말풍선이 가장 커졌을 때 아래변" 자리에 서 있는다.
-        // 오른쪽 끝을 맞추는 것은 꼬리와 같은 쪽이라 시선이 한 줄로 떨어지기 때문이다.
+        // 예전에는 윗변에 걸고 BubbleHeight 만큼 내렸다. 상자 높이가 마디마다 달라져도
+        // 버튼이 위아래로 안 뛰게 하려던 것인데, BubbleHeight 가 "가장 긴 마디 한 개"
+        // 기준이라 실제 상자보다 훨씬 낮았다. 대사는 클릭할 때마다 줄이 쌓여서
+        // 상자가 그보다 한참 커지고, 그러면 버튼이 상자 안으로 들어가 글자를 가렸다.
+        // 아래변에 걸면 줄이 몇이든 늘 글 밑에 선다.
         //
         // 글자를 "▶"과 "넵"으로 줄여 버튼도 같이 작아졌다. 예전 112x30 은 상자의 절반을 먹었다.
-        Image startImage = CreateImage("StartButton", bubble.transform, new Vector2(1f, 1f),
-                                       new Vector2(0f, -(BubbleHeight + BubbleButtonGap)),
+        Image startImage = CreateImage("StartButton", bubble.transform, new Vector2(1f, 0f),
+                                       new Vector2(0f, -BubbleButtonGap),
                                        new Vector2(56f, 36f), Hex("#7BA7C7"),
                                        LoadSlicedSprite(UiDir + "TextBox.png", new Vector4(8f, 8f, 8f, 8f)));
         startImage.rectTransform.pivot = new Vector2(1f, 1f);
@@ -2325,6 +3626,15 @@ public static class RamenLayoutBuilder
         // 뒤집기는 칸이 그대로 맞바뀌는 것이라 회전과 달리 픽셀이 안 깨진다.
         thumb.rectTransform.localScale = new Vector3(-1f, 1f, 1f);
 
+        // 번쩍임. 번개 그림이 없어 흰 판으로 대신한다. 알파는 연출이 쥔다.
+        //
+        // 시네마틱 바보다 먼저 만든다. 나중에 만들면 바 위에 덮여, 번개가 칠 때마다
+        // 검은 바까지 하얗게 떠서 깜빡이는 것처럼 보인다. 바는 늘 검어야 한다.
+        Image flash = CreateImage("Flash", root, Center, Vector2.zero, ScreenCover,
+                                  new Color(1f, 1f, 1f, 0f));
+        flash.raycastTarget = false;
+        flash.enabled = false;
+
         // 시네마틱 검은 바. 높이 0으로 두고 EatingCutscene 이 늘렸다 줄인다.
         // 폭은 판(640)이 아니라 화면 전체로 잡는다. 16:9가 아닌 창에서 판 옆이 비어 보이면
         // 바가 거기서 끊겨 시네마틱으로 안 보인다.
@@ -2338,18 +3648,13 @@ public static class RamenLayoutBuilder
         bottomBar.rectTransform.pivot = new Vector2(0.5f, 0f);
         bottomBar.raycastTarget = false;
 
-        // 번쩍임. 번개 그림이 없어 흰 판으로 대신한다. 알파는 연출이 쥔다.
-        Image flash = CreateImage("Flash", root, Center, Vector2.zero, ScreenCover,
-                                  new Color(1f, 1f, 1f, 0f));
-        flash.raycastTarget = false;
-        flash.enabled = false;
-
         var cutscene = Undo.AddComponent<EatingCutscene>(root.gameObject);
         SetPrivateReference(cutscene, "topBar", topBar.rectTransform);
         SetPrivateReference(cutscene, "bottomBar", bottomBar.rectTransform);
         SetPrivateReference(cutscene, "flash", flash);
         SetPrivateReference(cutscene, "sparkleRoot", sparkleRoot);
         SetPrivateReference(cutscene, "cosmos", cosmos);
+        SetPrivateReference(cutscene, "dim", dim);
         SetPrivateReference(cutscene, "bolt", bolt);
         SetPrivateReference(cutscene, "aura", aura);
         SetPrivateArray(cutscene, "auraFrames", LoadSpriteSheet(EtcDir + "오우라.png", 160, 160));
@@ -2358,7 +3663,26 @@ public static class RamenLayoutBuilder
         // 후루룩과 천둥. AudioSource 는 RequireComponent 가 같이 붙여 준다.
         SetPrivateReference(cutscene, "sfx", Undo.AddComponent<CutsceneSfx>(root.gameObject));
         SetPrivateReference(cutscene, "customerSlot", slot);
-        SetPrivateReference(cutscene, "customerHead", headImage.rectTransform);
+        // 확대는 통짜 손님 그림을 기준으로 잡는다. 얼굴이 그 그림 안에 들어 있어서,
+        // 예전 얼굴 판을 가리키면 크기도 자리도 안 맞는다. 눈높이는 eyeHeightRatio 가 정한다.
+        SetPrivateReference(cutscene, "customerHead", portrait.rectTransform);
+
+        // 국물을 마실 때 들어 올릴 그릇.
+        SetPrivateReference(cutscene, "customerBowl", customerBowl.rectTransform);
+
+        // 먹는 동안 눈을 감기고 감동하는 순간 뜨게 하려면 손님 그림을 직접 쥐어야 한다.
+        SetPrivateReference(cutscene, "customerAppearance", look);
+
+        // 갸웃할 때 쓰는 땀방울. 맺힘 / 흘러내림 두 칸이다.
+        SetPrivateReference(cutscene, "sweat", sweat);
+        SetPrivateArray(cutscene, "sweatFrames",
+                        LoadSpriteSheet(EtcDir + "땀방울.png", (int)SweatSize.x, (int)SweatSize.y));
+
+        // 어색한 침묵에 지나가는 까마귀와, 그가 지나며 찍고 가는 점 셋.
+        SetPrivateReference(cutscene, "crow", crow);
+        SetPrivateArray(cutscene, "crowFrames",
+                        LoadSpriteSheet(EtcDir + "까마귀.png", (int)CrowSize.x, (int)CrowSize.y));
+        SetPrivateArray(cutscene, "silenceDots", dots);
 
         return new OrderScreenRefs
         {
@@ -2382,6 +3706,7 @@ public static class RamenLayoutBuilder
         TMP_FontAsset tmpFont = EnsureTmpFont();
 
         Transform root = CreateGroup("FinalResultPopup", canvas);
+        LiftPopup(root.gameObject);
 
         var backdrop = CreateImage("Backdrop", root, Center, Vector2.zero, ScreenCover, new Color(0f, 0f, 0f, 0.7f));
         backdrop.raycastTarget = true;
@@ -2759,6 +4084,9 @@ public static class RamenLayoutBuilder
                                     Color.white, binSprite);
             bin.preserveAspect = true;
 
+            // 튜토리얼 안내 테두리. 통과 같은 상자에 겹쳐 두고 자기 차례일 때만 켜진다.
+            BuildTutorialOutline(bin, def);
+
             if (loopFrames != null && loopFrames.Length > 1)
             {
                 var loop = Undo.AddComponent<SpriteLoop>(bin.gameObject);
@@ -2959,6 +4287,44 @@ public static class RamenLayoutBuilder
         return frames;
     }
 
+    /// <summary>
+    /// 그릇 위에 뜨는 튜토리얼 안내 한 줄.
+    ///
+    /// 그릇 윗변에서 12 띄운 자리에 둔다. 붙이면 국물에 글자가 걸치고, 더 올리면 상단바에 닿는다.
+    /// 판은 재료통 이름표와 같은 TextBox.png 라 화면에서 겉돌지 않는다.
+    /// </summary>
+    private static void BuildTutorialPrompt(Transform canvas, RectTransform bowl)
+    {
+        TMP_FontAsset tmpFont = EnsureTmpFont();
+
+        // 크기는 TutorialPrompt 가 글에 맞춰 다시 잡는다. 여기 값은 첫 한 프레임짜리다.
+        //
+        // 피벗을 아래변에 둔다. 판이 커질 때 위로만 자라야 그릇과의 간격이 그대로다.
+        // 가운데 피벗이면 위아래로 같이 자라서 두 줄짜리 안내가 그릇을 덮는다.
+        float y = bowl.anchoredPosition.y + bowl.sizeDelta.y * 0.5f + 12f;
+
+        Image panel = CreateImage("TutorialPrompt", canvas, Center, new Vector2(0f, y),
+                                  new Vector2(420f, 48f), Hex("#FFF8E7"), DialogBoxSprite());
+        panel.type = Image.Type.Sliced;
+        panel.pixelsPerUnitMultiplier = 1f;
+        panel.raycastTarget = false;
+        panel.rectTransform.pivot = new Vector2(0.5f, 0f);
+        panel.rectTransform.anchoredPosition = new Vector2(0f, y);
+
+        var label = CreateTmpText("Label", panel.transform, Center, Vector2.zero,
+                                  new Vector2(404f, 40f), "", TextBody, tmpFont);
+        label.color = PopupInkColor;
+        label.raycastTarget = false;
+
+        var promptCanvas = Undo.AddComponent<Canvas>(panel.gameObject);
+        promptCanvas.overrideSorting = true;
+        promptCanvas.sortingOrder = TutorialPromptOrder;
+
+        var prompt = Undo.AddComponent<TutorialPrompt>(panel.gameObject);
+        SetPrivateReference(prompt, "label", label);
+        SetPrivateReference(prompt, "panel", panel);
+    }
+
     private static Bowl BuildBowl(Transform canvas)
     {
         // 상단바 아래와 면 튀김기 위 사이의 한가운데. 어느 한쪽에 치우치면 공중에 뜬 것처럼 보인다.
@@ -2968,6 +4334,10 @@ public static class RamenLayoutBuilder
 
         Bowl component = Undo.AddComponent<Bowl>(bowl.gameObject);
         component.emptyBowlSprite = LoadSprite(BowlDir + "빈그릇.png");
+
+        // 튜토리얼 안내 한 줄. 그릇 바로 위에 띄운다.
+        // 그릇의 자식으로 달지 않는다 — 제출할 때 그릇이 끌려가면 문구도 같이 끌려간다.
+        BuildTutorialPrompt(canvas, bowl.rectTransform);
 
         // 타래 종류마다 8프레임 시트가 한 장씩(4열 x 2행).
         // 0~3 타래 / 4~6 육수 / 7 면. 재생 길이는 Bowl.PourSeconds(국자 붓기와 같은 길이)로 정해진다.
@@ -3024,6 +4394,146 @@ public static class RamenLayoutBuilder
     /// 투입이 거부됐을 때 뜨는 안내. 그릇 위쪽 절반에 걸쳐 두고 거기서부터 떠오른다.
     /// 상단바까지 올라가지 않도록 시작 높이를 낮게 잡았다.
     /// </summary>
+    /// <summary>
+    /// 시치미·향미유 개수 배지. 그릇 오른쪽 위에 "아이콘 X N" 두 줄.
+    ///
+    /// 이 둘만 세는 이유는 그릇에 그림이 안 올라가서다. 나머지 재료는 그릇에 쌓이는 게
+    /// 보이므로 굳이 숫자를 붙이지 않는다.
+    /// </summary>
+    private static SeasoningBadges BuildSeasoningBadges(Transform canvas)
+    {
+        TMP_FontAsset tmpFont = EnsureTmpFont();
+
+        Transform group = CreateGroup("SeasoningBadges", canvas);
+        var badges = Undo.AddComponent<SeasoningBadges>(group.gameObject);
+
+        badges.flavorOil = BuildSeasoningRow(group, tmpFont, "FlavorOil", "향미유 배지.png", BadgeTopY);
+        badges.chiliPowder = BuildSeasoningRow(group, tmpFont, "ChiliPowder", "시치미 배지.png",
+                                               BadgeTopY - BadgeRowGap);
+        return badges;
+    }
+
+    /// <summary>
+    /// 글자 뒤에 검은 복사본 여덟 장을 한 칸씩 밀어 깔아 외곽선을 만든다.
+    ///
+    /// 복사본을 원본보다 먼저 만든 뒤 원본을 맨 앞으로 보낸다. uGUI 는 만든 순서대로 그려서
+    /// 나중 것이 위에 온다. 순서를 안 맞추면 검은 글자가 흰 글자를 덮는다.
+    ///
+    /// 미는 거리는 한 칸이다. 캔버스 한 칸이 원본 그림 한 픽셀이라 정확히 1픽셀 테두리가 된다.
+    /// </summary>
+    private static void AttachPixelOutline(TextMeshProUGUI source, Transform parent,
+                                           Vector2 pos, TMP_FontAsset font)
+    {
+        Vector2[] offsets =
+        {
+            new Vector2(-1f, 0f), new Vector2(1f, 0f),
+            new Vector2(0f, -1f), new Vector2(0f, 1f),
+            new Vector2(-1f, -1f), new Vector2(1f, -1f),
+            new Vector2(-1f, 1f), new Vector2(1f, 1f),
+        };
+
+        var copies = new TextMeshProUGUI[offsets.Length];
+
+        for (int i = 0; i < offsets.Length; i++)
+        {
+            var copy = CreateTmpText("Outline" + i, parent, Center, pos + offsets[i],
+                                     source.rectTransform.sizeDelta, source.text,
+                                     source.fontSize, font);
+            copy.alignment = source.alignment;
+            copy.raycastTarget = false;
+            copy.color = Color.black;
+            copies[i] = copy;
+        }
+
+        // 원본이 복사본들 위에 오도록 맨 뒤 형제로 보낸다.
+        source.transform.SetAsLastSibling();
+
+        var outline = Undo.AddComponent<PixelTextOutline>(source.gameObject);
+        SetPrivateReference(outline, "source", source);
+        SetPrivateArray(outline, "copies", copies);
+    }
+
+    /// <summary>배지 한 줄. 아이콘이 줄의 뿌리이고 글자가 그 자식이라 아이콘만 껐다 켜면 된다.</summary>
+    private static SeasoningBadges.Row BuildSeasoningRow(Transform parent, TMP_FontAsset font,
+                                                         string name, string iconFile, float y)
+    {
+        Image icon = CreateImage(name, parent, Center, new Vector2(BadgeX, y), BadgeIconSize,
+                                 Color.white, LoadSprite(UiDir + iconFile));
+        icon.preserveAspect = true;
+        icon.raycastTarget = false;
+
+        // 본문(12)으로는 아이콘 옆에서 눌려 보인다. 사이 값은 쓸 수 없어 제목 크기를 쓴다.
+        var count = CreateTmpText("Count", icon.transform, Center, new Vector2(BadgeCountX, 0f),
+                                  new Vector2(48f, 30f), "X 1", TextTitle, font);
+        count.alignment = TextAlignmentOptions.Left;
+        count.raycastTarget = false;
+        count.color = Color.white;
+
+        AttachPixelOutline(count, icon.transform, new Vector2(BadgeCountX, 0f), font);
+
+        // 넣기 전에는 안 보인다. 보이는 채로 두면 0개와 안 넣은 것이 구별되지 않는다.
+        icon.gameObject.SetActive(false);
+
+        var row = new SeasoningBadges.Row();
+        row.root = icon.gameObject;
+        row.count = count;
+        return row;
+    }
+
+    /// <summary>
+    /// 먹는 연출이 도는 동안 감출 판을 모아 꽂아 준다.
+    ///
+    /// 이름으로 찾는다. 이것들은 서로 다른 함수에서 만들어져 한자리에 손잡이가 없고,
+    /// 함수마다 반환값을 늘리는 것보다 여기서 한 번 훑는 편이 읽기 쉽다.
+    /// </summary>
+    private static void WireCinematicHiding(Transform canvas, OrderScreenRefs orderScreen)
+    {
+        if (orderScreen == null || orderScreen.Cutscene == null) return;
+
+        var hidden = new System.Collections.Generic.List<Object>();
+
+        // 조리 화면 판. 주문 화면 아래로 깔려 있어 바 사이로 비친다.
+        Collect(hidden, canvas, "TopBar", "Slots", "NoodlePot", "Bowl", "DragLayer");
+
+        // 주문 화면 자신의 상단 판.
+        if (orderScreen.Root != null)
+            Collect(hidden, orderScreen.Root.transform, "DayTimePanel", "RevenuePanel");
+
+        SetPrivateArray(orderScreen.Cutscene, "hiddenDuringCut", hidden.ToArray());
+
+        // 주문 화면이 떠 있는 동안 내려 둘 것. 그릇은 Canvas 가 얹혀 있어 계층 순서를 무시하고
+        // 주문 화면 위로 떠오른다(BuildTutorialDim 아래의 LiftCanvas). 손님 얼굴을 덮는다.
+        var screenUI = Object.FindFirstObjectByType<OrderScreenUI>();
+        if (screenUI != null)
+        {
+            var whileOpen = new System.Collections.Generic.List<Object>();
+            Collect(whileOpen, canvas, "Bowl");
+            SetPrivateArray(screenUI, "hiddenWhileOpen", whileOpen.ToArray());
+
+            // 라멘을 낸 뒤에만 놓이는 그릇.
+            if (orderScreen.Root != null)
+            {
+                Transform served = orderScreen.Root.transform.Find("CustomerBowl");
+                if (served != null) SetPrivateReference(screenUI, "servedBowl", served.gameObject);
+            }
+        }
+
+        // 확대에 들어갈 때만 치우는 것. 첫 컷에는 손님 앞에 그릇이 놓여 있어야 한다.
+        var atZoom = new System.Collections.Generic.List<Object>();
+        if (orderScreen.Root != null) Collect(atZoom, orderScreen.Root.transform, "CustomerBowl");
+        SetPrivateArray(orderScreen.Cutscene, "hiddenAtZoom", atZoom.ToArray());
+    }
+
+    private static void Collect(System.Collections.Generic.List<Object> into, Transform parent, params string[] names)
+    {
+        foreach (string name in names)
+        {
+            Transform found = parent.Find(name);
+            if (found != null) into.Add(found.gameObject);
+            else Debug.LogWarning("[RamenLayoutBuilder] 시네마틱에서 감출 " + name + " 을 찾지 못했습니다.");
+        }
+    }
+
     private static IngredientToast BuildIngredientToast(Transform canvas)
     {
         TMP_FontAsset tmpFont = EnsureTmpFont();
@@ -3038,13 +4548,113 @@ public static class RamenLayoutBuilder
         return toast;
     }
 
-    /// <summary>폐기 버튼 클릭을 Bowl.Discard에 붙인다. 인스펙터에 남는 연결이라 씬을 저장하면 유지된다.</summary>
-    private static void WireDiscardButton(Image discard, Bowl bowl)
+    /// <summary>
+    /// 되돌릴 수 없는 조작에 한 번 더 묻는 창. 폐기와 마무리가 같은 모양을 쓴다.
+    /// 기획서 v1.2 3.2 — "폐기에는 확인창을 사용해 오작동을 막는다".
+    ///
+    /// 버튼은 둘이다. [넵]만 두면 잘못 연 사람이 빠져나갈 길이 없다.
+    /// 여는 것과 Time.timeScale 처리는 ConfirmDialogUI가 한다.
+    /// </summary>
+    private static ConfirmDialogUI BuildConfirmDialog(Transform canvas, Bowl bowl,
+                                                      string name, string message, bool isSubmit)
     {
-        var button = Undo.AddComponent<Button>(discard.gameObject);
-        button.targetGraphic = discard;
+        TMP_FontAsset tmpFont = EnsureTmpFont();
+
+        // 바깥 껍데기는 늘 켜져 있어야 여는 쪽이 Open을 부를 수 있다. 껐다 켜는 것은 안쪽 Window다.
+        Transform root = CreateGroup(name, canvas);
+        Transform window = CreateGroup("Window", root);
+
+        // 뒷판. raycastTarget을 켜 두어야 창이 떠 있는 동안 아래 조리 UI가 눌리지 않는다.
+        var backdrop = CreateImage("Backdrop", window, Center, Vector2.zero, ScreenCover, new Color(0f, 0f, 0f, 0.6f));
+        backdrop.raycastTarget = true;
+
+        // 판과 버튼 모두 프로젝트의 TextBox.png 를 9-슬라이스로 쓴다. 조리 화면의 이름표와
+        // 주문 화면의 제조하기 버튼이 쓰는 바로 그 그림이라, 새 모양을 만들지 않고 결이 맞는다.
+        //
+        // 폭 300 은 제목 한 줄이 안 접히는 최소선이다. "정말 폐기하시겠습니까?" 는 24픽셀
+        // 글자 열 자에 띄어쓰기와 물음표가 붙어 264 쯤 된다. 253 이었을 때 "까?" 가 다음 줄로 넘어갔다.
+        Image panel = CreateImage("Panel", window, Center, Vector2.zero, new Vector2(300f, 120f),
+                                  Hex("#FFF8E7"), DialogBoxSprite());
+        panel.type = Image.Type.Sliced;
+        panel.pixelsPerUnitMultiplier = 1f;
+
+        CreateTmpText("MessageText", panel.transform, Center, new Vector2(0f, 22f),
+                      new Vector2(280f, 27f), message, TextTitle, tmpFont);
+
+        // 버튼 둘을 가로로. 88 짜리 둘 사이를 24 띄운다.
+        Button yes = MakeDialogButton("ConfirmButton", panel.transform, new Vector2(-56f, -26f),
+                                      "넵", Hex("#C05A4A"), tmpFont);
+        Button no = MakeDialogButton("CancelButton", panel.transform, new Vector2(56f, -26f),
+                                     "아뇨", Hex("#7BA7C7"), tmpFont);
+
+        var ui = Undo.AddComponent<ConfirmDialogUI>(root.gameObject);
+        SetPrivateReference(ui, "popupRoot", window.gameObject);
+        SetPrivateReference(ui, "confirmButton", yes);
+        SetPrivateReference(ui, "cancelButton", no);
+        SetPrivateReference(ui, "bowl", bowl);
+        SetPrivateField(ui, "isSubmit", isSubmit);
+
+        window.gameObject.SetActive(false);
+
+        return ui;
+    }
+
+    /// <summary>
+    /// 팝업에 쓰는 상자 그림. 조리 화면 이름표와 주문 화면 제조하기 버튼이 쓰는 것과 같은 그림이다.
+    /// 32x32 한 장을 테두리 8로 늘려 어떤 크기에도 모서리가 안 뭉개진다.
+    /// </summary>
+    private static Sprite DialogBoxSprite()
+    {
+        return LoadSlicedSprite(UiDir + "TextBox.png", new Vector4(8f, 8f, 8f, 8f));
+    }
+
+    /// <summary>
+    /// 팝업 버튼 하나. 제조하기 버튼과 같은 모양이라 크기와 슬라이스 설정을 같이 맞춰 둔다.
+    /// </summary>
+    private static Button MakeDialogButton(string name, Transform parent, Vector2 pos,
+                                           string label, Color tint, TMP_FontAsset tmpFont)
+    {
+        Image image = CreateImage(name, parent, Center, pos, new Vector2(88f, 32f), tint, DialogBoxSprite());
+        image.type = Image.Type.Sliced;
+        image.pixelsPerUnitMultiplier = 1f;
+
+        var button = Undo.AddComponent<Button>(image.gameObject);
+        button.targetGraphic = image;
         StyleButton(button);
-        UnityEventTools.AddPersistentListener(button.onClick, bowl.Discard);
+
+        var text = CreateTmpText("Label", image.transform, Center, Vector2.zero,
+                                 new Vector2(80f, 20f), label, TextBody, tmpFont);
+        text.color = Color.white;
+
+        return button;
+    }
+
+    /// <summary>
+    /// 버튼 클릭을 확인창에 붙인다. 폐기와 마무리 둘 다 한 번 더 묻는다.
+    /// 인스펙터에 남는 연결이라 씬을 저장하면 유지된다.
+    /// </summary>
+    private static void WireDialogButton(Image target, ConfirmDialogUI confirm)
+    {
+        var button = target.GetComponent<Button>();
+        if (button == null) button = Undo.AddComponent<Button>(target.gameObject);
+
+        button.targetGraphic = target;
+        StyleButton(button);
+        UnityEventTools.AddPersistentListener(button.onClick, confirm.Open);
+    }
+
+    /// <summary>확인창의 onConfirm 이벤트를 꺼낸다. private 필드라 리플렉션으로 잡는다.</summary>
+    private static UnityEngine.Events.UnityEvent DialogConfirmEvent(ConfirmDialogUI dialog)
+    {
+        var field = typeof(ConfirmDialogUI).GetField("onConfirm",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+        var found = field != null ? field.GetValue(dialog) as UnityEngine.Events.UnityEvent : null;
+        if (found != null) return found;
+
+        var made = new UnityEngine.Events.UnityEvent();
+        if (field != null) field.SetValue(dialog, made);
+        return made;
     }
 
     // ── 씬에 하나만 있어야 하는 것들 ───────────────────────────────
@@ -3131,6 +4741,7 @@ public static class RamenLayoutBuilder
             SetPrivateReference(resultUI, "titleText", popup.Title);
             SetPrivateReference(resultUI, "profitText", popup.Profit);
             SetPrivateReference(resultUI, "averageAccuracyText", popup.Accuracy);
+            SetPrivateReference(resultUI, "perfectCountText", popup.Perfect);
             SetPrivateReference(resultUI, "confirmButton", popup.Confirm);
         }
 
@@ -3172,8 +4783,8 @@ public static class RamenLayoutBuilder
         if (recipeBook != null)
         {
             SetPrivateReference(book, "root", recipeBook.Root);
-            SetPrivateReference(book, "recipeNames", recipeBook.RecipeNames);
-            SetPrivateReference(book, "recipeValues", recipeBook.RecipeValues);
+            SetPrivateArray(book, "menuNameTexts", recipeBook.MenuNameTexts);
+            SetPrivateArray(book, "menuValueTexts", recipeBook.MenuValueTexts);
             SetPrivateReference(book, "closeButton", recipeBook.Close);
 
             // 미끄러지는 것은 판 하나다. root 는 껐다 켜기만 한다.
@@ -3246,11 +4857,16 @@ public static class RamenLayoutBuilder
         SetPrivateReference(gameManager, "finalResultUI", Object.FindFirstObjectByType<FinalResultUI>());
         SetPrivateReference(gameManager, "orderScreenUI", Object.FindFirstObjectByType<OrderScreenUI>());
         SetPrivateReference(gameManager, "orderNoteUI", Object.FindFirstObjectByType<OrderNoteUI>());
+        SetPrivateReference(gameManager, "titleScreen", Object.FindFirstObjectByType<TitleScreenUI>(FindObjectsInactive.Include));
         SetPrivateReference(gameManager, "orderResultUI", Object.FindFirstObjectByType<OrderResultUI>());
         SetPrivateReference(gameManager, "footsteps",
                             Object.FindFirstObjectByType<Footsteps>(FindObjectsInactive.Include));
         SetPrivateReference(gameManager, "cutscene",
                             Object.FindFirstObjectByType<EatingCutscene>(FindObjectsInactive.Include));
+        SetPrivateReference(gameManager, "narration",
+                            Object.FindFirstObjectByType<OpeningNarration>(FindObjectsInactive.Include));
+        SetPrivateReference(gameManager, "iris",
+                            Object.FindFirstObjectByType<IrisFade>(FindObjectsInactive.Include));
 
         // ? 버튼: 주문 원문 + 기본 레시피 + 재료 속성표 (기획서 6.1).
         // 조리 화면에는 대사줄이 없으므로 이게 유일한 확인 수단이다.
@@ -3279,6 +4895,28 @@ public static class RamenLayoutBuilder
 
         // 색 변화만으로는 눌린 것이 잘 안 보인다. 판이 실제로 내려가는 반응을 같이 붙인다.
         if (button.GetComponent<ButtonPress>() == null) Undo.AddComponent<ButtonPress>(button.gameObject);
+
+        AttachHoverOutline(button);
+    }
+
+    /// <summary>
+    /// 마우스를 얹었을 때 뜨는 흰 테두리를 붙인다.
+    ///
+    /// Outline 효과는 같은 그림을 네 방향으로 밀어 뒤에 겹쳐 그린다. 버튼 실루엣을 그대로
+    /// 따라가므로 버튼마다 테두리 그림을 구울 필요가 없다. 평소에는 ButtonHoverOutline 이 꺼 둔다.
+    /// </summary>
+    private static void AttachHoverOutline(Button button)
+    {
+        var outline = button.GetComponent<Outline>();
+        if (outline == null) outline = Undo.AddComponent<Outline>(button.gameObject);
+
+        outline.effectColor = Color.white;
+        outline.effectDistance = new Vector2(2f, 2f);
+        outline.useGraphicAlpha = false;
+        outline.enabled = false;
+
+        if (button.GetComponent<ButtonHoverOutline>() == null)
+            Undo.AddComponent<ButtonHoverOutline>(button.gameObject);
     }
 
     /// <summary>private [SerializeField] 칸에 값을 넣는다. 인스펙터로 꽂는 것과 같은 결과.</summary>
@@ -3301,6 +4939,22 @@ public static class RamenLayoutBuilder
         {
             property.GetArrayElementAtIndex(i).objectReferenceValue = values[i];
         }
+        serialized.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    /// <summary>참조가 아니라 값(bool)인 private 필드를 채운다. 쓰임은 SetPrivateReference와 같다.</summary>
+    private static void SetPrivateField(Object target, string fieldName, bool value)
+    {
+        var serialized = new SerializedObject(target);
+        SerializedProperty property = serialized.FindProperty(fieldName);
+
+        if (property == null)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] " + target.GetType().Name + "." + fieldName + " 을(를) 찾지 못했습니다.");
+            return;
+        }
+
+        property.boolValue = value;
         serialized.ApplyModifiedPropertiesWithoutUndo();
     }
 
@@ -3334,13 +4988,37 @@ public static class RamenLayoutBuilder
         serialized.ApplyModifiedPropertiesWithoutUndo();
     }
 
+    private static void SetPrivateInt(Object target, string fieldName, int value)
+    {
+        var serialized = new SerializedObject(target);
+        SerializedProperty property = serialized.FindProperty(fieldName);
+
+        if (property == null)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] " + target.GetType().Name + "." + fieldName + " 을(를) 찾지 못했습니다.");
+            return;
+        }
+
+        property.intValue = value;
+        serialized.ApplyModifiedPropertiesWithoutUndo();
+    }
+
     private static void EnsureGameManager()
     {
         // 이미 있으면 인스펙터 연결이 날아가지 않도록 그대로 둔다.
-        if (Object.FindFirstObjectByType<GameManager>() != null) return;
+        if (Object.FindFirstObjectByType<GameManager>() == null)
+        {
+            var go = new GameObject("GameManager", typeof(GameManager));
+            Undo.RegisterCreatedObjectUndo(go, UndoLabel);
+        }
 
-        var go = new GameObject("GameManager", typeof(GameManager));
-        Undo.RegisterCreatedObjectUndo(go, UndoLabel);
+        // 튜토리얼도 같은 이유로 한 번만 만든다. 인스펙터의 "튜토리얼 켜기" 를 꺼 두고
+        // 작업하는 경우가 많아서, 빌드할 때마다 다시 켜지면 곤란하다.
+        if (Object.FindFirstObjectByType<TutorialManager>() == null)
+        {
+            var tutorial = new GameObject("TutorialManager", typeof(TutorialManager));
+            Undo.RegisterCreatedObjectUndo(tutorial, UndoLabel);
+        }
     }
 
     // ── 작은 도우미들 ─────────────────────────────────────────────
@@ -3508,6 +5186,178 @@ public static class RamenLayoutBuilder
 
         var slot = Undo.AddComponent<NoodleSlot>(area.gameObject);
         slot.type = type;
+
+        // 튜토리얼 안내 테두리. 튜토리얼이 시오 한 건이라 얇은면만 쓴다.
+        //
+        // 통 자체가 아니라 통 그림 위에 얹는다. 그림 한 장이 바구니 둘을 덮고 있어
+        // 바구니 상자(투명한 클릭 자리)에는 뜰 실루엣이 없다. 통 그림과 같은 크기로
+        // 겹쳐 두면 원본 칸 좌표가 그대로 맞아 자리를 따로 계산하지 않아도 된다.
+        if (type != IngredientType.ThinNoodles) return;
+
+        Sprite outline = ThinNoodleBasketOutline(TutorialOutlineThickness);
+        if (outline == null) return;
+
+        Image glow = CreateImage("TutorialOutline_" + type, pot, Center, Vector2.zero,
+                                 (pot as RectTransform).sizeDelta, Color.white, outline);
+        glow.preserveAspect = true;
+        glow.raycastTarget = false;
+        glow.enabled = false;
+
+        var mark = Undo.AddComponent<TutorialOutline>(glow.gameObject);
+        mark.type = type;
+        mark.lift = LiftCanvas(pot.gameObject);
+    }
+
+    /// <summary>
+    /// 얇은면 바구니 테두리. 통 그림 첫 칸에서 왼쪽 바구니가 앉은 자리에 타원 테를 그린다.
+    ///
+    /// 색으로 면을 골라 그 윤곽을 뜨는 방법을 먼저 썼는데 안 됐다. 면과 거품이 제각각이라
+    /// 윤곽이 울퉁불퉁한 덩어리가 되고, 주황 손잡이까지 같이 잡혀 위로 삐져나왔다.
+    /// 구멍을 메워도 면이 담긴 모양을 따라갈 뿐 바구니 테는 아니었다.
+    ///
+    /// 바구니는 어차피 고정된 그림이라 자리를 재서 박아 두는 편이 낫다.
+    /// 아래 값은 통 그림 첫 칸을 줄 단위로 훑어 "면 또는 어두운 망" 이 이어지는
+    /// 구간에서 잰 것이다. 가장 넓은 줄이 y 67~68 의 x 26~59 였고 세로는 y 53~79 였다.
+    ///
+    /// 통 그림을 바꾸면 이 값도 다시 재야 한다.
+    /// </summary>
+    private static Sprite ThinNoodleBasketOutline(int thickness)
+    {
+        const int Cell = 128;
+
+        Texture2D texture = ReadableTexture(CookDir + "면통.png");
+        if (texture == null) return null;
+
+        Color[] src = texture.GetPixels(0, texture.height - Cell, Cell, Cell);
+        var keep = new bool[Cell * Cell];
+
+        // 1. 바구니. 한가운데에서 "면(주황) 또는 어두운 망" 을 따라 번져 나간 덩어리만 쓴다.
+        //    통 여기저기의 어두운 선이 딸려 들어오지 않는다.
+        var cand = new bool[Cell * Cell];
+        for (int y = 0; y < Cell; y++)
+        {
+            for (int x = 0; x < Cell / 2; x++)
+            {
+                Color c = src[y * Cell + x];
+                if (c.a <= 0.1f) continue;
+                if (IsNoodleOrange(c) || c.r + c.g + c.b < 1.1f) cand[y * Cell + x] = true;
+            }
+        }
+
+        var stack = new System.Collections.Generic.Stack<int>();
+        int seed = BasketSeedY * Cell + BasketSeedX;
+        if (cand[seed]) { stack.Push(seed); keep[seed] = true; }
+
+        while (stack.Count > 0)
+        {
+            int i = stack.Pop();
+            int cx = i % Cell;
+            int cy = i / Cell;
+
+            for (int k = 0; k < 4; k++)
+            {
+                int nx = cx + (k == 0 ? 1 : k == 1 ? -1 : 0);
+                int ny = cy + (k == 2 ? 1 : k == 3 ? -1 : 0);
+
+                if (nx < 0 || ny < 0 || nx >= Cell / 2 || ny >= Cell) continue;
+
+                int ni = ny * Cell + nx;
+                if (!cand[ni] || keep[ni]) continue;
+
+                keep[ni] = true;
+                stack.Push(ni);
+            }
+        }
+
+        // 2. 주황 손잡이. 바구니 위쪽에 떨어져 있다.
+        for (int y = GripFromY; y < Cell; y++)
+        {
+            for (int x = 0; x < Cell / 2; x++)
+            {
+                Color c = src[y * Cell + x];
+                if (c.a > 0.1f && IsNoodleOrange(c)) keep[y * Cell + x] = true;
+            }
+        }
+
+        // 3. 둘을 잇는 쇠막대. 통 몸체와 색이 같아 색으로는 못 가른다. 두 끝을 띠로 잇는다.
+        for (int t = 0; t <= 100; t++)
+        {
+            float k = t / 100f;
+            int mx = Mathf.RoundToInt(Mathf.Lerp(34f, 27f, k));
+            int my = Mathf.RoundToInt(Mathf.Lerp(74f, 88f, k));
+
+            for (int dy = -RodRadius; dy <= RodRadius; dy++)
+            {
+                for (int dx = -RodRadius; dx <= RodRadius; dx++)
+                {
+                    if (dx * dx + dy * dy > RodRadius * RodRadius) continue;
+
+                    int nx = mx + dx;
+                    int ny = my + dy;
+                    if (nx < 0 || ny < 0 || nx >= Cell || ny >= Cell) continue;
+
+                    keep[ny * Cell + nx] = true;
+                }
+            }
+        }
+
+        // 4. 바구니 안쪽 구멍 메우기. 면과 거품 때문에 숭숭 뚫려 있어 그대로 뜨면 덩어리가 된다.
+        //    바구니 높이에서 가로로만 메운다. 세로까지 메우면 비스듬한 막대 옆에 삼각형이 생긴다.
+        for (int y = BasketFillFromY; y <= BasketFillToY; y++)
+        {
+            int first = -1;
+            int last = -1;
+            int count = 0;
+
+            for (int x = 0; x < Cell / 2; x++)
+            {
+                if (!keep[y * Cell + x]) continue;
+                if (first < 0) first = x;
+                last = x;
+                count++;
+            }
+
+            if (count <= 2) continue;
+            for (int x = first; x <= last; x++) keep[y * Cell + x] = true;
+        }
+
+        // 5. 안쪽 테두리
+        var made = new Color[Cell * Cell];
+        var clear = new Color(0f, 0f, 0f, 0f);
+
+        for (int y = 0; y < Cell; y++)
+        {
+            for (int x = 0; x < Cell; x++)
+            {
+                int i = y * Cell + x;
+                made[i] = clear;
+                if (!keep[i]) continue;
+
+                bool edge = false;
+                for (int dy = -thickness; dy <= thickness && !edge; dy++)
+                {
+                    for (int dx = -thickness; dx <= thickness && !edge; dx++)
+                    {
+                        int nx = x + dx;
+                        int ny = y + dy;
+
+                        if (nx < 0 || ny < 0 || nx >= Cell || ny >= Cell) { edge = true; break; }
+                        if (!keep[ny * Cell + nx]) edge = true;
+                    }
+                }
+
+                if (edge) made[i] = Color.white;
+            }
+        }
+
+        string path = SaveGenerated("Outline_ThinNoodles", EncodePng(made, Cell, Cell));
+        return path == null ? null : LoadSprite(path);
+    }
+
+    /// <summary>면과 손잡이의 주황. 통은 회색 금속이라 세 값이 비슷해 걸리지 않는다.</summary>
+    private static bool IsNoodleOrange(Color c)
+    {
+        return c.r > 0.45f && c.r > c.b + 0.15f && c.g > c.b;
     }
 
     /// <summary>
@@ -3543,9 +5393,15 @@ public static class RamenLayoutBuilder
 
         #pragma warning disable 0618 // spritesheet 폐기 예고 — LoadIconSprites 의 설명 참조
         // 이미 같은 개수로 잘려 있으면 다시 임포트하지 않는다. 재임포트는 느리다.
-        bool needsSlice = importer.spriteImportMode != SpriteImportMode.Multiple
-                          || importer.spritesheet == null
-                          || importer.spritesheet.Length != cols * rows;
+        // 칸 개수만 보면 안 된다. 그림 크기가 바뀌었는데 칸 수가 그대로면(손님 그림처럼
+        // 높이만 달라진 경우) 옛 칸이 그대로 남아 스프라이트가 통째로 비어 버린다.
+        bool sameCells = importer.spritesheet != null
+                         && importer.spritesheet.Length == cols * rows
+                         && importer.spritesheet.Length > 0
+                         && Mathf.Approximately(importer.spritesheet[0].rect.width, cellWidth)
+                         && Mathf.Approximately(importer.spritesheet[0].rect.height, cellHeight);
+
+        bool needsSlice = importer.spriteImportMode != SpriteImportMode.Multiple || !sameCells;
 
         if (needsSlice
             || importer.filterMode != FilterMode.Point

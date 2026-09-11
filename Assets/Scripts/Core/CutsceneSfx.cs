@@ -16,6 +16,12 @@ public class CutsceneSfx : MonoBehaviour
     [Range(0f, 1f)]
     [SerializeField] private float thunderVolume = 0.7f;
 
+    [Range(0f, 1f)]
+    [SerializeField] private float cawVolume = 0.45f;
+
+    [Range(0f, 1f)]
+    [SerializeField] private float tickVolume = 0.35f;
+
     /// <summary>후루룩 한 모금과 다음 모금 사이(초).</summary>
     [SerializeField] private float slurpGap = 0.55f;
 
@@ -24,6 +30,8 @@ public class CutsceneSfx : MonoBehaviour
     private AudioSource source;
     private AudioClip slurp;
     private AudioClip thunder;
+    private AudioClip caw;
+    private AudioClip tick;
     private Coroutine slurping;
 
     private void Awake()
@@ -35,6 +43,8 @@ public class CutsceneSfx : MonoBehaviour
 
         slurp = BuildSlurp();
         thunder = BuildThunder();
+        caw = BuildCaw();
+        tick = BuildTick();
     }
 
     /// <summary>seconds 동안 후루룩거린다. 한 모금씩 끊어서 여러 번 낸다.</summary>
@@ -67,6 +77,108 @@ public class CutsceneSfx : MonoBehaviour
 
         source.pitch = Random.Range(0.95f, 1.05f);
         source.PlayOneShot(thunder, thunderVolume);
+    }
+
+    /// <summary>톡. 침묵의 점이 하나 찍힐 때 낸다.</summary>
+    public void Tick()
+    {
+        if (source == null || tick == null) return;
+
+        // 셋이 연달아 찍히므로 높이를 조금씩 올려 준다. 같은 높이로 세 번이면 오류음처럼 들린다.
+        source.pitch = 1f + 0.09f * ticksSoFar;
+        ticksSoFar = (ticksSoFar + 1) % 3;
+        source.PlayOneShot(tick, tickVolume);
+    }
+
+    private int ticksSoFar;
+
+    /// <summary>
+    /// 톡.
+    ///
+    /// 아주 짧은 나무 두드리는 소리다. 사인파 하나를 8밀리초 만에 끊으면 "틱" 이 되고,
+    /// 거기에 한 옥타브 위를 살짝 얹으면 나무결이 생긴다. 길게 끌면 물방울 소리가 된다.
+    /// </summary>
+    private static AudioClip BuildTick()
+    {
+        const float seconds = 0.05f;
+        int count = Mathf.RoundToInt(Rate * seconds);
+        var samples = new float[count];
+
+        for (int i = 0; i < count; i++)
+        {
+            float t = (float)i / count;
+            float phase = 2f * Mathf.PI * 900f * i / Rate;
+
+            float body = Mathf.Sin(phase) + 0.4f * Mathf.Sin(phase * 2f);
+            float envelope = Mathf.Pow(1f - t, 5f);
+
+            samples[i] = body * 0.18f * envelope;
+        }
+
+        return Finish("Tick", samples);
+    }
+
+    /// <summary>까악. 어색한 침묵에 까마귀가 지나갈 때 낸다.</summary>
+    public void Caw()
+    {
+        if (source == null || caw == null) return;
+
+        source.pitch = Random.Range(0.94f, 1.06f);
+        source.PlayOneShot(caw, cawVolume);
+    }
+
+    /// <summary>
+    /// 까악.
+    ///
+    /// 까마귀 소리는 목청이 갈라지는 소리다. 맑은 사인파로는 안 나오고, 톱니처럼 배음이 많은
+    /// 파형을 **불규칙하게 떨어** 줘야 쉰 소리가 된다. 여기서는 톱니에 잡음을 섞고
+    /// 높이를 위에서 아래로 훑어 내린다 — 까마귀는 울 때 음이 처진다.
+    ///
+    /// "까-악" 두 마디로 끊는다. 한 번만 내면 새보다 오리에 가깝게 들린다.
+    /// </summary>
+    private static AudioClip BuildCaw()
+    {
+        const float seconds = 0.62f;
+        int count = Mathf.RoundToInt(Rate * seconds);
+        var samples = new float[count];
+
+        // (시작 시각, 길이, 시작 높이, 끝 높이) — 짧게 한 번, 길게 한 번.
+        var calls = new[]
+        {
+            new Vector4(0.00f, 0.16f, 760f, 610f),
+            new Vector4(0.26f, 0.30f, 700f, 480f),
+        };
+
+        float phase = 0f;
+
+        foreach (var call in calls)
+        {
+            int from = Mathf.RoundToInt(Rate * call.x);
+            int len = Mathf.RoundToInt(Rate * call.y);
+
+            for (int i = 0; i < len && from + i < count; i++)
+            {
+                float t = (float)i / len;
+                float freq = Mathf.Lerp(call.z, call.w, t);
+
+                // 갈라지는 목청. 높이를 빠르게 흔들면 쉰 소리가 된다.
+                freq *= 1f + 0.06f * Mathf.Sin(2f * Mathf.PI * 58f * t);
+
+                phase += freq / Rate;
+                phase -= Mathf.Floor(phase);
+
+                // 톱니 — 배음이 많아 거칠다.
+                float saw = phase * 2f - 1f;
+                float noise = Random.value * 2f - 1f;
+
+                // 앞은 확 터지고 뒤는 짧게 잦아든다.
+                float envelope = t < 0.07f ? t / 0.07f : Mathf.Pow(1f - (t - 0.07f) / 0.93f, 1.3f);
+
+                samples[from + i] += (saw * 0.75f + noise * 0.25f) * 0.22f * envelope;
+            }
+        }
+
+        return Finish("Caw", samples);
     }
 
     /// <summary>
