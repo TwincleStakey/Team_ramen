@@ -12,6 +12,13 @@ public class DayManager : MonoBehaviour
     // 최대 진행 일수
     public const int MAX_DAYS = 5;
 
+    // 1~2일차 목표 금액
+    private const int TARGET_PROFIT_EARLY = 35000;
+    // 3~4일차 목표 금액
+    private const int TARGET_PROFIT_MIDDLE = 42000;
+    // 5일차 목표 금액
+    private const int TARGET_PROFIT_LATE = 56000;
+
     [Header("참조 연결")]
     [SerializeField]
     private OrderManager orderManager;
@@ -42,6 +49,7 @@ public class DayManager : MonoBehaviour
     public int CurrentDay => currentDay;
     public int CurrentCustomerCount => currentCustomerCount;
     public int TargetCustomerCount => GetTargetCustomerCount(currentDay);
+    public int TargetProfit => GetTargetProfit(currentDay);
     public bool IsGameCompleted => currentDay > MAX_DAYS;
 
     private void Start()
@@ -67,6 +75,21 @@ public class DayManager : MonoBehaviour
         return CUSTOMER_COUNT_LATE;
     }
 
+    // 해당 일차의 목표 금액을 반환합니다. (1~2일차: 35,000원, 3~4일차: 42,000원, 5일차: 56,000원)
+    public int GetTargetProfit(int day)
+    {
+        if (day <= 2)
+        {
+            return TARGET_PROFIT_EARLY;
+        }
+        else if (day <= 4)
+        {
+            return TARGET_PROFIT_MIDDLE;
+        }
+
+        return TARGET_PROFIT_LATE;
+    }
+
     // 현재 일차의 영업을 시작하고 첫 손님 주문을 받습니다.
     public void StartDay()
     {
@@ -88,7 +111,7 @@ public class DayManager : MonoBehaviour
         }
 
         OnDayStarted?.Invoke(currentDay);
-        Debug.Log($"[DayManager] Day {currentDay} 영업 시작! (오늘 목표 손님 수: {TargetCustomerCount}명)");
+        Debug.Log($"[DayManager] Day {currentDay} 영업 시작! (오늘 목표 손님 수: {TargetCustomerCount}명, 목표 금액: {TargetProfit:N0}원)");
     }
 
     /// <summary>
@@ -119,14 +142,18 @@ public class DayManager : MonoBehaviour
     private void EndDay()
     {
         int todayProfit = (ramenCalculator != null) ? ramenCalculator.TodayTotalProfit : 0;
+        int totalProfit = (ramenCalculator != null) ? ramenCalculator.TotalAccumulatedProfit : 0;
         float todayAvgAccuracy = (ramenCalculator != null) ? ramenCalculator.TodayAverageAccuracy : 0f;
         int todayPerfect = (ramenCalculator != null) ? ramenCalculator.TodayPerfectCount : 0;
 
-        Debug.Log($"[DayManager] Day {currentDay} 영업 마감! (당일 총 수익: {todayProfit:N0}원, 평균 정확도: {todayAvgAccuracy:F1}%, 완벽한 한 그릇: {todayPerfect}건)");
+        int targetProfit = GetTargetProfit(currentDay);
+        bool isSuccess = todayProfit >= targetProfit;
+
+        Debug.Log($"[DayManager] Day {currentDay} 영업 마감! (당일 수익: {todayProfit:N0}원 / 목표: {targetProfit:N0}원 [{(isSuccess ? "달성" : "미달")}], 누적 총 매출: {totalProfit:N0}원, 평균 정확도: {todayAvgAccuracy:F1}%, 완벽한 한 그릇: {todayPerfect}건)");
 
         if (dailyResultUI != null)
         {
-            dailyResultUI.OpenPopup(currentDay, todayProfit, todayAvgAccuracy, todayPerfect);
+            dailyResultUI.OpenPopup(currentDay, todayProfit, totalProfit, todayAvgAccuracy, todayPerfect, isSuccess, targetProfit);
         }
         else
         {
@@ -161,6 +188,29 @@ public class DayManager : MonoBehaviour
         }
 
         // 다음 날 시작
+        StartDay();
+    }
+
+    /// <summary>
+    /// 목표 미달로 [다시하기]를 눌렀을 때 호출되어 1일차로 리셋하고 모든 금액을 초기화합니다.
+    /// </summary>
+    public void RestartGame()
+    {
+        if (dailyResultUI != null)
+        {
+            dailyResultUI.ClosePopup();
+        }
+
+        currentDay = 1;
+        currentCustomerCount = 0;
+
+        // 모든 수익 및 통계 초기화
+        if (ramenCalculator != null)
+        {
+            ramenCalculator.ResetAllProfit();
+        }
+
+        Debug.Log("[DayManager] 게임을 1일차부터 다시 시작합니다.");
         StartDay();
     }
 }

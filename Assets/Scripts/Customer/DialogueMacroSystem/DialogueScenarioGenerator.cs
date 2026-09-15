@@ -16,10 +16,6 @@ public class DialogueScenarioGenerator : MonoBehaviour
     /// <summary>템플릿 amount 칸의 "기본면 유지 언급" 부호. -3 은 교체.</summary>
     private const int KEEP_NOODLE_CODE = -4;
 
-    /// <summary>
-    /// 교체가 없을 때 "면은 그대로"라고 굳이 말할 확률. 난이도 1·2·3 순.
-    /// 면은 기본 재료라 말 안 해도 되고, 말해도 정답은 그대로다.
-    /// </summary>
     [SerializeField] private float[] keepNoodleChance = { 0.4f, 0.3f, 0.25f };
     private readonly RecipeGenerator recipeGenerator = new RecipeGenerator();
     private DialogueWorkbookDatabase database;

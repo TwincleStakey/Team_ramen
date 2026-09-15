@@ -23,6 +23,9 @@ public class RamenCalculator : MonoBehaviour
     [SerializeField] private int todayServedCount = 0;
     [SerializeField] private int todayPerfectCount = 0;
 
+    [Header("누적 통계")]
+    [SerializeField] private int totalAccumulatedProfit = 0;
+
     // 최근 서빙한 라멘의 정확도 및 판매가, 오차 개수
     private float lastAccuracy = 0f;
     private int lastSellingPrice = 0;
@@ -31,6 +34,7 @@ public class RamenCalculator : MonoBehaviour
 
     public int TodayTotalProfit => todayTotalProfit;
     public int TodayServedCount => todayServedCount;
+    public int TotalAccumulatedProfit => totalAccumulatedProfit;
 
     /// <summary>오늘 100%로 낸 그릇 수. 하루 마감 정산에 쓴다. NextDay가 0으로 지운다.</summary>
     public int TodayPerfectCount => todayPerfectCount;
@@ -213,6 +217,7 @@ public class RamenCalculator : MonoBehaviour
         lastTotalTargetCount = toppingTargetCount;
 
         todayTotalProfit += sellingPrice;
+        totalAccumulatedProfit += sellingPrice;
         todayTotalAccuracy += accuracy;
         todayServedCount++;
         if (accuracy >= PERFECT_ACCURACY) todayPerfectCount++;
@@ -220,7 +225,7 @@ public class RamenCalculator : MonoBehaviour
         Debug.Log($"[라멘 평가: 정상 통과] 종류: {ramenType} | 정가: {basePrice:N0}원 | " +
                   $"토핑 오차: {toppingErrorCount}/{toppingTargetCount}개 | " +
                   $"정답률: {accuracy:F1}% | " +
-                  $"판매 금액: {sellingPrice:N0}원 | 당일 누적 총 이익: {todayTotalProfit:N0}원 (당일 평균 정답률: {TodayAverageAccuracy:F1}%)");
+                  $"판매 금액: {sellingPrice:N0}원 | 당일 누적 총 이익: {todayTotalProfit:N0}원 (누적 총 매출: {totalAccumulatedProfit:N0}원, 당일 평균 정답률: {TodayAverageAccuracy:F1}%)");
 
         return sellingPrice;
     }
@@ -244,5 +249,15 @@ public class RamenCalculator : MonoBehaviour
         lastTotalErrorCount = 0;
         lastTotalTargetCount = 0;
         Debug.Log("[당일 총 이익 및 정확도 통계 초기화 완료]");
+    }
+
+    /// <summary>
+    /// 게임을 처음부터 다시 시작할 때 모든 수익(당일 + 누적) 및 통계를 완전 초기화합니다.
+    /// </summary>
+    public void ResetAllProfit()
+    {
+        ResetDailyProfit();
+        totalAccumulatedProfit = 0;
+        Debug.Log("[전체 누적 매출 및 통계 완전 초기화 완료]");
     }
 }
