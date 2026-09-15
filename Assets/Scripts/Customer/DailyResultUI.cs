@@ -91,7 +91,7 @@ public class DailyResultUI : MonoBehaviour
             popupRoot.SetActive(true);
         }
 
-        //Sfx.Play("sfx_ui_dayend", 0.7f);
+        Sfx.Play("sfx_ui_dayend", 0.7f);
 
         if (titleText != null)
         {

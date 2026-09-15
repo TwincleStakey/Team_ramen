@@ -623,11 +623,17 @@ public static class RamenLayoutBuilder
     {
         public GameObject Root;              // 열고 닫을 때 통째로 켜고 끈다
         public TextMeshProUGUI Title;
+        public TextMeshProUGUI TargetProfit; // 오늘 목표액
         public TextMeshProUGUI Profit;
+        public TextMeshProUGUI TotalProfit;  // 누적 매출
         public TextMeshProUGUI Accuracy;
         public TextMeshProUGUI Perfect;
         public Button Confirm;
+        public Button Retry;                 // 목표 미달이면 이쪽이 뜬다
     }
+
+    /// <summary>정산 팝업 프리팹. 모양은 B가 에디터에서 쥔다.</summary>
+    private const string ResultPopupPrefab = "Assets/Prefabs/UI/TodayReciept.prefab";
 
     /// <summary>슬롯 하나의 정의. 좌표표를 그대로 코드로 옮긴 것.</summary>
     private class SlotDef
@@ -1326,57 +1332,91 @@ public static class RamenLayoutBuilder
     /// </summary>
     /// <summary>
     /// 하루 마감 때 뜨는 정산 팝업. 내용 갱신과 열고 닫기는 B의 DailyResultUI가 한다.
-    /// 여기서는 그 스크립트가 요구하는 오브젝트만 만들어 준다.
     ///
-    /// DailyResultUI가 TextMeshProUGUI를 요구하므로 이 팝업만 TMP를 쓴다.
-    /// 조리 화면은 그대로 legacy Text다.
+    /// 2026-09-15 부터 **B가 만든 프리팹을 얹는다**(TodayReciept.prefab). 예전에는 판·글자·
+    /// 버튼을 여기서 코드로 다 만들었는데, 그러면 B가 에디터에서 화면을 손봐도 빌더를 한 번
+    /// 돌리는 순간 씬이 새로 만들어지면서 통째로 날아간다.
+    ///
+    /// 이제 모양은 프리팹이 쥐고 빌더는 **자리와 배선만** 잡는다. B가 프리팹을 고치면
+    /// 씬에 저절로 따라오고, 빌더를 돌려도 안 깨진다.
+    ///
+    /// <see cref="PrefabUtility.InstantiatePrefab"/> 을 쓴다. Object.Instantiate 로 띄우면
+    /// 프리팹과 끊긴 복사본이 되어 B의 수정이 안 따라온다.
     /// </summary>
     private static ResultPopupRefs BuildResultPopup(Transform canvas)
     {
-        TMP_FontAsset tmpFont = EnsureTmpFont();
+        var asset = AssetDatabase.LoadAssetAtPath<GameObject>(ResultPopupPrefab);
+        if (asset == null)
+        {
+            Debug.LogError("[RamenLayoutBuilder] 정산 팝업 프리팹이 없습니다: " + ResultPopupPrefab);
+            return null;
+        }
 
-        Transform root = CreateGroup("ResultPopup", canvas);
-        LiftPopup(root.gameObject);
+        var root = (GameObject)PrefabUtility.InstantiatePrefab(asset, canvas);
+        Undo.RegisterCreatedObjectUndo(root, UndoLabel);
 
-        // 뒷판. raycastTarget을 켜 두어야 팝업이 떠 있는 동안 아래 조리 UI가 눌리지 않는다.
-        var backdrop = CreateImage("Backdrop", root, Center, Vector2.zero, ScreenCover, new Color(0f, 0f, 0f, 0.6f));
-        backdrop.raycastTarget = true;
+        // 프리팹이 어떤 앵커로 저장돼 있든 화면 한가운데에 세운다.
+        var rect = (RectTransform)root.transform;
+        rect.anchorMin = rect.anchorMax = rect.pivot = Center;
+        rect.anchoredPosition = Vector2.zero;
 
-        // 판과 버튼은 정확도 창·확인창과 같은 모양이다(DialogBoxSprite = TextBox.png).
-        // 같은 자리에 번갈아 뜨는 창들이라 결이 다르면 다른 게임의 창처럼 보인다.
-        //
-        // 줄이 셋에서 넷으로 늘어 판을 26 키웠다(153 → 180). 줄 간격 23은 그대로다.
-        // 거기서 버튼 여백을 더 줘 200 으로 뒀다.
-        Image panel = CreateImage("Panel", root, Center, Vector2.zero, new Vector2(253f, 200f),
-                                  Hex("#FFF8E7"), DialogBoxSprite());
-        panel.type = Image.Type.Sliced;
-        panel.pixelsPerUnitMultiplier = 1f;
-
-        var title = CreateTmpText("TitleText", panel.transform, Center, new Vector2(0f, 56f),
-                                  new Vector2(233f, 27f), "Day 1 정산", TextTitle, tmpFont);
-        var profit = CreateTmpText("ProfitText", panel.transform, Center, new Vector2(0f, 19f),
-                                   new Vector2(233f, 20f), "당일 총 수익 : 0원", TextBody, tmpFont);
-        var accuracy = CreateTmpText("AverageAccuracyText", panel.transform, Center, new Vector2(0f, -4f),
-                                     new Vector2(233f, 20f), "평균 정확도 : 0.0%", TextBody, tmpFont);
-        var perfect = CreateTmpText("PerfectCountText", panel.transform, Center, new Vector2(0f, -27f),
-                                    new Vector2(233f, 20f), "완벽한 한 그릇 : 0건", TextBody, tmpFont);
-
-        // 정확도 창의 [확인] 과 같은 버튼이다. 만드는 함수를 그대로 부른다.
-        Button confirm = MakeDialogButton("ConfirmButton", panel.transform, new Vector2(0f, -72f),
-                                          "확인", Hex("#C05A4A"), tmpFont);
+        LiftPopup(root);
 
         // 시작할 때는 닫혀 있어야 한다. DailyResultUI.Awake도 끄지만, 에디터에서도 가려지지 않게 여기서 끈다.
-        root.gameObject.SetActive(false);
+        root.SetActive(false);
 
         return new ResultPopupRefs
         {
-            Root = root.gameObject,
-            Title = title,
-            Profit = profit,
-            Accuracy = accuracy,
-            Perfect = perfect,
-            Confirm = confirm
+            Root = root,
+            Title = PrefabText(root, "CurrentDay"),
+            TargetProfit = PrefabText(root, "TodayGoal"),
+            Profit = PrefabText(root, "TodayProfit"),
+            TotalProfit = PrefabText(root, "TotalProfit"),
+            Accuracy = PrefabText(root, "TodayAccuracy"),
+            Perfect = PrefabText(root, "PerfectRamen"),
+            Confirm = PrefabButton(root, "Ok_Btn"),
+            Retry = PrefabButton(root, "Retry_Btn"),
         };
+    }
+
+    /// <summary>프리팹 어딘가에 있는 글자를 이름으로 찾는다. 못 찾으면 경고를 남기고 null.</summary>
+    private static TextMeshProUGUI PrefabText(GameObject root, string name)
+    {
+        Transform found = FindDeep(root.transform, name);
+        if (found == null)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] 정산 프리팹에서 " + name + " 을 찾지 못했습니다.");
+            return null;
+        }
+
+        return found.GetComponent<TextMeshProUGUI>();
+    }
+
+    /// <summary>프리팹 어딘가에 있는 버튼을 이름으로 찾는다. 못 찾으면 경고를 남기고 null.</summary>
+    private static Button PrefabButton(GameObject root, string name)
+    {
+        Transform found = FindDeep(root.transform, name);
+        if (found == null)
+        {
+            Debug.LogWarning("[RamenLayoutBuilder] 정산 프리팹에서 " + name + " 을 찾지 못했습니다.");
+            return null;
+        }
+
+        return found.GetComponent<Button>();
+    }
+
+    /// <summary>
+    /// 이름으로 자손을 뒤진다. Transform.Find 는 바로 아래 자식만 보기 때문에,
+    /// B가 프리팹 안에서 오브젝트를 한 겹 더 묶어도 안 깨지도록 깊이 들어간다.
+    /// </summary>
+    private static Transform FindDeep(Transform parent, string name)
+    {
+        foreach (Transform child in parent.GetComponentsInChildren<Transform>(true))
+        {
+            if (child.name == name) return child;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -5350,10 +5390,13 @@ public static class RamenLayoutBuilder
         {
             SetPrivateReference(resultUI, "popupRoot", popup.Root);
             SetPrivateReference(resultUI, "titleText", popup.Title);
+            SetPrivateReference(resultUI, "targetProfitText", popup.TargetProfit);
             SetPrivateReference(resultUI, "profitText", popup.Profit);
+            SetPrivateReference(resultUI, "totalProfitText", popup.TotalProfit);
             SetPrivateReference(resultUI, "averageAccuracyText", popup.Accuracy);
             SetPrivateReference(resultUI, "perfectCountText", popup.Perfect);
             SetPrivateReference(resultUI, "confirmButton", popup.Confirm);
+            SetPrivateReference(resultUI, "retryButton", popup.Retry);
         }
 
         // 5일 완료 화면. 이것도 popupRoot를 끄는 쪽이라 팝업 바깥에 붙여야 한다.
