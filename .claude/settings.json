@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/worklog.js\"",
+            "timeout": 10,
+            "statusMessage": "작업 기록 남기는 중"
+          }
+        ]
+      }
+    ]
+  }
+}
