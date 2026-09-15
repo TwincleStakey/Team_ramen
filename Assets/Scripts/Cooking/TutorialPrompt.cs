@@ -32,10 +32,11 @@ public class TutorialPrompt : MonoBehaviour
     /// <summary>
     /// 조리 화면에 들어선 뒤 안내가 뜨기까지 기다리는 시간(초).
     ///
-    /// 판이 내려오자마자 안내가 튀어나오면 조리대를 볼 틈이 없다. 어디에 무엇이 있는지
-    /// 한 번 훑을 시간을 준 뒤에 말을 건다.
+    /// 판이 내려오자마자 안내가 튀어나오면 조리대를 볼 틈이 없어서 한 박자 둔다.
+    /// 3 이었는데 시작이 굼떠 보여서 1 로 줄였다. 한 박자면 충분하고, 그 뒤로는
+    /// 글이 한 글자씩 찍히는 동안 어차피 조리대를 볼 시간이 더 있다.
     /// </summary>
-    [SerializeField] private float appearDelay = 3f;
+    [SerializeField] private float appearDelay = 1f;
 
     /// <summary>글자가 찍히는 속도(초당 글자 수).</summary>
     [SerializeField] private float charsPerSecond = 18f;
@@ -61,6 +62,17 @@ public class TutorialPrompt : MonoBehaviour
     /// 들어와 어느 쪽도 안 읽힌다. 글을 다 읽힌 다음에 가리킨다.
     /// </summary>
     public static bool Revealed { get; private set; }
+
+    /// <summary>
+    /// 안내가 한 번이라도 다 찍힌 적이 있는가. 어두운 판(TutorialDim)이 이것을 본다.
+    ///
+    /// <see cref="Revealed"/> 는 문구가 바뀔 때마다 잠깐 거짓이 된다. 판이 그걸 그대로
+    /// 따라가면 안내가 넘어갈 때마다 화면이 밝아졌다 다시 어두워져서, 게임이 한 번
+    /// 리셋된 것처럼 깜빡인다. 판은 한 번 덮으면 조리가 끝날 때까지 덮고 있어야 한다.
+    ///
+    /// 주문 화면으로 올라가거나 튜토리얼이 끝나면 그때 내린다.
+    /// </summary>
+    public static bool RevealedOnce { get; private set; }
 
     private void Update()
     {
@@ -88,6 +100,10 @@ public class TutorialPrompt : MonoBehaviour
         {
             Revealed = false;
 
+            // "한 번 봤다" 는 조리 화면을 벗어날 때만 내린다. 재료를 넣고 한 박자 쉬는 동안
+            // 안내가 잠깐 비는데, 거기서 같이 내리면 어두운 판이 걷혀 화면이 깜빡인다.
+            if (orderOpen || tutorial == null || !tutorial.IsRunning) RevealedOnce = false;
+
             // 다음에 다시 뜰 때 처음부터 찍도록 되돌린다. 안 그러면 같은 문구가 다시 뜰 때
             // typed 가 이미 끝까지 차 있어 타자기가 한 번도 안 돈다.
             laidOut = null;
@@ -101,6 +117,7 @@ public class TutorialPrompt : MonoBehaviour
         {
             Layout(text);
             typed = 0f;
+            Sfx.Play("sfx_flow_hint", 0.5f);
         }
 
         // 한 글자씩 찍는다. 글은 다 넣어 두고 보이는 글자 수만 늘린다 —
@@ -109,11 +126,13 @@ public class TutorialPrompt : MonoBehaviour
         label.maxVisibleCharacters = Mathf.FloorToInt(typed);
 
         Revealed = typed >= text.Length;
+        if (Revealed) RevealedOnce = true;
     }
 
     private void OnDisable()
     {
         Revealed = false;
+        RevealedOnce = false;
     }
 
     /// <summary>

@@ -39,6 +39,22 @@ public class SlotHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     /// <summary>판 전체가 함께 쓰는 팻말 하나. 빌더가 꽂아 준다.</summary>
     public SlotNameplate nameplate;
 
+    /// <summary>
+    /// 마우스 판정에서 "그림이 있다"로 칠 알파. 0 이면 상자 전체가 판정이다.
+    ///
+    /// 상자는 네모라, 그림이 상자보다 좁은 통은 빈 자리를 눌러도 집혔다. 시치미가 제일
+    /// 심해서 64칸 그림 안에서 병이 가로 24칸뿐인데 128칸 상자 전체가 판정이었다.
+    /// 재료통도 모서리가 둥근데 상자는 네모라 네 귀퉁이가 남는다.
+    ///
+    /// 빌더에서 넣으면 안 된다. uGUI 의 alphaHitTestMinimumThreshold 는 직렬화되지 않는
+    /// 필드라(Image.cs 주석 "Not serialized until we support read-enabled sprites better")
+    /// 씬에 저장되지 않고 플레이할 때 0 으로 돌아온다. 실제로 빌드해 보니 씬 파일에 값이
+    /// 하나도 안 남았다. 그래서 여기서 실행할 때 넣는다.
+    ///
+    /// 원본 그림의 isReadable 이 켜져 있어야 한다. 그건 빌더가 맞춰 둔다.
+    /// </summary>
+    public float hitAlpha = 0.5f;
+
     private Vector3 baseScale;
     private Image image;
     private Color baseColor;
@@ -53,6 +69,9 @@ public class SlotHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             baseColor = image.color;
             baseSprite = image.sprite;
+
+            // 판정을 그림 모양에 맞춘다. hitAlpha 설명 참고 — 여기서 넣어야 살아남는다.
+            if (hitAlpha > 0f) image.alphaHitTestMinimumThreshold = hitAlpha;
         }
         baseSize = ((RectTransform)transform).sizeDelta;
     }
@@ -72,6 +91,9 @@ public class SlotHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // 집은 채로는 다른 것을 집거나 부을 수 없다. 그런데 통이 커지거나 커서가 국자·병으로
         // 바뀌면 집은 것이 사라진 것처럼 보여서, 들고 있는 동안에는 통을 아예 죽여 둔다.
         if (CookingCursor.Instance != null && CookingCursor.Instance.IsGripping) return;
+
+        // 스치기만 해도 나는 소리라 아주 작게.
+        Sfx.Play("sfx_cook_hover", 0.12f, 1f, 0.05f);
 
         // 젓가락은 재료통 위에서만 뜬다. 나머지 자리에서는 시스템 화살표를 쓴다.
         if (CookingCursor.Instance != null) CookingCursor.Instance.EnterSlot(gameObject);

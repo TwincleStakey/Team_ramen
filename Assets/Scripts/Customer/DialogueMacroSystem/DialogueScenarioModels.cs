@@ -95,9 +95,11 @@ public class HintRow
 public class TemplateRow
 {
     public string ingredient;
-    public int amount;
-    public int difficulty;
+    public int amount;       // 1~3 추가량, -1 제거, -2 감소, -3 면 교체, -4 기본면 유지 언급
+    public int difficulty;   // 1~3. 0 이면 모든 난이도에 걸린다
     public string template;
+    /// <summary>비어 있으면 공용. 말투 아이디가 적혀 있으면 그 말투에만 나온다.</summary>
+    public string persona;
 }
 
 /// <summary>재료별 수량 단위. {unit} 슬롯에 들어간다 (한 점 / 두 점 / 세 점).</summary>

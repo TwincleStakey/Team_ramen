@@ -40,9 +40,17 @@ public class ScreenGrade : MonoBehaviour
     /// <summary>빌더가 꽂아 준다. 전역 Volume 하나다.</summary>
     [SerializeField] private Volume volume;
 
-    [SerializeField, Range(0, MaxStep)] private int step = 6;
+    /// <summary>
+    /// 기본은 꺼짐이다. 2026-09-14 에 되돌렸다 — 6 칸(감마 1.26)은 중간톤을 띄워
+    /// 화면이 전체적으로 밝고 색이 빠져 보였다. 필터를 넣기 전 화면이 기본이고,
+    /// 원하는 사람은 설정에서 올린다.
+    /// </summary>
+    [SerializeField, Range(0, MaxStep)] private int step = 0;
 
     private LiftGammaGain grade;
+
+    /// <summary>후처리를 걸 카메라. 처음 쓸 때 한 번만 찾는다.</summary>
+    private UniversalAdditionalCameraData cameraData;
 
     public int Step
     {
@@ -77,8 +85,29 @@ public class ScreenGrade : MonoBehaviour
         if (Instance == this) Instance = null;
     }
 
+    /// <summary>
+    /// 후처리를 걸 카메라를 찾는다. 빌더가 쓰는 것과 같은 순서다.
+    /// </summary>
+    private UniversalAdditionalCameraData CameraData()
+    {
+        if (cameraData != null) return cameraData;
+
+        Camera cam = Camera.main;
+        if (cam == null) cam = FindFirstObjectByType<Camera>();
+        if (cam == null) return null;
+
+        cameraData = cam.GetComponent<UniversalAdditionalCameraData>();
+        return cameraData;
+    }
+
     private void Apply()
     {
+        // 0 칸에서는 후처리 자체를 끈다. 효과만 끄는 것으로는 모자라다 — URP 는 후처리가
+        // 켜져 있으면 활성 효과가 하나도 없어도 색보정 LUT 를 한 번 거치게 해서,
+        // 옅게나마 색이 달라진다. 필터를 넣기 전 화면으로 정확히 돌아가려면 통째로 꺼야 한다.
+        UniversalAdditionalCameraData camera = CameraData();
+        if (camera != null) camera.renderPostProcessing = step > 0;
+
         if (volume == null) return;
 
         // profile 은 실행 중에 이 Volume 만의 사본을 만들어 준다. sharedProfile 을 만지면

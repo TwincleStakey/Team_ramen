@@ -12,6 +12,15 @@ public class DialogueScenarioGenerator : MonoBehaviour
     [SerializeField, Range(0f, 1f)] private float fillerChance = 0.5f;
 
     private const int MAX_REQUEST_COUNT = 4; // 최대 4개 변경 가능
+
+    /// <summary>템플릿 amount 칸의 "기본면 유지 언급" 부호. -3 은 교체.</summary>
+    private const int KEEP_NOODLE_CODE = -4;
+
+    /// <summary>
+    /// 교체가 없을 때 "면은 그대로"라고 굳이 말할 확률. 난이도 1·2·3 순.
+    /// 면은 기본 재료라 말 안 해도 되고, 말해도 정답은 그대로다.
+    /// </summary>
+    [SerializeField] private float[] keepNoodleChance = { 0.4f, 0.3f, 0.25f };
     private readonly RecipeGenerator recipeGenerator = new RecipeGenerator();
     private DialogueWorkbookDatabase database;
 
@@ -69,12 +78,8 @@ public class DialogueScenarioGenerator : MonoBehaviour
         Shuffle(candidates);
 
         // 기본 면 및 교체 대상 면 식별 (돈코츠: 기본 ThickNoodles ➔ ThinNoodles 교체, 시오/쇼유: 기본 ThinNoodles ➔ ThickNoodles 교체)
-        IngredientType defaultNoodle = (scenario.order.ramenType == RamenType.Tonkotsu)
-            ? IngredientType.ThickNoodles
-            : IngredientType.ThinNoodles;
-        IngredientType swappedNoodle = (scenario.order.ramenType == RamenType.Tonkotsu)
-            ? IngredientType.ThinNoodles
-            : IngredientType.ThickNoodles;
+        IngredientType defaultNoodle = DefaultNoodle(scenario.order.ramenType);
+        IngredientType swappedNoodle = SwappedNoodle(scenario.order.ramenType);
 
         // 40% 확률로 면 교체 요청 발생
         bool swapNoodle = UnityEngine.Random.value < 0.4f;
@@ -145,8 +150,23 @@ public class DialogueScenarioGenerator : MonoBehaviour
         if (!string.IsNullOrEmpty(rawHint))
             AddIfNotEmpty(scenario.lines, Render(rawHint, scenario, persona, null, true));
 
-        string ramenTemplate = database.RandomTemplate("Ramen", 0, scenario.difficulty);
-        AddIfNotEmpty(scenario.lines, Render(ramenTemplate, scenario, persona, null, scenario.changes.Count > 0));
+        // 기본면 유지 언급 — 교체가 없을 때만, 난이도별 확률로 "면은 그대로"라고 말해 준다.
+        // 정답에는 영향이 없으므로 changes 에 넣지 않는다. 요청이 꽉 찼으면(4개) 줄 수 때문에 생략 — 최대 8줄.
+        bool hasSwap = scenario.changes.Exists(c => c.kind == IngredientChangeKind.Swap);
+        bool keepNoodle = !hasSwap && scenario.changes.Count < MAX_REQUEST_COUNT
+                          && UnityEngine.Random.value < KeepNoodleChance(scenario.difficulty);
+
+        string ramenTemplate = database.RandomTemplate("Ramen", 0, scenario.difficulty, persona.personaId);
+        AddIfNotEmpty(scenario.lines, Render(ramenTemplate, scenario, persona, null, scenario.changes.Count > 0 || keepNoodle));
+
+        if (keepNoodle)
+        {
+            // Render 는 {ing}/{ing_desc} 를 채우는 데 재료만 쓴다. kind·delta 는 아무 데도 안 남는다.
+            var keep = new DialogueScenarioRequest { ingredient = DefaultNoodle(scenario.order.ramenType), expressionAmount = 1 };
+            string keepTemplate = database.RandomTemplate(keep.ingredient.ToString(), KEEP_NOODLE_CODE, scenario.difficulty, persona.personaId);
+            bool keepConnecting = scenario.changes.Count > 0 && UnityEngine.Random.value < 0.55f;
+            AddIfNotEmpty(scenario.lines, Render(keepTemplate, scenario, persona, keep, keepConnecting));
+        }
 
         // 한 주문 안에서 같은 뼈대가 두 번 나오면("…충분하니 그렇게 해주시고요" 연타) 기계 티가 난다. 몇 번 다시 뽑는다.
         HashSet<string> usedTemplates = new HashSet<string>();
@@ -156,16 +176,17 @@ public class DialogueScenarioGenerator : MonoBehaviour
             int amountCode = change.kind == IngredientChangeKind.Remove ? -1 :
                              change.kind == IngredientChangeKind.Less ? -2 :
                              change.kind == IngredientChangeKind.Swap ? -3 : change.expressionAmount;
-            string template = database.RandomTemplate(change.ingredient.ToString(), amountCode, scenario.difficulty);
+            string template = database.RandomTemplate(change.ingredient.ToString(), amountCode, scenario.difficulty, persona.personaId);
             for (int retry = 0; retry < 4 && usedTemplates.Contains(template); retry++)
-                template = database.RandomTemplate(change.ingredient.ToString(), amountCode, scenario.difficulty);
+                template = database.RandomTemplate(change.ingredient.ToString(), amountCode, scenario.difficulty, persona.personaId);
             usedTemplates.Add(template);
             bool connecting = i < scenario.changes.Count - 1 && UnityEngine.Random.value < 0.55f;
             AddIfNotEmpty(scenario.lines, Render(template, scenario, persona, change, connecting));
         }
 
         // 요청이 3개 이상이면 주문서가 넘치니(힌트+요청4+필러 = 9줄) 필러를 생략한다. 최대 8줄.
-        if (scenario.changes.Count < 3 && UnityEngine.Random.value < fillerChance)
+        // "면은 그대로" 뒤에 "다른 건 그대로"가 또 오면 겹치므로 유지 언급이 있으면 필러도 생략한다.
+        if (!keepNoodle && scenario.changes.Count < 3 && UnityEngine.Random.value < fillerChance)
         {
             string filler = database.RandomFiller();
             bool hasNoodleChange = scenario.changes.Exists(c => c.kind == IngredientChangeKind.Swap);
@@ -207,7 +228,7 @@ public class DialogueScenarioGenerator : MonoBehaviour
             head = head.Replace("{" + key + "}", database.PickSpeech(persona, key, false));
             tail = tail.Replace("{" + key + "}", database.PickSpeech(persona, key, connecting));
         }
-        text = head + tail;
+        text = FixRieulParticle(head + tail);
 
         // 말투 어미가 !·?로 끝나면 뼈대의 마침표가 뒤에 겹친다("주세요!." "있죠?."). 마침표 쪽을 지운다.
         text = text.Replace("!.", "!").Replace("?.", "?");
@@ -223,6 +244,42 @@ public class DialogueScenarioGenerator : MonoBehaviour
     private Dictionary<IngredientType, int> GetBaseRecipe(RamenType ramenType)
     {
         return RecipeGenerator.GetBaseRecipe(ramenType);
+    }
+
+    private float KeepNoodleChance(int difficulty)
+    {
+        if (keepNoodleChance == null || keepNoodleChance.Length == 0) return 0f;
+        return keepNoodleChance[Mathf.Clamp(difficulty - 1, 0, keepNoodleChance.Length - 1)];
+    }
+
+    /// <summary>기획서 5.3 — 시오·쇼유 기본면은 얇은 면, 돈코츠는 굵은 면.</summary>
+    private static IngredientType DefaultNoodle(RamenType ramenType)
+    {
+        return ramenType == RamenType.Tonkotsu ? IngredientType.ThickNoodles : IngredientType.ThinNoodles;
+    }
+
+    private static IngredientType SwappedNoodle(RamenType ramenType)
+    {
+        return ramenType == RamenType.Tonkotsu ? IngredientType.ThinNoodles : IngredientType.ThickNoodles;
+    }
+
+    /// <summary>
+    /// ㄹ 받침 뒤의 "으로"를 "로"로 고친다("면발으로" → "면발로"). 슬롯에 어떤 낱말이 올지 뼈대는 모르므로
+    /// 뼈대에는 "으로"라고 적어 두고 여기서 맞춘다. ㄹ 받침 뒤에 "으로"가 오는 한국어는 없어 통째로 바꿔도 안전하다.
+    /// </summary>
+    private static string FixRieulParticle(string text)
+    {
+        var sb = new System.Text.StringBuilder(text.Length);
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (i > 0 && text[i] == '으' && i + 1 < text.Length && text[i + 1] == '로')
+            {
+                int code = text[i - 1] - 0xAC00;
+                if (code >= 0 && code < 11172 && code % 28 == 8) continue; // 받침 ㄹ → "으" 생략
+            }
+            sb.Append(text[i]);
+        }
+        return sb.ToString();
     }
 
     private static RamenType GetRandomRamen(int currentDay)

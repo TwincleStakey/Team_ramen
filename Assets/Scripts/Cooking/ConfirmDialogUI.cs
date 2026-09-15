@@ -73,6 +73,7 @@ public class ConfirmDialogUI : MonoBehaviour
         isOpen = true;
         savedTimeScale = Time.timeScale;
         Time.timeScale = 0f;
+        Sfx.Play("sfx_ui_dialog_open", 0.5f);
 
         if (popupRoot != null) popupRoot.SetActive(true);
     }

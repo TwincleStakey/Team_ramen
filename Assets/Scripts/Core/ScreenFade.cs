@@ -24,6 +24,14 @@ public class ScreenFade : MonoBehaviour
     /// </summary>
     [SerializeField] private float seconds = 1.1f;
 
+    /// <summary>
+    /// 검게 덮는 데만 따로 쓰는 시간(초). 0 이하면 <see cref="seconds"/> 를 쓴다.
+    ///
+    /// 시작 화면에서 게임으로 들어갈 때는 덮이는 것 자체가 연출이다. 걷는 쪽과 같은 길이로
+    /// 두었더니 로고를 보다 말고 툭 꺼지는 느낌이라 덮는 쪽만 늘렸다.
+    /// </summary>
+    [SerializeField] private float outSeconds = 2.2f;
+
     private void Awake()
     {
         Instance = this;
@@ -38,13 +46,13 @@ public class ScreenFade : MonoBehaviour
     /// <summary>검게 덮는다.</summary>
     public IEnumerator FadeOut()
     {
-        yield return Fade(0f, 1f);
+        yield return Fade(0f, 1f, outSeconds > 0f ? outSeconds : seconds);
     }
 
     /// <summary>걷어 낸다.</summary>
     public IEnumerator FadeIn()
     {
-        yield return Fade(1f, 0f);
+        yield return Fade(1f, 0f, seconds);
     }
 
     /// <summary>덮은 채로 둔다. 뒤에서 화면을 바꿔 놓을 때 쓴다.</summary>
@@ -64,15 +72,16 @@ public class ScreenFade : MonoBehaviour
         SetAlpha(0f);
     }
 
-    private IEnumerator Fade(float from, float to)
+    private IEnumerator Fade(float from, float to, float length)
     {
         if (cover == null) yield break;
 
         SetAlpha(from);
+        Sfx.Play("sfx_flow_fade", 0.35f);
 
-        for (float t = 0f; t < seconds; t += Time.unscaledDeltaTime)
+        for (float t = 0f; t < length; t += Time.unscaledDeltaTime)
         {
-            SetAlpha(Mathf.Lerp(from, to, t / seconds));
+            SetAlpha(Mathf.Lerp(from, to, t / length));
             yield return null;
         }
 

@@ -22,6 +22,9 @@ public static class ReactionLines
     private const string DefaultNormal = "잘 먹었습니다.";
     private const string DefaultBad = "제가 주문한 라멘이 아닌데요?";
 
+    /// <summary>그 말투에 받아 드는 말이 없을 때 쓰는 한 마디.</summary>
+    private const string DefaultServed = "잘 먹겠습니다.";
+
     private static ReactionLineTable table;
     private static bool loaded;
 
@@ -43,6 +46,26 @@ public static class ReactionLines
     public static void Clear()
     {
         picked = null;
+    }
+
+    /// <summary>
+    /// 그릇을 받고 먹기 전에 하는 한 마디.
+    ///
+    /// 먹은 뒤 반응과 달리 정확도를 보지 않는다 — 아직 맛을 안 봤다.
+    /// <see cref="picked"/> 에도 담지 않는다. 그건 "이 손님의 소감" 한 줄을 컷신과
+    /// 결과창이 나눠 쓰려고 쥐고 있는 것이라, 여기서 덮으면 소감 자리에 인사말이 나온다.
+    ///
+    /// 그 말투의 칸이 비어 있으면 기본 한 마디로 돌아간다.
+    /// </summary>
+    public static string Served()
+    {
+        Load();
+        ReactionLineRow row = Row(CurrentPersonaId());
+
+        string[] pool = row != null ? row.served : null;
+        if (pool == null || pool.Length == 0) return DefaultServed;
+
+        return pool[Random.Range(0, pool.Length)];
     }
 
     /// <summary>
@@ -138,6 +161,10 @@ public class ReactionLineRow
 {
     public string personaId;
     public string name;
+
+    /// <summary>그릇을 받고 먹기 전에 하는 한 마디. 먹은 뒤 반응과 달리 정확도와 무관하다.</summary>
+    public string[] served;
+
     public string[] good;
     public string[] normal;
     public string[] bad;

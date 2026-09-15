@@ -87,6 +87,17 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler
     /// </summary>
     private Coroutine rippleLoop;
 
+    /// <summary>
+    /// 그릇이 지금 무언가를 받아들이는 중인가. 국물이 차오르거나 국물이 찰랑이는 동안 참이다.
+    ///
+    /// 튜토리얼 하이라이트가 이걸 본다. 재료를 놓는 순간 불이 꺼지면, 국자가 아직 붓고 있는데
+    /// 그릇이 어두워져 "다 들어갔다"로 잘못 읽힌다. 그림이 다 돌아야 한 번이 끝난 것이다.
+    /// </summary>
+    public bool IsAnimating
+    {
+        get { return brothPour != null || rippleLoop != null; }
+    }
+
     /// <summary>상한을 정하려면 지금 손님이 시킨 메뉴를 알아야 한다. 처음 쓸 때 한 번 찾아 둔다.</summary>
     private OrderManager orderManager;
 
@@ -390,6 +401,9 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler
             if (type == IngredientType.Broth) { PlayPour(sheet, BrothFirstFrame, BrothLastFrame); return true; }
         }
 
+        // 토핑이 국물에 얹히는 소리. 타래·육수·면은 붓는 소리가 따로 있어 여기서는 뺀다.
+        if (!IsNoodle(type)) Sfx.Play("sfx_cook_drop", 0.7f, 1f, 0.06f);
+
         // 토핑을 올리면 국물이 한 바퀴 찰랑인다. 면까지 들어가야 그릇 그림이 그 상태가 되므로
         // 그 전에 올린 토핑은 찰랑이지 않는다. 면 자체는 담기는 그림이 따로 있어 여기서 뺀다.
         Sprite[] ripple = CurrentRippleSheet;
@@ -509,6 +523,7 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler
 
         Debug.Log("[투입 거부] " + type + " — " + reason);
         if (toast != null) toast.Show(reason);
+        Sfx.Play("sfx_cook_reject", 0.5f);
         if (blink != null) StopCoroutine(blink);
         blink = StartCoroutine(Blink());
     }
@@ -549,6 +564,7 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler
         Debug.Log("[폐기 누적] " + Describe(discarded));
 
         var state = new RamenState(bowl, discarded);
+        Sfx.Play("sfx_cook_serve", 0.8f);
 
         if (GameManager.Instance != null) GameManager.Instance.SubmitRamen(state);
         else Debug.LogWarning("[Bowl] 씬에 GameManager가 없습니다.");
@@ -578,6 +594,7 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler
 
         Debug.Log("[폐기] " + Describe(bowl) + " → 누적 " + Describe(discarded));
         ClearBowl();
+        Sfx.Play("sfx_cook_discard", 0.8f);
 
         // 버리는 순간 화면이 한 번 거칠어지고 흔들린다. 그릇이 그냥 비워지기만 하면
         // 방금 한 그릇을 통째로 날렸다는 게 손에 안 남는다.
@@ -666,6 +683,7 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler
     {
         float perFrame = 1f / Mathf.Max(0.1f, rippleFps);
         int end = Mathf.Min(RippleLastFrame, frames.Length - 1);
+        Sfx.Play("sfx_cook_ripple", 0.3f, 1f, 0.05f);
 
         for (int i = RippleFirstFrame; i <= end; i++)
         {

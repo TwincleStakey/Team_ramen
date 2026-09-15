@@ -75,7 +75,8 @@ public class DialogueBlip : MonoBehaviour
         source.loop = false;
         source.spatialBlend = 0f;   // UI 소리라 거리와 무관해야 한다
 
-        tone = BuildTone();
+        // 음원 파일이 있으면 그것을 쓰고, 없으면 예전처럼 사인파를 만든다.
+        tone = Sfx.ClipOr("sfx_voice_blip", BuildTone);
     }
 
     /// <summary>

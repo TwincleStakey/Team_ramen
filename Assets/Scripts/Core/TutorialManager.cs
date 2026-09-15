@@ -97,9 +97,23 @@ public class TutorialManager : MonoBehaviour
     /// "지금 차례인 재료인가" 를 묻는데, 차례가 없으면 어떤 재료도 통과하지 못한다.
     /// </summary>
     public IngredientType? CurrentStep
-        => IsRunning && phase == Phase.Cooking && step < Steps.Length
+        => IsRunning && phase == Phase.Cooking && !Resting && step < Steps.Length
             ? Steps[step]
             : (IngredientType?)null;
+
+    /// <summary>
+    /// 재료를 하나 넣은 뒤 다음 안내까지 쉬는 시간(초).
+    ///
+    /// 넣자마자 다음 통이 빛나면 방금 넣은 것을 볼 틈이 없다. 한 박자 비워 두면
+    /// "하나 끝났다" 가 읽히고, 그릇에 재료가 내려앉는 것도 눈에 들어온다.
+    /// </summary>
+    private const float StepPause = 1f;
+
+    /// <summary>이 시각까지는 다음 재료를 가리키지 않는다.</summary>
+    private float stepPauseUntil;
+
+    /// <summary>방금 하나 넣고 한 박자 쉬는 중인가.</summary>
+    private bool Resting { get { return Time.unscaledTime < stepPauseUntil; } }
 
     /// <summary>재료를 다 넣어 제출만 남았는가.</summary>
     public bool ReadyToSubmit => IsRunning && phase == Phase.Submit;
@@ -148,7 +162,8 @@ public class TutorialManager : MonoBehaviour
                     return "레시피북을 참고해서 만들어볼까요?\n빛나는 재료를 그릇에 넣어주세요.";
 
                 case Phase.Submit:
-                    return "완성됐어요.\n위쪽 마무리 버튼을 눌러 손님에게 내주세요.";
+                    // 마지막 재료를 넣고도 한 박자 쉰다. 재료와 마찬가지다.
+                    return Resting ? null : "완성됐어요.\n위쪽 마무리 버튼을 눌러 손님에게 내주세요.";
             }
 
             IngredientType? ingredient = CurrentStep;
@@ -280,6 +295,9 @@ public class TutorialManager : MonoBehaviour
 
         step++;
         if (step >= Steps.Length) phase = Phase.Submit;
+
+        // 다음 안내까지 한 박자 비운다. 그동안 안내도 테두리도 뜨지 않는다.
+        stepPauseUntil = Time.unscaledTime + StepPause;
     }
 
     /// <summary>그릇을 비웠다. 재료 차례를 처음으로 되돌린다.</summary>

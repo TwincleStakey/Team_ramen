@@ -33,6 +33,9 @@ public class EatingCutscene : MonoBehaviour
     [SerializeField] private Image dim;
     [SerializeField] private Image bolt;
     [SerializeField] private Image aura;
+
+    /// <summary>오우라 뒤에 까는 빛. 고리만으로는 "빛난다"가 안 읽혀서 한 겹 더 깐다.</summary>
+    [SerializeField] private Image auraGlow;
     [SerializeField] private Sprite[] auraFrames;
     [SerializeField] private Image thumb;
     [SerializeField] private RectTransform customerSlot;
@@ -40,6 +43,14 @@ public class EatingCutscene : MonoBehaviour
 
     /// <summary>손님 앞에 놓인 그릇. 국물을 마실 때 이걸 들어 올린다.</summary>
     [SerializeField] private RectTransform customerBowl;
+
+    /// <summary>
+    /// 그릇이 카운터에 닿는 자리에 지는 그림자. 그릇과 **별개 오브젝트**라 그릇이 떠도 여기 남는다.
+    ///
+    /// 이게 물건을 바닥에 붙여 준다. 없으면 그릇이 카운터 위에 뜬 것처럼 보인다 —
+    /// 예전에 그릇 높이를 아무리 고쳐도 안 붙었던 것이 사실 자리가 아니라 그림자 문제였다.
+    /// </summary>
+    [SerializeField] private Image customerBowlShadow;
 
     /// <summary>관자놀이에 맺히는 땀방울. 0 맺힘 / 1 흘러내림 두 장이다.</summary>
     [SerializeField] private Image sweat;
@@ -119,7 +130,23 @@ public class EatingCutscene : MonoBehaviour
     /// 손님 얼굴은 입이 42, 코가 60, 눈이 80 근처다. 입과 코는 가리고 눈은 남는 높이다.
     /// 더 올리면 눈까지 덮여 그릇을 뒤집어쓴 꼴이 되고, 덜 올리면 입이 드러나 마시는 걸로 안 보인다.
     /// </summary>
+    /// <summary>손님 입 높이를 못 잴 때만 쓰는 값(칸). 평소에는 <see cref="SipTop"/> 가 정한다.</summary>
     [SerializeField] private float sipRise = 130f;
+
+    /// <summary>이번 손님에게 실제로 올리는 높이(칸). 그릇 그림자가 이 값을 기준으로 줄어든다.</summary>
+    private float sipLift;
+
+    /// <summary>
+    /// 그릇 그림의 윗변이 상자 한가운데보다 몇 칸 위인가.
+    ///
+    /// 손님그릇.png 는 220칸 상자이고, 그림 맨 위 80칸은 김(수증기)이라 반투명하다.
+    /// 진한 칸이 시작하는 줄이 그릇 윗변이고 위에서 122번째 — 아래에서 98,
+    /// 곧 한가운데(110)보다 12 **아래**다. 그래서 음수다.
+    ///
+    /// 김까지 그릇으로 치면 82칸이 어긋난다. 실제로 한 번 그렇게 잡았다가,
+    /// 들어 올린 그릇이 입보다 한참 아래에 서는 것을 그림으로 그려 보고 찾았다.
+    /// </summary>
+    [SerializeField] private float bowlRimAboveCenter = -12f;
     [SerializeField] private float sipRiseSeconds = 0.85f;
     [SerializeField] private float sipDownSeconds = 0.6f;
     [SerializeField] private float sipHoldSeconds = 0.18f;
@@ -131,6 +158,27 @@ public class EatingCutscene : MonoBehaviour
     /// <summary>까딱할 때 그릇이 더 올라가는 칸과 고개가 숙여지는 칸. 둘 다 아주 작아야 한다.</summary>
     [SerializeField] private float sipTipPixels = 7f;
     [SerializeField] private float sipNodPixels = 2f;
+
+    /// <summary>
+    /// 그릇을 다 들어 올렸을 때 그림자가 줄어드는 정도와 남는 진하기.
+    ///
+    /// 실제로 물건이 뜨면 그림자는 좁아지고 옅어지고 흐려진다. 흐리기는 못 하니 둘만 한다.
+    /// 가로를 세로보다 더 줄인다 — 위에서 비스듬히 내려보는 화면이라 세로는 원래 눌려 있어서,
+    /// 같은 비율로 줄이면 타원이 아니라 점으로 뭉친다.
+    ///
+    /// 0 으로 두지 않는다. 그림자가 아예 사라지면 그릇이 놓일 자리까지 같이 사라져,
+    /// 내려놓을 때 어디에 놓이는지가 안 읽힌다.
+    ///
+    /// **많이 빼면 안 된다.** 처음에 0.45 로 두었더니 나무판 위에서 아예 안 보였다.
+    /// 화면에 깔린 필터 때문에 그림 알파가 그대로 안 나온다 — 원본을 그대로(알파 1·배율 1) 그려도
+    /// 화면에서 어두워지는 정도는 그림에서 기대할 값의 3분의 1쯤이다. 그래서 0.6 아래로 내리면
+    /// 남는 게 없다. 재 보면 알파 0.45 에서 어두워짐 10, 0.82 에서 22, 1.0 에서 31 이다.
+    ///
+    /// 다 들어 올렸을 때의 배율과 알파다. 1 이 제자리.
+    /// </summary>
+    [SerializeField] private float sipShadowScaleX = 0.84f;
+    [SerializeField] private float sipShadowScaleY = 0.90f;
+    [SerializeField] private float sipShadowAlpha = 0.82f;
 
     [Header("구간별")]
     /// <summary>Perfect — 눈을 뜨고 번개가 칠 때까지의 뜸. 이 틈이 있어야 "뜬 것"이 보인다.</summary>
@@ -230,6 +278,35 @@ public class EatingCutscene : MonoBehaviour
     /// <summary>따봉이 튀어나오는 한 단의 길이(초).</summary>
     [SerializeField] private float thumbPopStepSeconds = 0.06f;
 
+    /// <summary>따봉 뒤에서 도는 빛살. 빌더가 꽂아 준다.</summary>
+    [SerializeField] private Image thumbAura;
+
+    /// <summary>
+    /// 따봉이 테이블 뒤에서 솟는 높이(칸).
+    ///
+    /// 시작 자리가 카운터 윗변(-72)보다 충분히 아래여야 올라오기 전에 안 보인다.
+    ///
+    /// 따봉 한가운데가 10 이고 칸이 80 이라, 130 이면 시작 한가운데가 -120,
+    /// 위끝이 -80 으로 카운터에 잠긴다. 110 이던 시절에는 한가운데가 -16 이었다 —
+    /// 그릇을 피해 따봉을 위로 옮기면서 잠기는 깊이도 같이 늘려야 했다.
+    /// </summary>
+    [SerializeField] private float thumbRise = 130f;
+
+    /// <summary>솟아오르는 데 걸리는 시간(초). 0.22 는 눈으로 따라갈 틈이 없어 늘렸다.</summary>
+    [SerializeField] private float thumbRiseSeconds = 0.5f;
+
+    /// <summary>내려가는 데 걸리는 시간(초). 올라올 때보다 빨라야 "스윽" 으로 읽힌다.</summary>
+    [SerializeField] private float thumbSinkSeconds = 0.3f;
+
+    /// <summary>빛살이 도는 속도(초당 도). 느리게 돌아야 아우라로 읽힌다.</summary>
+    [SerializeField] private float auraSpinPerSecond = 45f;
+
+    /// <summary>따봉 제자리. 솟아오르기 전에 아래로 내려 두었다가 여기로 올린다.</summary>
+    private Vector2 thumbHome;
+
+    /// <summary>빛살이 지금까지 돌아간 각.</summary>
+    private float auraAngle;
+
     /// <summary>따봉과 함께 도는 반짝임 개수.</summary>
     [SerializeField] private int sparkleCount = 14;
 
@@ -264,6 +341,7 @@ public class EatingCutscene : MonoBehaviour
 
         // 그릇 제자리. 들이켜다 건너뛰면 들린 채로 남으므로 여기서 기억해 둔다.
         if (customerBowl != null) bowlHomePosition = customerBowl.anchoredPosition;
+        if (thumb != null) thumbHome = thumb.rectTransform.anchoredPosition;
         if (sweat != null) sweatHomePosition = sweat.rectTransform.anchoredPosition;
 
         ResetStage();
@@ -277,6 +355,13 @@ public class EatingCutscene : MonoBehaviour
     /// </summary>
     private void Update()
     {
+        // 따봉 뒤 빛살. 우주와 같은 이유로 런타임 회전을 쓴다(방사형이라 안 뭉개진다).
+        if (thumbAura != null && thumbAura.enabled)
+        {
+            auraAngle = Mathf.Repeat(auraAngle + auraSpinPerSecond * Time.unscaledDeltaTime, 360f);
+            thumbAura.rectTransform.localRotation = Quaternion.Euler(0f, 0f, auraAngle);
+        }
+
         if (cosmos == null || !cosmos.enabled) return;
 
         cosmosAngle += cosmosSpinPerSecond * Time.unscaledDeltaTime;
@@ -488,6 +573,7 @@ public class EatingCutscene : MonoBehaviour
         if (customerAppearance != null) customerAppearance.OpenEyes();
         yield return new WaitForSecondsRealtime(puzzledPauseSeconds);
 
+        Sfx.Play("sfx_cut_sweat", 0.35f);
         yield return PlaySweat();
         yield return new WaitForSecondsRealtime(puzzledPauseSeconds);
     }
@@ -533,9 +619,12 @@ public class EatingCutscene : MonoBehaviour
         Vector2 bowlHome = bowlHomePosition;
         Vector2 slotHome = homePosition;
 
-        float up = bowlHome.y + sipRise;
+        float up = SipTop(bowlHome.y);
 
-        yield return MoveY(customerBowl, bowlHome.y, up, sipRiseSeconds);
+        // 그림자가 "얼마나 떴는가" 를 재는 기준. 손님마다 올리는 높이가 다르다.
+        sipLift = up - bowlHome.y;
+
+        yield return MoveY(customerBowl, bowlHome.y, up, sipRiseSeconds, ApplyBowlShadow);
 
         // 고개는 마시는 내내 숙인 채로 둔다. 까딱마다 들었다 놓으면 고개를 끄덕이는 것처럼 보인다.
         // 실제로 그릇째 들이켤 때 움직이는 건 그릇이지 고개가 아니다.
@@ -544,9 +633,9 @@ public class EatingCutscene : MonoBehaviour
 
         for (int i = 0; i < sipCount; i++)
         {
-            yield return MoveY(customerBowl, up, up + sipTipPixels, sipTipSeconds * 0.35f);
+            yield return MoveY(customerBowl, up, up + sipTipPixels, sipTipSeconds * 0.35f, ApplyBowlShadow);
             yield return new WaitForSecondsRealtime(sipTipSeconds * 0.15f);
-            yield return MoveY(customerBowl, up + sipTipPixels, up, sipTipSeconds * 0.35f);
+            yield return MoveY(customerBowl, up + sipTipPixels, up, sipTipSeconds * 0.35f, ApplyBowlShadow);
 
             // 한 모금 사이의 숨. 없으면 세 번이 한 번의 떨림으로 뭉친다.
             yield return new WaitForSecondsRealtime(sipTipSeconds * 0.15f);
@@ -554,9 +643,10 @@ public class EatingCutscene : MonoBehaviour
 
         if (customerSlot != null) customerSlot.anchoredPosition = slotHome;
         yield return new WaitForSecondsRealtime(sipHoldSeconds);
-        yield return MoveY(customerBowl, up, bowlHome.y, sipDownSeconds);
+        yield return MoveY(customerBowl, up, bowlHome.y, sipDownSeconds, ApplyBowlShadow);
 
         customerBowl.anchoredPosition = bowlHome;
+        ApplyBowlShadow(bowlHome.y);
         if (customerSlot != null) customerSlot.anchoredPosition = slotHome;
     }
 
@@ -599,6 +689,72 @@ public class EatingCutscene : MonoBehaviour
     ///
     /// Bad(69점 이하) 구간에서 쓴다. 아직 정확도 구간이 갈리지 않아 본편에는 안 걸어 두었다.
     /// </summary>
+    /// <summary>
+    /// 튜토리얼 손님용 시식. 우주도 따봉도 쓰지 않는다.
+    ///
+    /// 그릇을 들어 후루룩 마시고, 눈을 감은 채 머리 위에 점이 하나씩 찍힌다. 그게 전부다.
+    /// 처음 보는 사람에게는 이만큼이 알맞고, 큰 연출은 진짜 잘 만들었을 때 처음 보는 편이
+    /// 훨씬 세다. 튜토리얼은 안내대로만 넣게 해 둬서 늘 100점이라, 거기서 우주까지 보여 주면
+    /// 본편에서 같은 것을 봐도 아무렇지 않다.
+    ///
+    /// 시네마틱 바·확대·어둡게 덮기를 아예 건드리지 않으므로 되돌릴 것도 없다.
+    /// </summary>
+    public IEnumerator PlayTutorial()
+    {
+        if (orderScreen != null) orderScreen.ShowBubble(false);
+        HideDots();
+
+        // 먹는 동안에는 눈을 감고 있는다. Sip 뒤에 감겼더니 마시는 내내 깜빡여서
+        // 국물 맛을 보는 게 아니라 그릇을 구경하는 것처럼 보였다.
+        if (customerAppearance != null) customerAppearance.CloseEyes();
+
+        if (sfx != null) sfx.Slurp(slurpSeconds);
+        yield return Sip();
+
+        // 감은 채로 한 박자 더 쉰다.
+        yield return new WaitForSecondsRealtime(silenceSeconds);
+
+        // 점 셋이 한 박자씩. 까마귀는 부르지 않는다 — 그건 못 만들었을 때의 연출이다.
+        if (silenceDots != null)
+        {
+            foreach (Image dot in silenceDots)
+            {
+                if (dot == null) continue;
+
+                dot.enabled = true;
+                if (sfx != null) sfx.Tick();
+
+                yield return new WaitForSecondsRealtime(dotGapSeconds);
+            }
+        }
+
+        yield return new WaitForSecondsRealtime(silenceTailSeconds);
+
+        HideDots();
+        if (customerAppearance != null) customerAppearance.ReleaseFrame();
+    }
+
+    /// <summary>튜토리얼에서 점 하나와 다음 점 사이(초). 까마귀 없이 찍을 때의 박자다.</summary>
+    [SerializeField] private float dotGapSeconds = 0.5f;
+
+    /// <summary>평을 내놓기 전에 말풍선에 찍는 말. 맛을 헤아리는 한 박자다.</summary>
+    private const string TastingLine = "…";
+
+    /// <summary>그 말을 다 찍고 평으로 넘어가기까지 쉬는 시간(초).</summary>
+    [SerializeField] private float tastingHoldSeconds = 0.9f;
+
+    /// <summary>말풍선이 다 찍힐 때까지. 찍는 도중에 누르면 마저 기다리지 않고 한 번에 보여 준다.</summary>
+    private IEnumerator WaitWhileTyping()
+    {
+        if (orderScreen == null) yield break;
+
+        while (orderScreen.IsBubbleTyping)
+        {
+            if (WantsSkip()) orderScreen.FinishBubbleLine();
+            yield return null;
+        }
+    }
+
     public IEnumerator PlayAwkward()
     {
         // 말풍선은 쓰지 않는다. 글자로 ". . ." 를 치면 손님이 그렇게 **말한** 것으로 읽힌다.
@@ -704,8 +860,14 @@ public class EatingCutscene : MonoBehaviour
         }
     }
 
-    /// <summary>높이만 부드럽게 옮긴다. 칸을 반올림해 반칸에 걸리지 않게 한다.</summary>
-    private IEnumerator MoveY(RectTransform rect, float from, float to, float seconds)
+    /// <summary>
+    /// 높이만 부드럽게 옮긴다. 칸을 반올림해 반칸에 걸리지 않게 한다.
+    ///
+    /// <paramref name="onStep"/> 은 옮겨진 높이를 매 프레임 받는다. 그릇처럼 따라 움직여야 하는
+    /// 것이 있을 때 쓴다 — 같은 박자를 두 번 재지 않으려고 여기서 같이 부른다.
+    /// </summary>
+    private IEnumerator MoveY(RectTransform rect, float from, float to, float seconds,
+                              System.Action<float> onStep = null)
     {
         float elapsed = 0f;
 
@@ -716,12 +878,41 @@ public class EatingCutscene : MonoBehaviour
             float k = Mathf.Clamp01(elapsed / seconds);
             k = k * k * (3f - 2f * k);       // 시작과 끝이 느리다
 
-            rect.anchoredPosition = new Vector2(rect.anchoredPosition.x,
-                                                Mathf.Round(Mathf.Lerp(from, to, k)));
+            float y = Mathf.Round(Mathf.Lerp(from, to, k));
+            rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, y);
+            if (onStep != null) onStep(y);
             yield return null;
         }
 
         rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, to);
+        if (onStep != null) onStep(to);
+    }
+
+    /// <summary>
+    /// 그릇이 뜬 만큼 발밑 그림자를 좁히고 옅게 한다.
+    ///
+    /// 그림자는 그릇을 따라 올라가지 않는다 — 카운터에 그대로 남아 모양만 변한다.
+    /// 이게 "그릇이 들렸다"를 읽히게 하는 유일한 신호다. 얼굴은 가려져 있고 그릇은
+    /// 화면 안에서 그냥 위로 움직일 뿐이라, 그림자가 없으면 그릇이 뜬 건지 화면이 내려간 건지
+    /// 구별이 안 된다.
+    /// </summary>
+    private void ApplyBowlShadow(float bowlY)
+    {
+        if (customerBowlShadow == null) return;
+
+        // 이번 손님에게 실제로 올리는 높이로 나눈다. sipRise 로 나누면 안 된다 —
+        // 손님마다 올리는 높이가 다른데 130 으로 재면, 82 만 올리는 손님은 0.63 에서 멈춰
+        // 그릇이 입에 닿았는데도 그림자가 바닥에 그대로 크게 남는다.
+        float span = sipLift > 0f ? sipLift : sipRise;
+        float lift = span <= 0f ? 0f : Mathf.Clamp01((bowlY - bowlHomePosition.y) / span);
+
+        customerBowlShadow.rectTransform.localScale =
+            new Vector3(Mathf.Lerp(1f, sipShadowScaleX, lift),
+                        Mathf.Lerp(1f, sipShadowScaleY, lift), 1f);
+
+        Color tint = customerBowlShadow.color;
+        customerBowlShadow.color = new Color(tint.r, tint.g, tint.b,
+                                             Mathf.Lerp(1f, sipShadowAlpha, lift));
     }
 
     /// <summary>
@@ -737,31 +928,45 @@ public class EatingCutscene : MonoBehaviour
 
         if (orderScreen != null)
         {
+            // 평을 내놓기 전에 한 박자. 손님이 맛을 헤아리는 사이다.
+            //
+            // 머리 위 점(TapDots)과 다르다. 그건 어색한 침묵이라 "말이 없다" 는 표시고,
+            // 이건 말풍선 안에 찍히는 말이라 "무언가 말하려는 참" 으로 읽힌다.
+            orderScreen.ShowBubble(true);
+            orderScreen.StartTypingBubble(TastingLine);
+            yield return WaitWhileTyping();
+            yield return new WaitForSecondsRealtime(tastingHoldSeconds);
+
             // 말풍선용 긴 소감. 결과창은 따로 짧은 말을 쓰므로 여기서 뽑아 둔 말은 건드리지 않는다.
             string line = ReactionLines.Cutscene(accuracy);
             if (line == null) line = ReactionLine(accuracy);
 
-            orderScreen.ShowBubble(true);
             orderScreen.StartTypingBubble(line);
+            yield return WaitWhileTyping();
 
-            // 찍는 도중에 누르면 마저 기다리지 않고 한 번에 보여 준다.
-            while (orderScreen.IsBubbleTyping)
-            {
-                if (WantsSkip()) orderScreen.FinishBubbleLine();
-                yield return null;
-            }
+            // 다 찍혔으니 "다음" 버튼을 띄운다. 눌러야 넘어간다는 것이 보여야 한다.
+            orderScreen.ShowNextButton(true);
         }
 
         // 다 찍었으면 누를 때까지 기다린다.
         yield return WaitForNextPress();
+        if (orderScreen != null) orderScreen.ShowNextButton(false);
         waitingForNext = false;
 
-        // 따봉이 튀어나왔다가 사라진다. 그 뒤에 정확도 창이 뜬다(부르는 쪽이 연다).
+        // 따봉은 잘 만들었을 때만 나온다.
+        //
+        // 정확도를 아예 안 보고 있었다. 주문과 하나도 안 맞는 그릇을 내밀어도 손님이
+        // 엄지를 치켜세워서, 앞의 네 갈래 연출이 애써 갈라 놓은 것이 마지막에 뭉개졌다.
+        // 반짝임도 같이 묶는다 — 그건 따봉 둘레에 흩어지는 것이라 따봉 없이 혼자 뜨면
+        // 손님 몸에서 흰 알갱이가 솟는 것으로만 보인다.
+        if (accuracy < goodFrom) yield break;
+
         if (gameObject.activeInHierarchy) sparkling = StartCoroutine(Sparkle(thumbSeconds));
         yield return PopThumb();
         yield return new WaitForSecondsRealtime(Mathf.Max(0f, thumbSeconds - thumbPopStepSeconds * 3f));
 
-        if (thumb != null) thumb.enabled = false;
+        yield return SinkThumb();
+
         if (sparkling != null) StopCoroutine(sparkling);
         sparkling = null;
     }
@@ -799,8 +1004,9 @@ public class EatingCutscene : MonoBehaviour
         SetDim(0f);
         SetCosmos(false);
 
-        // 들이켜다 건너뛰면 그릇이 입 앞에 뜬 채로 남는다.
+        // 들이켜다 건너뛰면 그릇이 입 앞에 뜬 채로 남는다. 그림자도 좁아진 채로 남으므로 같이 되돌린다.
         if (customerBowl != null) customerBowl.anchoredPosition = bowlHomePosition;
+        ApplyBowlShadow(bowlHomePosition.y);
 
         if (sweat != null)
         {
@@ -813,7 +1019,9 @@ public class EatingCutscene : MonoBehaviour
 
         if (bolt != null) bolt.enabled = false;
         if (aura != null) aura.enabled = false;
+        SetGlow(0f);
         HideSparkles();
+        StopAura();
         if (thumb != null)
         {
             thumb.enabled = false;
@@ -821,6 +1029,9 @@ public class EatingCutscene : MonoBehaviour
             // 튀어나오다 건너뛰면 부푼 채로 남는다. 뒤집은 부호는 지키고 크기만 되돌린다.
             Vector3 scale = thumb.rectTransform.localScale;
             thumb.rectTransform.localScale = new Vector3(Mathf.Sign(scale.x), 1f, 1f);
+
+            // 솟다가 건너뛰면 테이블 뒤에 잠긴 채로 남는다.
+            thumb.rectTransform.anchoredPosition = Snap(thumbHome);
         }
 
         Zoom(1);
@@ -834,6 +1045,9 @@ public class EatingCutscene : MonoBehaviour
     /// </summary>
     private void Zoom(int scale)
     {
+        // 한 단 커질 때마다 한 번. 되돌리는 Zoom(1) 은 조용히.
+        if (scale > 1 && scale != currentScale) Sfx.Play("sfx_cut_zoom", 0.5f, 1f + 0.08f * scale);
+
         // 말풍선도 같은 배율로 키운다. 손님만 커지면 말풍선이 혼자 작게 남아 따로 논다.
         // 피벗이 왼쪽 위라 오른쪽·아래로만 자라고, 글에 맞춰 줄어 있어서 3배로도 화면을 안 넘는다.
         ZoomBubble(scale);
@@ -932,6 +1146,7 @@ public class EatingCutscene : MonoBehaviour
             yield break;
         }
 
+        Sfx.Play("sfx_cut_bars", 0.5f);
         float elapsed = 0f;
         while (elapsed < seconds)
         {
@@ -1018,14 +1233,107 @@ public class EatingCutscene : MonoBehaviour
 
         RectTransform rect = thumb.rectTransform;
         float flip = Mathf.Sign(rect.localScale.x);
+
+        // 테이블 뒤에서 시작한다. 따봉은 카운터보다 뒤에 그려져 있어 여기서는 안 보인다.
+        Vector2 under = thumbHome - new Vector2(0f, thumbRise);
+        rect.anchoredPosition = under;
+        rect.localScale = new Vector3(flip, 1f, 1f);
         thumb.enabled = true;
 
-        int[] steps = { 1, 2, 1 };
+        // 솟아오른다. 처음이 빠르고 끝에서 미끄러지듯 선다.
+        float elapsed = 0f;
+        while (elapsed < thumbRiseSeconds)
+        {
+            float t = elapsed / thumbRiseSeconds;
+            t = 1f - (1f - t) * (1f - t);
+
+            rect.anchoredPosition = Snap(Vector2.Lerp(under, thumbHome, t));
+            elapsed += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        rect.anchoredPosition = Snap(thumbHome);
+
+        // 다 올라온 자리에서 한 번 부풀었다 앉는다. 이게 "뽁" 이다.
+        // 배율은 정수만 밟는다 — 1.4배 같은 중간 값을 거치면 픽셀이 반칸에 걸려 뭉개진다.
+        Sfx.Play("sfx_cut_thumb_up", 0.6f);
+        int[] steps = { 2, 1 };
         foreach (int step in steps)
         {
             rect.localScale = new Vector3(flip * step, step, 1f);
             yield return new WaitForSecondsRealtime(thumbPopStepSeconds);
         }
+
+        // 빛살은 따봉이 선 뒤에 돈다. 같이 나오면 무엇이 나온 것인지 안 읽힌다.
+        if (thumbAura != null)
+        {
+            auraAngle = 0f;
+            thumbAura.enabled = true;
+        }
+    }
+
+    /// <summary>따봉이 테이블 뒤로 스윽 내려간다. 올라올 때보다 빠르다.</summary>
+    private IEnumerator SinkThumb()
+    {
+        StopAura();
+        if (thumb == null) yield break;
+
+        RectTransform rect = thumb.rectTransform;
+        Vector2 from = rect.anchoredPosition;
+        Vector2 under = thumbHome - new Vector2(0f, thumbRise);
+        Sfx.Play("sfx_cut_thumb_down", 0.5f);
+
+        float elapsed = 0f;
+        while (elapsed < thumbSinkSeconds)
+        {
+            // 갈수록 빨라진다. 등속으로 내리면 내려가는 것이 아니라 밀려나는 것으로 보인다.
+            float t = elapsed / thumbSinkSeconds;
+            rect.anchoredPosition = Snap(Vector2.Lerp(from, under, t * t));
+
+            elapsed += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        thumb.enabled = false;
+        rect.anchoredPosition = Snap(thumbHome);
+    }
+
+    private void StopAura()
+    {
+        if (thumbAura == null) return;
+
+        thumbAura.enabled = false;
+        thumbAura.rectTransform.localRotation = Quaternion.identity;
+        auraAngle = 0f;
+    }
+
+    /// <summary>자리를 정수 칸으로 끊는다. 반칸에 놓이면 픽셀아트가 한 겹 흐려진다.</summary>
+    private static Vector2 Snap(Vector2 v)
+    {
+        return new Vector2(Mathf.Round(v.x), Mathf.Round(v.y));
+    }
+
+    /// <summary>
+    /// 그릇을 어디까지 들어 올릴지. 손님 입 높이에서 거꾸로 잰다.
+    ///
+    /// 예전에는 누구에게나 sipRise 130 을 더했다. 손님 그림이 열넷이고 목이 그림 아래에서
+    /// 105~135 칸으로 서른 칸이나 벌어지는데 한 값을 쓰니, 어떤 손님은 그릇이 입에 못 미치고
+    /// 어떤 손님은 눈까지 덮였다.
+    ///
+    /// 입 높이를 못 재는 손님(통짜 그림이 없어 얼굴·몸통을 짝지어 쓰는 경우)은 예전 값으로 돌아간다.
+    /// </summary>
+    private float SipTop(float bowlHome)
+    {
+        if (customerAppearance == null || !customerAppearance.HasMouth || customerSlot == null)
+            return bowlHome + sipRise;
+
+        // 손님 자리와 그릇이 같은 판에 얹혀 있어 좌표를 그대로 견줄 수 있다.
+        float mouth = customerSlot.anchoredPosition.y - customerSlot.rect.height * 0.5f
+                      + customerAppearance.MouthInSlot;
+
+        // 그릇은 한가운데 자리로 옮기므로, 윗변이 입에 오도록 그만큼 내려 잡는다.
+        // 제자리보다 낮게 나오면 들어 올리지 않는다 — 이미 입보다 높이 놓여 있다는 뜻이다.
+        return Mathf.Max(bowlHome, mouth - bowlRimAboveCenter);
     }
 
     /// <summary>흔든 자세 하나를 shakeHoldSeconds 동안 쥔다.</summary>
@@ -1048,6 +1356,8 @@ public class EatingCutscene : MonoBehaviour
         }
 
         aura.enabled = true;
+        SetGlow(0f);
+        Sfx.Play("sfx_cut_aura", 0.5f);
         float elapsed = 0f;
 
         while (elapsed < seconds)
@@ -1057,6 +1367,9 @@ public class EatingCutscene : MonoBehaviour
             int frame = Mathf.Clamp(Mathf.FloorToInt(elapsed / seconds * auraFrames.Length),
                                     0, auraFrames.Length - 1);
             aura.sprite = auraFrames[frame];
+
+            // 빛은 고리보다 조금 빨리 차오른다. 같이 나타나면 둘이 한 장으로 뭉쳐 보인다.
+            SetGlow(Mathf.Clamp01(elapsed / Mathf.Max(0.01f, seconds * 0.35f)));
 
             yield return null;
         }
@@ -1068,16 +1381,34 @@ public class EatingCutscene : MonoBehaviour
         while (fade < auraFadeSeconds)
         {
             fade += Time.unscaledDeltaTime;
-            tint.a = 1f - Mathf.Clamp01(fade / auraFadeSeconds);
+
+            float left = 1f - Mathf.Clamp01(fade / auraFadeSeconds);
+            tint.a = left;
             aura.color = tint;
+            SetGlow(left);
+
             yield return null;
         }
 
         aura.enabled = false;
+        SetGlow(0f);
 
         // 다음 손님을 위해 진하기를 되돌린다. 안 하면 두 번째부터 투명한 채로 뜬다.
         tint.a = 1f;
         aura.color = tint;
+    }
+
+    /// <summary>오우라 뒤 빛의 진하기. 0 이면 끈다.</summary>
+    private void SetGlow(float alpha)
+    {
+        if (auraGlow == null) return;
+
+        float a = Mathf.Clamp01(alpha);
+
+        Color color = auraGlow.color;
+        color.a = a;
+        auraGlow.color = color;
+        auraGlow.enabled = a > 0f;
     }
 
     /// <summary>연출이 도는 중인가. 본체가 다 돌거나 건너뛰면 내려간다.</summary>
@@ -1148,6 +1479,19 @@ public class EatingCutscene : MonoBehaviour
 
         cosmos.enabled = true;
         SetCosmosAlpha(from);
+
+        // 우주로 들어갈 때 우주 BGM 을 올리고 가게 BGM 을 눌러 둔다. 나올 때 되돌린다.
+        if (to > from)
+        {
+            Sfx.Play("sfx_cut_cosmos", 0.6f);
+            Sfx.Loop("bgm_cosmos", Sfx.CosmosBgm, 1f);
+            Sfx.SetLoopVolume("bgm_shop", Sfx.ShopBgmDucked, 1f);
+        }
+        else
+        {
+            Sfx.Stop("bgm_cosmos", Mathf.Max(0.3f, seconds));
+            Sfx.SetLoopVolume("bgm_shop", Sfx.ShopBgm, 1f);
+        }
 
         // 들어올 때는 덮어 둔 검은 판을 같이 걷는다. 남겨 두면 우주까지 어두워진다.
         float dimFrom = dim != null ? dim.color.a : 0f;
@@ -1220,6 +1564,8 @@ public class EatingCutscene : MonoBehaviour
                     continue;
                 }
 
+                // 막 켜지는 조각마다 한 번. 겹쳐 나므로 아주 얇게.
+                if (!sparkles[i].enabled) Sfx.Play("sfx_cut_sparkle", 0.2f, 1f, 0.15f);
                 sparkles[i].enabled = true;
 
                 // 위로 떠오르며 스러진다. 자리는 정수 칸으로 맞춘다.

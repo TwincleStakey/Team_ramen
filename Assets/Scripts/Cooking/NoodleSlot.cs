@@ -26,18 +26,30 @@ public class NoodleSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
     /// <summary>지금 이 바구니에서 든 면을 쥐고 있는가. 눌림을 놓쳤는지 판단하는 데 쓴다.</summary>
     private bool picking;
 
+    /// <summary>
+    /// 올려놓기만 해도 커서가 소쿠리로 바뀐다. 무엇을 쥐게 될지 미리 보이게 하려는 것이다.
+    ///
+    /// EnterSlot 을 같이 불러 줘야 한다. 커서는 "통 위에 있다"는 신호가 있어야 도구 그림을
+    /// 띄우는데, 그 신호는 재료통에 붙은 SlotHover 가 보낸다. 면 바구니는 투명한 자리라
+    /// SlotHover 가 없어서, 이걸 안 부르면 커서가 시스템 화살표 그대로 남는다.
+    ///
+    /// 터는 모션은 켜지 않는다. 대기 중에 저 혼자 흔들리면 이미 쥔 것처럼 보인다.
+    /// </summary>
     public void OnPointerEnter(PointerEventData eventData)
     {
         if (CookingCursor.Instance == null) return;
 
+        CookingCursor.Instance.EnterSlot(gameObject);
         CookingCursor.Instance.PreviewTool(type);
-        CookingCursor.Instance.SetOverNoodlePot(true);
     }
 
     /// <summary>통 밖으로 나가면 터는 것을 멈추고 0번에서 굳는다.</summary>
     public void OnPointerExit(PointerEventData eventData)
     {
-        if (CookingCursor.Instance != null) CookingCursor.Instance.SetOverNoodlePot(false);
+        if (CookingCursor.Instance == null) return;
+
+        CookingCursor.Instance.ExitSlot(gameObject);
+        CookingCursor.Instance.SetOverNoodlePot(false);
     }
 
     public void OnPointerDown(PointerEventData eventData)
@@ -54,6 +66,9 @@ public class NoodleSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
         delivered = false;
         picking = true;
         CookingCursor.Instance.PickUp(type);
+
+        // 터는 것은 쥔 뒤부터다. 올려놓기만 했을 때는 가만히 있는다.
+        CookingCursor.Instance.SetOverNoodlePot(true);
     }
 
     /// <summary>누를 때 이미 들었다. 눌림을 놓친 경우에만 여기서 든다.</summary>
@@ -68,6 +83,7 @@ public class NoodleSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
         delivered = false;
         picking = true;
         CookingCursor.Instance.PickUp(type);
+        CookingCursor.Instance.SetOverNoodlePot(true);
     }
 
     /// <summary>커서가 스스로 마우스를 따라다닌다. 여기서 할 일은 없다.</summary>
@@ -87,6 +103,7 @@ public class NoodleSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
         if (CookingCursor.Instance == null) return;
 
         CookingCursor.Instance.Drop();
+        CookingCursor.Instance.SetOverNoodlePot(false);
 
         // 마우스가 아직 통 위에 있다. 놓자마자 젓가락으로 돌아가 버리면
         // "여기서 뜰 수 있다"는 표시가 사라진다. 통을 벗어나지 않았으니 도구를 다시 씌운다.
@@ -96,6 +113,8 @@ public class NoodleSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
     public void OnEndDrag(PointerEventData eventData)
     {
         picking = false;
+        if (CookingCursor.Instance != null) CookingCursor.Instance.SetOverNoodlePot(false);
+
         if (delivered) return;
         if (CookingCursor.Instance == null) return;
 

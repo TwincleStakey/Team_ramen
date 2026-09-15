@@ -242,6 +242,7 @@ public class OrderScreenUI : MonoBehaviour
     {
         if (sliding != null) { StopCoroutine(sliding); sliding = null; }
         SetSlide(opened ? slideHome : SlideAway, opened ? 1f : 0f);
+        CoverKitchenSounds(opened);
     }
 
     /// <summary>
@@ -295,6 +296,12 @@ public class OrderScreenUI : MonoBehaviour
 
         lines = SplitLines(dialogue);
         lineIndex = 0;
+
+        // 앞 손님에게 걸어 둔 특별 버튼은 여기서 푼다. 안 풀면 평범한 손님의 마지막 마디까지
+        // "안녕히 가세요." 로 뜬다.
+        lastButtonLabel = null;
+        onLinesFinished = null;
+        oneLineAtATime = false;
 
         // 목소리는 손님마다 다르다. 대사를 만든 쪽에서 말투만 읽어 온다.
         if (blip != null) blip.SetPersona(CurrentPersonaId);
@@ -393,6 +400,38 @@ public class OrderScreenUI : MonoBehaviour
         dialogueViewport.parent.gameObject.SetActive(visible);
     }
 
+    /// <summary>
+    /// 말풍선 버튼을 [▶] 한 개짜리로 띄우거나 감춘다.
+    ///
+    /// 먹는 연출 마지막에 손님 소감을 다 듣고 나면 눌러야 넘어가는데, 그동안 버튼이
+    /// 감춰져 있어서 무엇을 눌러야 하는지 화면에 아무 표시가 없었다. 아무 데나 눌러도
+    /// 넘어가기는 하지만, 그건 알고 있는 사람에게만 통한다.
+    /// </summary>
+    public void ShowNextButton(bool visible)
+    {
+        if (startButton == null) return;
+
+        if (visible)
+        {
+            if (startButtonLabel != null) startButtonLabel.text = "▶";
+            if (startButtonImage != null) startButtonImage.color = nextColor;
+            FitStartButton();
+        }
+
+        startButton.gameObject.SetActive(visible);
+    }
+
+    /// <summary>말풍선이 지금 화면에 떠 있는가. 글자 톤을 낼지 정하는 데 쓴다.</summary>
+    private bool IsBubbleVisible
+    {
+        get
+        {
+            return dialogueViewport != null
+                   && dialogueViewport.parent != null
+                   && dialogueViewport.parent.gameObject.activeInHierarchy;
+        }
+    }
+
     /// <summary>말풍선 상자. 클로즈업할 때 EatingCutscene 이 같이 키운다.</summary>
     public RectTransform Bubble
     {
@@ -445,12 +484,52 @@ public class OrderScreenUI : MonoBehaviour
 
         SetSlide(opening ? SlideAway : slideHome, opening ? 0f : 1f);
         sliding = StartCoroutine(SlideRoutine(opening));
+        CoverKitchenSounds(opening);
+    }
+
+    /// <summary>주문 화면이 조리대를 덮으면 냄비 소리가 멀어진다. 내려가면 다시 가까워진다.</summary>
+    private static void CoverKitchenSounds(bool covered)
+    {
+        float volume = covered ? Sfx.KitchenAmbienceCovered : Sfx.KitchenAmbience;
+        Sfx.SetLoopVolume("amb_broth_boil", volume, 0.6f);
+        Sfx.SetLoopVolume("amb_noodle_pot", volume, 0.6f);
     }
 
     /// <summary>
     /// 버튼을 눌렀을 때. 남은 줄이 있으면 다음 줄, 없으면 조리로 넘어간다.
     /// 아직 글자를 찍는 중이면 먼저 이 마디를 한 번에 다 보여준다. 기다리기 답답하기 때문이다.
     /// </summary>
+    /// <summary>
+    /// 정해진 대사 몇 마디를 차례로 들려준다. 튜토리얼 마무리가 쓴다.
+    ///
+    /// 평소 대사와 다른 점은 둘뿐이다 — 마지막 마디의 버튼 글씨를 따로 주고([넵] 대신
+    /// "안녕히 가세요." 같은 것), 그 버튼을 눌렀을 때 조리 화면으로 내려가는 대신
+    /// 넘겨받은 일을 한다. 그래야 결과창으로 이어 붙일 수 있다.
+    /// </summary>
+    public void PlayLines(string[] script, string lastLabel, System.Action finished)
+    {
+        if (script == null || script.Length == 0) return;
+
+        FinishTyping();
+
+        lines = script;
+        lineIndex = 0;
+        lastButtonLabel = lastLabel;
+        onLinesFinished = finished;
+        oneLineAtATime = true;
+
+        ShowBubble(true);
+        if (startButton != null) startButton.gameObject.SetActive(true);
+
+        ShowLine();
+    }
+
+    /// <summary>마지막 마디에서 [넵] 대신 쓸 말. 비어 있으면 "넵" 이다.</summary>
+    private string lastButtonLabel;
+
+    /// <summary>마지막 마디의 버튼을 눌렀을 때 할 일. 없으면 평소대로 조리 화면으로 내려간다.</summary>
+    private System.Action onLinesFinished;
+
     private void Advance()
     {
         if (IsTyping)
@@ -463,6 +542,17 @@ public class OrderScreenUI : MonoBehaviour
         {
             lineIndex++;
             ShowLine();
+            return;
+        }
+
+        // 넘겨받은 일이 있으면 그쪽으로 간다. 한 번 쓰고 비운다 —
+        // 남겨 두면 다음 손님의 [넵] 까지 여기로 빠진다.
+        if (onLinesFinished != null)
+        {
+            System.Action done = onLinesFinished;
+            onLinesFinished = null;
+            lastButtonLabel = null;
+            done();
             return;
         }
 
@@ -498,7 +588,11 @@ public class OrderScreenUI : MonoBehaviour
 
         bool last = lineIndex >= lines.Length - 1;
 
-        if (startButtonLabel != null) startButtonLabel.text = last ? "넵" : "▶";
+        if (startButtonLabel != null)
+        {
+            startButtonLabel.text = last ? (string.IsNullOrEmpty(lastButtonLabel) ? "넵" : lastButtonLabel) : "▶";
+            FitStartButton();
+        }
         if (startButtonImage != null) startButtonImage.color = last ? startColor : nextColor;
     }
 
@@ -525,14 +619,22 @@ public class OrderScreenUI : MonoBehaviour
         int start = Mathf.Clamp(TypeStartIndex, 0, count);
         dialogueText.maxVisibleCharacters = start;
 
-        float interval = blip != null ? blip.Interval : 0.04f;
+        // 튜토리얼 설명은 더 느리게 친다. 손님 주문은 이미 아는 말투로 흘려들어도 되지만,
+        // 처음 보는 사람에게 규칙을 일러 주는 말은 읽을 틈이 있어야 한다.
+        float interval = (blip != null ? blip.Interval : 0.04f)
+                         * (oneLineAtATime ? scriptedTypeScale : 1f);
 
         for (int i = start; i < count; i++)
         {
             dialogueText.maxVisibleCharacters = i + 1;
 
+            // 말풍선이 감춰져 있으면 소리도 내지 않는다.
+            //
+            // 가게 문을 열 때 검은 화면 뒤에서 손님 화면을 미리 차려 두는데, 그동안에도
+            // 타자기는 돌고 있었다. 그래서 도입부가 끝나고 화면이 넘어가는 순간에
+            // 손님 대사 톤이 한 번 "또로록" 들렸다. 보이지도 않는 글자의 소리였다.
             char c = info.characterInfo[i].character;
-            if (blip != null && !DialogueBlip.IsSilent(c)) blip.PlayTone();
+            if (blip != null && IsBubbleVisible && !DialogueBlip.IsSilent(c)) blip.PlayTone();
 
             float wait = interval + DialogueBlip.PauseAfter(c);
             float elapsed = 0f;
@@ -585,7 +687,49 @@ public class OrderScreenUI : MonoBehaviour
         int current = Mathf.Clamp(lineIndex, 0, lines.Length - 1);
         if (current == 0) return lines[0];
 
+        // 튜토리얼은 한 마디씩 지우고 새로 친다.
+        //
+        // 앞 마디를 회색으로 남겨 두는 것은 손님이 주문을 이어 말하는 자리에 맞는 방식이다.
+        // 튜토리얼 설명은 마디가 길고 서로 이어지지 않아서, 쌓아 두면 회색 글이 화면을 덮고
+        // 무엇을 지금 읽어야 하는지가 안 보였다.
+        if (oneLineAtATime) return lines[current];
+
         return PastLineColorTag + lines[current - 1] + "</color>" + NewLine + lines[current];
+    }
+
+    /// <summary>한 마디씩만 보여 주는가. PlayLines 가 켜고 평소 대사는 끈다.</summary>
+    private bool oneLineAtATime;
+
+    /// <summary>한 마디씩 칠 때 글자 간격을 몇 배로 늘릴지. 2 면 절반 속도다.</summary>
+    [SerializeField] private float scriptedTypeScale = 2.2f;
+
+    /// <summary>버튼 글자 좌우에 두는 여백(칸).</summary>
+    private const float StartButtonPadX = 16f;
+
+    /// <summary>버튼이 이보다 좁아지지는 않는다. "▶" 한 글자일 때의 크기다.</summary>
+    private const float StartButtonMinWidth = 56f;
+
+    /// <summary>
+    /// 버튼을 글자 길이에 맞춘다.
+    ///
+    /// 버튼이 56칸 고정이라 "▶"·"넵" 에는 맞았는데, 튜토리얼 마지막의 "안녕히 가세요."
+    /// 가 들어오자 글자가 세 줄로 접혀 상자 밖으로 삐져나왔다.
+    ///
+    /// 글상자도 같이 늘린다. 상자를 안 늘리면 늘어난 버튼 안에서 글자만 여전히 접힌다.
+    /// 피벗이 오른쪽이라 늘어나는 쪽은 왼쪽이고, 말풍선 안에 그대로 머문다.
+    /// </summary>
+    private void FitStartButton()
+    {
+        if (startButtonLabel == null || startButtonImage == null) return;
+
+        RectTransform label = startButtonLabel.rectTransform;
+        RectTransform box = startButtonImage.rectTransform;
+
+        float text = Mathf.Ceil(startButtonLabel.GetPreferredValues(startButtonLabel.text).x);
+        float width = Mathf.Max(StartButtonMinWidth, text + StartButtonPadX * 2f);
+
+        box.sizeDelta = new Vector2(width, box.sizeDelta.y);
+        label.sizeDelta = new Vector2(width - StartButtonPadX, label.sizeDelta.y);
     }
 
     /// <summary>
@@ -607,6 +751,14 @@ public class OrderScreenUI : MonoBehaviour
     {
         get
         {
+            // 한 마디씩 보여 줄 때는 앞 마디가 화면에 없다. 늘 처음부터 친다.
+            //
+            // 여기를 안 막아서 튜토리얼 대사가 망가져 있었다. 앞 마디 길이만큼 건너뛰니까
+            // 긴 마디는 앞부분이 통째로 이미 찍힌 채로 뜨고("여러 줄이 합쳐진" 것으로 보인다),
+            // 앞 마디보다 짧은 마디는 건너뛸 자리가 모자라 한 글자도 안 치고 다 나왔다
+            // ("그럼 이만." 이 뾱 하고 나타난 것이 이것이다).
+            if (oneLineAtATime) return 0;
+
             if (lines == null || lineIndex <= 0 || lineIndex >= lines.Length) return 0;
 
             string past = lines[lineIndex - 1];
@@ -668,9 +820,30 @@ public class OrderScreenUI : MonoBehaviour
         float ear = slot.anchoredPosition.y - slot.rect.height * 0.5f
                     + customerAppearance.EarInSlot;
 
-        // 피벗이 오른쪽 위라, 상자 한가운데가 귀에 오도록 절반만큼 올려 둔다.
-        bubble.anchoredPosition = new Vector2(BubbleRightX, ear + bubble.rect.height * 0.5f);
+        // 상자가 아니라 **꼬리**를 귀에 맞춘다.
+        //
+        // 예전에는 상자 한가운데를 귀에 걸었다(ear + 높이/2). 상자는 말 길이에 따라 자라는데
+        // 꼬리는 윗변에서 고정 거리에 달려 있어서, 세 줄짜리 대사에서는 꼬리가 귀보다
+        // 18칸쯤 떠올랐다. 한 줄짜리에서는 거의 맞아서 티가 안 났다.
+        //
+        // 피벗이 오른쪽 위라 anchoredPosition.y 가 곧 상자 윗변이다.
+        // 거기서 꼬리 한가운데까지 내려온 만큼을 도로 올려 두면 꼬리가 귀에 선다.
+        bubble.anchoredPosition = new Vector2(BubbleRightX, ear + TailCenterFromTop(bubble));
     }
+
+    /// <summary>상자 윗변에서 꼬리 한가운데까지(칸). 꼬리를 못 찾으면 0 이다.</summary>
+    private float TailCenterFromTop(RectTransform bubble)
+    {
+        if (bubbleTail == null && bubble != null) bubbleTail = bubble.Find("BubbleTail") as RectTransform;
+        if (bubbleTail == null) return 0f;
+
+        // 꼬리는 상자 오른쪽 위에 걸려 있고 피벗이 윗변이라,
+        // anchoredPosition.y 가 상자 윗변에서 꼬리 윗변까지다(음수).
+        return -bubbleTail.anchoredPosition.y + bubbleTail.rect.height * 0.5f;
+    }
+
+    /// <summary>말풍선 꼬리. 처음 쓸 때 한 번만 찾아 둔다.</summary>
+    private RectTransform bubbleTail;
 
     /// <summary>조리 화면 물건을 껐다 켠다. 손님을 보는 동안에는 조리대가 필요 없다.</summary>
     private void ShowCookingProps(bool show)

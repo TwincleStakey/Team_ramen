@@ -46,6 +46,10 @@ public class OrderResultUI : MonoBehaviour
     public void Open(float accuracy, int reward, int totalRevenue)
     {
         if (root != null) root.SetActive(true);
+        Sfx.Play("sfx_ui_result", 0.6f);
+
+        // 튜토리얼에서 감춰 두었을 수 있다. 평범한 손님은 늘 돈을 보여 준다.
+        ShowMoney(true);
 
         if (accuracyText != null) accuracyText.text = "정확도 : " + accuracy.ToString("F0") + "%";
         if (rewardText != null) rewardText.text = "+ " + reward.ToString("N0") + "₩";
@@ -64,6 +68,35 @@ public class OrderResultUI : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 튜토리얼 마무리용. 정확도 창을 띄우되 한마디 자리에 안내를 넣고,
+    /// [확인] 뒤에 할 일을 따로 받는다.
+    ///
+    /// 안내대로만 넣게 해 둬서 그릇은 늘 정답이라 정확도는 100 이다.
+    /// 값은 받지 않는다(기획 9.2 — 튜토리얼은 매출·정확도 집계에서 모두 제외).
+    /// </summary>
+    public void OpenTutorial(int totalRevenue, string message, System.Action confirmed)
+    {
+        Open(100f, 0, totalRevenue);
+
+        // 보상과 누적 수익 칸은 아예 감춘다. 튜토리얼은 값을 받지도 쌓지도 않아서
+        // 0원이 두 줄로 뜨면 뭔가 잘못된 것처럼 보인다. 정확도와 안내만 남긴다.
+        ShowMoney(false);
+        if (customerLine != null) customerLine.text = message;
+
+        onConfirm = confirmed;
+    }
+
+    /// <summary>보상·누적 수익 칸을 여닫는다. 튜토리얼에서만 닫는다.</summary>
+    private void ShowMoney(bool visible)
+    {
+        if (rewardText != null) rewardText.gameObject.SetActive(visible);
+        if (revenueText != null) revenueText.gameObject.SetActive(visible);
+    }
+
+    /// <summary>[확인] 을 눌렀을 때 대신 할 일. 비어 있으면 평소대로 다음 손님으로 간다.</summary>
+    private System.Action onConfirm;
+
     public void Close()
     {
         // 손님이 갔다. 다음 손님은 반응을 새로 뽑는다.
@@ -75,6 +108,16 @@ public class OrderResultUI : MonoBehaviour
     private void Confirm()
     {
         Close();
+
+        // 한 번 쓰고 비운다. 남겨 두면 다음 손님의 [확인] 까지 여기로 빠진다.
+        if (onConfirm != null)
+        {
+            System.Action done = onConfirm;
+            onConfirm = null;
+            done();
+            return;
+        }
+
         if (gameManager != null) gameManager.AdvanceCustomer();
     }
 }

@@ -23,6 +23,20 @@ public sealed class DialogueWorkbookDatabase
     /// </summary>
     private static readonly string[] DisabledPersonaIds = { "Joker" };
 
+    /// <summary>
+    /// 최근에 나온 말투는 다시 뽑지 않는다. 이만큼을 기억해 둔다.
+    ///
+    /// 하루 손님이 가장 많은 날이 8 명이라(DayManager.CUSTOMER_COUNT_LATE) 8 을 기억하면
+    /// 같은 하루에 같은 말투가 두 번 나오는 일이 없다. 하루가 바뀌는 것을 따로 알려 받지
+    /// 않아도 되도록 "오늘" 이 아니라 "최근 여덟" 으로 잡았다 — 날짜를 물어보려면
+    /// 이 클래스가 DayManager 를 알아야 하는데, 대사 데이터가 진행 상황까지 알 이유가 없다.
+    ///
+    /// 쓸 수 있는 말투가 14 종이라 여덟을 빼도 여섯이 남는다.
+    /// </summary>
+    private const int RecentPersonaMemory = 8;
+
+    private readonly List<string> recentPersonas = new List<string>();
+
     public PersonaRow RandomPersona()
     {
         var usable = new List<PersonaRow>();
@@ -31,8 +45,24 @@ public sealed class DialogueWorkbookDatabase
             if (Array.IndexOf(DisabledPersonaIds, row.personaId) < 0) usable.Add(row);
         }
 
+        // 최근에 안 나온 말투부터 고른다. 남는 것이 없으면 기억을 접고 그냥 뽑는다 —
+        // 말투가 줄어든 날에도 손님은 나와야 한다.
+        var fresh = new List<PersonaRow>();
+        foreach (PersonaRow row in usable)
+        {
+            if (!recentPersonas.Contains(row.personaId)) fresh.Add(row);
+        }
+
+        if (fresh.Count > 0) usable = fresh;
+
         // 전부 빠져 버렸으면 막지 않는다. 손님이 아예 안 나오는 것보다 낫다.
-        return usable.Count > 0 ? Pick(usable.ToArray()) : Pick(db.personas);
+        PersonaRow picked = usable.Count > 0 ? Pick(usable.ToArray()) : Pick(db.personas);
+        if (picked == null) return null;
+
+        recentPersonas.Add(picked.personaId);
+        if (recentPersonas.Count > RecentPersonaMemory) recentPersonas.RemoveAt(0);
+
+        return picked;
     }
 
     public RamenRow GetRamen(RamenType ramenType)
@@ -61,10 +91,14 @@ public sealed class DialogueWorkbookDatabase
         return candidates.Count == 0 ? null : Pick(candidates);
     }
 
-    public string RandomTemplate(string ingredient, int amountCode, int difficulty)
+    /// <summary>
+    /// 뼈대 하나를 고른다. 재료 전용 행 → 공용("Any") 행 순으로 모으고, 말투 전용 행(persona 칸)은
+    /// 공용 행에 묻히지 않도록 두 번 넣는다. difficulty 0 인 행은 모든 난이도에 걸린다.
+    /// </summary>
+    public string RandomTemplate(string ingredient, int amountCode, int difficulty, string personaId)
     {
-        List<string> exact = FindTemplates(ingredient, amountCode, difficulty);
-        List<string> common = FindTemplates("Any", amountCode, difficulty);
+        List<string> exact = FindTemplates(ingredient, amountCode, difficulty, personaId);
+        List<string> common = FindTemplates("Any", amountCode, difficulty, personaId);
         exact.AddRange(common);
 
         // 단위 표현("한 점 더")은 기획서 5.2·19.4의 지원 유형이라 거르지 않는다. {unit}은 Render에서 치환된다.
@@ -73,13 +107,15 @@ public sealed class DialogueWorkbookDatabase
         // 같은 난이도에 문장이 없으면 같은 요청량의 다른 난이도 문장으로 폴백한다.
         List<string> fallback = new List<string>();
         foreach (TemplateRow row in db.templates)
-            if ((row.ingredient == ingredient || row.ingredient == "Any") && row.amount == amountCode)
+            if ((row.ingredient == ingredient || row.ingredient == "Any") && row.amount == amountCode
+                && PersonaMatches(row, personaId))
                 fallback.Add(row.template);
 
         if (fallback.Count == 0)
             return amountCode == -1 ? "{ing} {remove}." :
                    amountCode == -2 ? "{ing} {less}." :
-                   amountCode == -3 ? "면은 {ing}으로 바꿔서 {give}." : "{ing} {amt} {give}.";
+                   amountCode == -3 ? "면은 {ing}으로 바꿔서 {give}." :
+                   amountCode == -4 ? "면은 {ing} 그대로 {make}." : "{ing} {amt} {give}.";
         return Pick(fallback);
     }
 
@@ -135,13 +171,25 @@ public sealed class DialogueWorkbookDatabase
         return string.Empty;
     }
 
-    private List<string> FindTemplates(string ingredient, int amount, int difficulty)
+    private List<string> FindTemplates(string ingredient, int amount, int difficulty, string personaId)
     {
         List<string> result = new List<string>();
         foreach (TemplateRow row in db.templates)
-            if (row.ingredient == ingredient && row.amount == amount && row.difficulty == difficulty)
-                result.Add(row.template);
+        {
+            if (row.ingredient != ingredient || row.amount != amount) continue;
+            if (row.difficulty != difficulty && row.difficulty != 0) continue;
+            if (!PersonaMatches(row, personaId)) continue;
+
+            result.Add(row.template);
+            if (!string.IsNullOrEmpty(row.persona)) result.Add(row.template);
+        }
         return result;
+    }
+
+    /// <summary>persona 칸이 비어 있으면 공용, 적혀 있으면 그 말투에만.</summary>
+    private static bool PersonaMatches(TemplateRow row, string personaId)
+    {
+        return string.IsNullOrEmpty(row.persona) || row.persona == personaId;
     }
 
     private static bool Contains(string[] values, string target)

@@ -139,6 +139,14 @@ public class CookingCursor : MonoBehaviour
 
     /// <summary>젓가락으로 재료를 집고 있는 중인가. 집은 채로는 다른 통을 건드리면 안 된다.</summary>
     public bool IsGripping { get { return gripping; } }
+
+    /// <summary>
+    /// 재료를 통에서 그릇으로 옮기는 중인가. 젓가락으로 집은 것, 국자·병·소쿠리에 담은 것,
+    /// 뜨거나 붓는 동작이 도는 중까지 전부 참이다.
+    ///
+    /// 튜토리얼이 "지금 봐야 할 곳"을 재료통에서 그릇으로 넘기는 데 쓴다(TutorialOutline).
+    /// </summary>
+    public bool IsCarrying { get { return gripping || Busy; } }
     private float pinch;      // 0 = 벌림, 1 = 다뭄. 재료통 위에서는 벌린 채로 기다린다.
     private float dip;        // 국자가 아래로 내려간 정도
     private Coroutine motion;
@@ -163,10 +171,13 @@ public class CookingCursor : MonoBehaviour
 
     private void Awake()
     {
-        Instance = this;
         rect = GetComponent<RectTransform>();
         image = GetComponent<Image>();
+
+        // 겹쳐 놓은 Canvas(DragLayer) 말고 맨 위 캔버스를 쥔다. 배율이 거기에 있다.
         canvas = GetComponentInParent<Canvas>();
+        if (canvas != null) canvas = canvas.rootCanvas;
+
         baseSize = rect.sizeDelta;
     }
 
@@ -189,6 +200,11 @@ public class CookingCursor : MonoBehaviour
 
     private void OnEnable()
     {
+        // Awake 가 아니라 여기서 쥔다. 먹는 컷신이 DragLayer 를 통째로 껐다 켜는데(hiddenDuringCut),
+        // Awake 는 한 번만 돌아서 OnDisable 이 지운 Instance 가 영영 안 돌아왔다.
+        // 그 뒤로는 재료통에 마우스를 올려도 아무 반응이 없고 커서도 일반 화살표에서 안 바뀌었다.
+        Instance = this;
+
         arrowMode = AnyUiOpen() || !ToolVisible();
         ApplyCursorMode();
     }
@@ -303,7 +319,9 @@ public class CookingCursor : MonoBehaviour
 
         Vector2 offset = HotspotOffset() + new Vector2(0f, -dip);
 
-        rect.position = screen + offset * scale;
+        // 화면 좌표를 그대로 넣지 않는다. 캔버스가 Screen Space - Camera 라 월드 한 칸이
+        // 화면 한 픽셀이 아니다 — 그대로 넣으면 커서가 화면 밖으로 날아간다(CanvasPoint 참고).
+        rect.position = CanvasPoint.ToWorld(rect.parent as RectTransform, screen + offset * scale);
     }
 
     private float PixelScale()
@@ -335,6 +353,7 @@ public class CookingCursor : MonoBehaviour
     {
         gripping = value;
         if (value) Drop();   // 국자나 병을 들고 있었다면 내려놓고 젓가락으로 돌아간다
+        if (value) Sfx.Play("sfx_cook_pinch", 0.7f, 1f, 0.05f);
     }
 
     // ── 액체·조미료 들기 ─────────────────────────────────────────
@@ -462,6 +481,7 @@ public class CookingCursor : MonoBehaviour
         // 새 시트는 붓는 동작 한 벌이라 "뜨는" 그림이 따로 없다.
         // 끝 칸이 빈 국자, 첫 칸이 담긴 국자라 그 둘만 바꿔 끼우면 뜨는 것처럼 보인다.
         image.sprite = EmptyLadle(type);
+        Sfx.Play("sfx_cook_scoop", 0.6f, 1f, 0.05f);
 
         for (float t = 0f; t < DipDownSeconds; t += Time.unscaledDeltaTime)
         {
@@ -537,6 +557,7 @@ public class CookingCursor : MonoBehaviour
         // 탈탈 턴다. 붓는 자세와 터는 끝 자세를 오가며 "툭" 을 ShakeCount 번 찍는다.
         for (int i = 0; i < ShakeCount; i++)
         {
+            Sfx.Play("sfx_cook_shaker", 0.5f, 1f, 0.08f);
             image.sprite = BottleSprite(BottleShakeStep);
             yield return new WaitForSecondsRealtime(ShakeStepSeconds);
 
@@ -596,6 +617,7 @@ public class CookingCursor : MonoBehaviour
 
         // 기울이기 시작하는 순간 그릇이 차오르기 시작한다.
         if (onDone != null) onDone();
+        Sfx.Play("sfx_cook_pour_ladle", 0.7f);
 
         Sprite[] sheet = LadleSheet(Held);
         int last = sheet != null ? sheet.Length - 1 : 0;
@@ -629,7 +651,8 @@ public class CookingCursor : MonoBehaviour
     /// </summary>
     private void TickNoodleDrain()
     {
-        if (mode != Mode.Noodle || frozen) return;
+        // 터는 동안만 물 터는 소리가 돈다. 통을 벗어나거나 쏟기 시작하면 바로 끈다.
+        if (mode != Mode.Noodle || frozen) { Sfx.Stop("sfx_cook_noodle_shake", 0.1f); return; }
 
         Sprite[] sheet = DrainSheet(Held);
         if (sheet == null || sheet.Length == 0) return;
@@ -637,9 +660,11 @@ public class CookingCursor : MonoBehaviour
         if (!overNoodlePot)
         {
             image.sprite = sheet[0];
+            Sfx.Stop("sfx_cook_noodle_shake", 0.1f);
             return;
         }
 
+        Sfx.Loop("sfx_cook_noodle_shake", 0.5f, 0.1f);
         drainTime += Time.unscaledDeltaTime;
         image.sprite = sheet[Mathf.Abs(Mathf.FloorToInt(drainTime * NoodleDrainFps)) % sheet.Length];
     }
@@ -652,6 +677,7 @@ public class CookingCursor : MonoBehaviour
     {
         IsHolding = false;   // 붓는 동안 또 넣지 못하게
         frozen = true;       // 소쿠리가 마우스를 따라다니면 쏟는 동작이 읽히지 않는다
+        Sfx.Play("sfx_cook_noodle_pour", 0.7f);
 
         Sprite[] sheet = PourSheet(Held);
         int last = sheet != null ? sheet.Length - 1 : 0;

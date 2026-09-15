@@ -33,6 +33,7 @@ public class ButtonPress : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
 
         pressed = true;
         rect.anchoredPosition = basePosition + new Vector2(0f, -pressDepth);
+        Sfx.Play("sfx_ui_press", 0.6f);
     }
 
     public void OnPointerUp(PointerEventData eventData)

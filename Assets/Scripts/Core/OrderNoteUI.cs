@@ -130,14 +130,15 @@ public class OrderNoteUI : MonoBehaviour
     ///
     /// 레이캐스트를 쓰지 않는다. 종이에 raycastTarget 을 켜는 순간 종이가 클릭을 가로채
     /// 뒤에 있는 재료통과 그릇을 못 만지게 된다. 그래서 상자 안에 들었는지만 좌표로 본다.
-    /// 캔버스가 Screen Space - Overlay 라 카메라는 넘기지 않는다.
+    /// 캔버스가 Screen Space - Camera 라 그리는 카메라를 같이 넘긴다. null 을 넘기면
+    /// 종이가 화면 어디에 있는지 잘못 계산해, 마우스가 종이 위에 있는지 판정이 어긋난다.
     /// </summary>
     private bool PointerOverPaper()
     {
         if (panel == null || Mouse.current == null) return false;
 
         return RectTransformUtility.RectangleContainsScreenPoint(
-            panel, Mouse.current.position.ReadValue(), null);
+            panel, Mouse.current.position.ReadValue(), CanvasPoint.CameraFor(panel));
     }
 
     /// <summary>영수증 머리의 정보줄을 채운다.</summary>
@@ -235,7 +236,7 @@ public class OrderNoteUI : MonoBehaviour
 
     public void Toggle(string dialogue)
     {
-        if (IsOpen) Hide();
-        else Show(dialogue);
+        if (IsOpen) { Hide(); Sfx.Play("sfx_ui_note_close", 0.5f); }
+        else { Show(dialogue); Sfx.Play("sfx_ui_note_open", 0.5f); }
     }
 }

@@ -13,6 +13,8 @@ BASE = {
  'Tonkotsu': {'TonkotsuBase':1,'Broth':1,'ThickNoodles':1,'Chashu':1,'Egg':1,'Nori':1,'BeanSprout':1,'WoodEar':1,'GreenOnion':1,'FlavorOil':1},
 }
 KEYS = ["give","make","want","order","good","crave","ask","remove","less"]
+KEEP = {1:0.4, 2:0.3, 3:0.25}  # 교체 없을 때 "면은 그대로" 언급 확률 (생성기 keepNoodleChance)
+def swap_in(changes): return any(c['kind']=='Swap' for c in changes)
 personas = D['personas']; ramens = {r['ramenType']: r for r in D['ramens']}
 by_p = defaultdict(list)
 for o in D['openers']: by_p[('o', o['personaId'])].append(o['text'])
@@ -24,17 +26,35 @@ conflict_rows = [(k['enumName'], k['value']) for k in D['keywords'] if k['type']
 def exact_count(t):
     return False
 
-def find_t(ing, amt, diff):
-    return [r['template'] for r in D['templates'] if r['ingredient']==ing and r['amount']==amt and r['difficulty']==diff]
+def persona_ok(r, pid):
+    return not r.get('persona') or r['persona'] == pid
 
-def random_template(ing, amt, diff):
-    ex = find_t(ing, amt, diff) + find_t('Any', amt, diff)
+def find_t(ing, amt, diff, pid):
+    out = []
+    for r in D['templates']:
+        if r['ingredient']!=ing or r['amount']!=amt or r['difficulty'] not in (diff, 0) or not persona_ok(r, pid): continue
+        out.append(r['template'])
+        if r.get('persona'): out.append(r['template'])  # 말투 전용 행은 두 번
+    return out
+
+def random_template(ing, amt, diff, pid):
+    ex = find_t(ing, amt, diff, pid) + find_t('Any', amt, diff, pid)
     ex = [t for t in ex if not exact_count(t)]
     if ex: return random.choice(ex)
-    fb = [r['template'] for r in D['templates'] if r['ingredient'] in (ing,'Any') and r['amount']==amt and not exact_count(r['template'])]
+    fb = [r['template'] for r in D['templates'] if r['ingredient'] in (ing,'Any') and r['amount']==amt and persona_ok(r, pid) and not exact_count(r['template'])]
     if not fb:
-        return {-1:"{ing} {remove}.", -2:"{ing} {less}.", -3:"면은 {ing}으로 바꿔서 {give}."}.get(amt, "{ing} {amt} {give}.")
+        return {-1:"{ing} {remove}.", -2:"{ing} {less}.", -3:"면은 {ing}으로 바꿔서 {give}.", -4:"면은 {ing} 그대로 {make}."}.get(amt, "{ing} {amt} {give}.")
     return random.choice(fb)
+
+def fix_rieul(text):
+    # ㄹ 받침 뒤 "으로" → "로" ("면발으로" → "면발로"). 생성기 FixRieulParticle 과 같다.
+    out = []
+    for i, ch in enumerate(text):
+        if i > 0 and ch == '으' and i + 1 < len(text) and text[i+1] == '로':
+            code = ord(text[i-1]) - 0xAC00
+            if 0 <= code < 11172 and code % 28 == 8: continue
+        out.append(ch)
+    return ''.join(out)
 
 def random_keyword(t, e):
     v = kw.get((t, e)); return random.choice(v) if v else e
@@ -61,7 +81,7 @@ def render(text, ramen, p, change, connecting):
     head, tail = (text[:split+2], text[split+2:]) if split >= 0 else ('', text)
     for k in KEYS:
         head = head.replace('{'+k+'}', speech(p, k, False)); tail = tail.replace('{'+k+'}', speech(p, k, connecting))
-    text = head + tail
+    text = fix_rieul(head + tail)
     text = text.replace('!.', '!').replace('?.', '?')
     text = text.replace('  ', ' ').strip()
     if connecting and text.endswith('.') and not text.endswith('..'): text = text[:-1] + ','
@@ -80,8 +100,8 @@ def generate():
     maxc = min(4, len(cands) + (1 if swap else 0)); total = random.randint(1, maxc)
     slots = total-1 if swap else total
     changes = []; reqs = []
+    dn, sn = ('ThickNoodles','ThinNoodles') if ramen=='Tonkotsu' else ('ThinNoodles','ThickNoodles')
     if swap:
-        dn, sn = ('ThickNoodles','ThinNoodles') if ramen=='Tonkotsu' else ('ThinNoodles','ThickNoodles')
         changes.append({'ing':sn,'kind':'Swap','delta':1,'expr':1}); reqs += [(dn,-1),(sn,1)]
     for ing in cands[:slots]:
         b = base.get(ing,0); roll = random.random()
@@ -92,24 +112,29 @@ def generate():
         changes.append(ch); reqs.append((ing, ch['delta']))
     target = dict(base)
     for ing, a in reqs: target[ing] = min(4, max(0, target.get(ing,0)+a))
-    lines = [random.choice(by_p[('o',p['personaId'])])]
+    pid = p['personaId']
+    keep = (not swap) and len(changes) < 4 and random.random() < KEEP[diff]
+    lines = [random.choice(by_p[('o',pid)])]
     if hint: lines.append(render(hint, ramen, p, None, True))
-    lines.append(render(random_template('Ramen',0,diff), ramen, p, None, len(changes)>0))
+    lines.append(render(random_template('Ramen',0,diff,pid), ramen, p, None, len(changes)>0 or keep))
     used = []
+    if keep:
+        t = random_template(dn, -4, diff, pid); used.append(t)
+        lines.append(render(t, ramen, p, {'ing':dn,'expr':1}, len(changes)>0 and random.random() < 0.55))
     for i, ch in enumerate(changes):
         code = {'Remove':-1,'Less':-2,'Swap':-3}.get(ch['kind'], ch['expr'])
-        t = random_template(ch['ing'], code, diff)
+        t = random_template(ch['ing'], code, diff, pid)
         for _r in range(4):
             if t not in used: break
-            t = random_template(ch['ing'], code, diff)
+            t = random_template(ch['ing'], code, diff, pid)
         used.append(t)
         conn = i < len(changes)-1 and random.random() < 0.55
         lines.append(render(t, ramen, p, ch, conn))
-    if len(changes) < 3 and random.random() < 0.5:
+    if not keep and len(changes) < 3 and random.random() < 0.5:
         f = random.choice(D['fillers'])
         if not swap or '면' not in f: lines.append(render(f, ramen, p, None, False))
-    lines.append(random.choice(by_p[('c',p['personaId'])]))
-    return p['personaId'], diff, ramen, changes, target, lines, used, hint
+    lines.append(random.choice(by_p[('c',pid)]))
+    return pid, diff, ramen, changes, target, lines, used, hint, keep
 
 # ---- 검사 규칙 ----
 issues = Counter(); samples = defaultdict(list); tmpl_use = Counter(); over4 = Counter()
@@ -117,10 +142,17 @@ def flag(name, text):
     issues[name]+=1
     if len(samples[name])<4: samples[name].append(text)
 
+NOODLE = [(k['value'], k['enumName']) for k in D['keywords'] if k['type'] in ('Ingredient','IngDesc') and 'Noodle' in k['enumName']]
 for _ in range(N):
-    pid, diff, ramen, changes, target, lines, used, hint = generate()
+    pid, diff, ramen, changes, target, lines, used, hint, keep = generate()
     for t in used: tmpl_use[t]+=1
     full = '\n'.join(lines)
+    # 면 — 대사에 나온 면과 정답 면이 다르면 손님이 거짓말한 것이다. 제일 중요한 검사.
+    want_noodle = 'ThinNoodles' if target.get('ThinNoodles') else 'ThickNoodles'
+    if any(w in l and e != want_noodle for l in lines[1:-1] for w, e in NOODLE): flag('면 모순(대사≠정답)', full)
+    if keep and swap_in(changes): flag('교체+유지 동시', full)
+    if full.count('그대로') > 1: flag('그대로 중복', full)
+    if re.search(r'[가-힣]으로', full) and any((ord(m.group(0)[0])-0xAC00) % 28 == 8 for m in re.finditer(r'[가-힣]으로', full)): flag('ㄹ받침+으로', full)
     for ing, v in target.items():
         if ing not in ('ShioTare','ShoyuTare','TonkotsuBase','Broth','ThinNoodles','ThickNoodles') and v>4:
             over4[(ramen,ing,v)]+=1; flag('정답 5 이상', f'{ramen} {ing}={v}')
@@ -128,8 +160,8 @@ for _ in range(N):
     if re.search(r'(라면|라멘).*(주세요|해다오|주십시오)[!.]?$', lines[0]): flag('opener가 이미 주문', full)
     if hint and any(k in lines[2] for k in ('시오 라멘','쇼유 라멘','돈코츠 라멘')): flag('힌트 뒤 라멘 직접 지명', full)
     if any(re.search(r'(고|는데|은데|니까|니께)\.$', l) for l in lines): flag('연결어미+마침표', full)
-    if '라면' in full and '라멘' in full: flag('라멘/라면 혼용', full)
-    if any(re.search(r'(고|는데|은데|고요|고예|(?<!되)구유|고잉)[!.] ', l) for l in lines): flag('문장 중간 연결어미', full)
+    if re.search(r'(?<![이다])라면(?!서)', full) and '라멘' in full: flag('라멘/라면 혼용', full)  # "~이라면"·"~라면서요"는 음식이 아니다
+    if any(re.search(r'(고|는데|은데|고요|고예|(?<![되라])구유|고잉)[!.] ', l) for l in lines): flag('문장 중간 연결어미', full)  # 되구유·라구유는 종결
     if len(used) != len(set(used)): flag('같은 뼈대 2회', full)
     if full.count('이번엔') > 1 or full.count('그냥') > 1: flag('이번엔/그냥 중복', full)
     if full.count('많을수록') > 1: flag('많을수록 중복', full)
@@ -142,7 +174,7 @@ for _ in range(N):
     if hint and '고기' in hint and any(c['ing']=='Chashu' and c['kind']=='Add' for c in changes): flag('힌트-요청 모순(고기)', full)
     if hint and any(w in hint for w in ('담백','자극','깔끔')) and any(c['ing']=='ChiliPowder' and c['kind']=='Add' for c in changes): flag('힌트-요청 모순(매움)', full)
     if any('짜지 않게' in l or '따뜻하게' in l or '단단하게' in l for l in lines): flag('조절 불가 필러 노출', full)
-    if any((('조금만' in l and '더' not in l) or '있으면' in l) for l, c in zip(lines[2+(1 if hint else 0):], changes) if c['kind']=='Add'): flag('추가인데 감소로 읽힘', full)
+    if any((('조금만' in l and '더' not in l) or '있으면' in l) for l, c in zip(lines[2+(1 if hint else 0)+(1 if keep else 0):], changes) if c['kind']=='Add'): flag('추가인데 감소로 읽힘', full)
     if any('두 개는 꼭' in l for l in lines): flag('계란 두 개는 꼭(추가2)', full)
     if any(l.endswith(',') or l.endswith('고') or l.endswith('고요') for l in lines[-1:]): flag('마지막 줄 연결형', full)
     if len(lines) > 8: flag('9줄 이상', full)

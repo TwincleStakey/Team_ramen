@@ -30,12 +30,12 @@ public class RecipeBookUI : MonoBehaviour
     [SerializeField] private RectTransform panel;
 
     /// <summary>다 올라왔을 때 판이 설 자리. 화면 아래쪽에 살짝만 띄운다 —
-    /// 판 316 높이의 아래끝이 화면 아래(-270)에서 20칸 위에 온다.</summary>
-    [SerializeField] private Vector2 shownPosition = new Vector2(0f, -92f);
+    /// 판 490 높이의 아래끝이 화면 아래(-270)에서 15칸 위에 온다.</summary>
+    [SerializeField] private Vector2 shownPosition = new Vector2(0f, -10f);
 
     /// <summary>숨었을 때 자리. 화면 아래 바깥이라 판이 안 보인다.
-    /// 판이 316 높이라 -400 이면 위쪽 코일이 28칸 비친다. 화면 반높이 270 + 판 반높이 158 보다 아래여야 한다.</summary>
-    [SerializeField] private Vector2 hiddenPosition = new Vector2(0f, -440f);
+    /// 화면 반높이 270 + 판 반높이 245 = 515 보다 아래여야 위쪽 코일이 안 비친다.</summary>
+    [SerializeField] private Vector2 hiddenPosition = new Vector2(0f, -530f);
 
     /// <summary>미끄러지는 데 걸리는 시간. 0.18 은 툭 튀어나오는 느낌이라 늦췄다.</summary>
     [SerializeField] private float slideSeconds = 0.4f;
@@ -101,12 +101,14 @@ public class RecipeBookUI : MonoBehaviour
     public void Open()
     {
         Show();
+        Sfx.Play("sfx_ui_book_open", 0.5f);
     }
 
     public void Close()
     {
         // 버튼으로 닫을 때도 미끄러져 내려간다.
         Hide();
+        Sfx.Play("sfx_ui_book_close", 0.5f);
     }
 
     /// <summary>

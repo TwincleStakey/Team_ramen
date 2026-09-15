@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
@@ -32,9 +33,34 @@ public class CustomerAppearance : MonoBehaviour
     [SerializeField] private Sprite[] portraits;
 
     /// <summary>
-    /// 감는 도중 한 장이 머무는 시간(초). 사람은 한 번 깜빡이는 데 0.1초 남짓이다.
+    /// 걸어 들어올 때 쓰는 인영 한 장씩. 스프라이트 이름이 "Silhouette_&lt;말투&gt;" 다.
+    /// 빌더가 손님 그림 첫 장의 안쪽 빈 자리를 메워 구워 준다.
     /// </summary>
-    [SerializeField] private float blinkFrameSeconds = 0.06f;
+    [SerializeField] private Sprite[] silhouettes;
+
+    /// <summary>지금 손님의 인영. 없으면 인영 대신 원래 그림을 그대로 칠한다.</summary>
+    private Sprite silhouette;
+
+    /// <summary>
+    /// 목에서 입까지(칸). 잘록한 자리가 턱 바로 밑이고, 입은 그보다 이만큼 위다.
+    /// 얼굴 크기는 손님마다 거의 같아서(가장 넓은 곳 105~145칸) 한 값으로 맞는다.
+    /// </summary>
+    private const float MouthAboveNeck = 25f;
+
+    /// <summary>그림 아래변에서 목까지(칸). 못 쟀으면 음수.</summary>
+    private float neckFromBottom = -1f;
+
+    /// <summary>말투마다 한 번만 재고 기억해 둔다. 한 번 재는 데 8만 칸을 훑는다.</summary>
+    private static readonly Dictionary<string, float> neckCache = new Dictionary<string, float>();
+
+    /// <summary>
+    /// 눈을 감고 있는 시간(초).
+    ///
+    /// 1초는 사람이 깜빡이는 속도(0.1초 남짓)보다 훨씬 길다. 일부러 그렇게 잡았다 —
+    /// "깜빡"이 아니라 **지그시 감았다 뜨는** 것으로 읽히고, 손님이 느긋해 보인다.
+    /// 밤 포장마차의 박자에 맞춘 값이다.
+    /// </summary>
+    [SerializeField] private float closedSeconds = 1f;
 
     /// <summary>눈을 뜬 채로 머무는 시간(초). 이 사이에서 매번 새로 뽑아 손님마다 박자가 어긋나게 한다.</summary>
     [SerializeField] private float openSecondsMin = 2.5f;
@@ -94,6 +120,8 @@ public class CustomerAppearance : MonoBehaviour
         if (headImage != null) headImage.enabled = false;
 
         idleFrames = frames;
+        silhouette = SilhouetteFor(personaId);
+        neckFromBottom = NeckOf(personaId, frames[0]);
         blinkOrder = BuildBlinkOrder(frames.Length);
         idleIndex = 0;
         idleElapsed = 0f;
@@ -102,12 +130,11 @@ public class CustomerAppearance : MonoBehaviour
     }
 
     /// <summary>
-    /// 눈 깜빡임. 뜬 눈을 오래 물고 있다가 한 번 빠르게 감았다 뜬다.
+    /// 눈 깜빡임. 뜬 눈으로 한참 있다가 한 번 지그시 감았다 뜬다.
     ///
-    /// 그림은 0번이 뜬 눈이고 뒤로 갈수록 감긴다. 같은 간격으로 돌리면 깜빡임이 아니라
-    /// "느리게 넘어가는 그림"으로 보인다. 사람은 3~6초에 한 번, 한 번에 0.1초 남짓 깜빡인다.
-    ///
-    /// 다시 뜰 때는 왔던 길을 되짚는다(0→1→2→1→0). 감긴 채로 0번으로 튀면 눈이 툭 열린다.
+    /// 쓰는 장은 **완전히 뜬 것과 완전히 감은 것 둘뿐**이다(<see cref="BuildBlinkOrder"/>).
+    /// 뜬 채로 2.5~5.5초 무작위, 감은 채로 <see cref="closedSeconds"/> 만큼 머문다.
+    /// 뜬 시간을 매번 새로 뽑는 것은 손님이 여럿일 때 박자가 맞아떨어지지 않게 하려는 것이다.
     /// </summary>
     private void Update()
     {
@@ -115,7 +142,9 @@ public class CustomerAppearance : MonoBehaviour
         if (!portraitImage.enabled) return;
         if (held) return;
 
-        idleElapsed += Time.unscaledDeltaTime;
+        // 긴 프레임은 잘라서 센다. Play 를 누른 뒤 첫 프레임은 4초가 넘기도 하는데,
+        // 그대로 더하면 손님이 뜨자마자 한 번 감았다 뜬다.
+        idleElapsed += Mathf.Min(Time.unscaledDeltaTime, 0.05f);
         if (idleElapsed < idleHold) return;
 
         idleElapsed = 0f;
@@ -155,6 +184,117 @@ public class CustomerAppearance : MonoBehaviour
 
     public void CloseEyes() { HoldFrame(FrameCount - 1); }
 
+    /// <summary>
+    /// 걸어 들어오는 동안 인영 한 장으로 고정한다. 끄면 원래 그림으로 돌아가 다시 깜빡인다.
+    ///
+    /// 인영은 안쪽 빈 자리를 메워 구운 그림이다. 원본을 그대로 까맣게 칠하면 팔과 몸 사이
+    /// 같은 데로 배경이 비쳐 몸에 구멍이 뚫린 것처럼 보인다. 인영이 없는 손님은
+    /// 원래 그림을 그대로 쓴다 — 구멍이 없는 손님이 열넷 중 열이다.
+    /// </summary>
+    public void ShowSilhouette(bool on)
+    {
+        if (portraitImage == null) return;
+
+        if (!on)
+        {
+            ReleaseFrame();
+            return;
+        }
+
+        held = true;   // 인영으로 서 있는 동안에는 깜빡이지 않는다
+        if (silhouette != null) ShowPortrait(silhouette);
+    }
+
+    /// <summary>
+    /// 지금 손님 입 높이(자리 아래변이 0). 시식 연출이 그릇을 여기까지 들어 올린다.
+    ///
+    /// 손님마다 그림 높이도 목 자리도 달라서, 한 값을 더하면 누구에게는 그릇이 입에 못 미치고
+    /// 누구에게는 눈까지 덮인다. 실제로 열넷을 재 보니 목이 그림 아래에서 105~135 로
+    /// 서른 칸이나 벌어져 있었다.
+    /// </summary>
+    public float MouthInSlot
+    {
+        get
+        {
+            RectTransform rect = portraitImage.rectTransform;
+            return rect.anchoredPosition.y + neckFromBottom + MouthAboveNeck;
+        }
+    }
+
+    /// <summary>입 높이를 잴 수 있는가. 못 재면 부르는 쪽이 예전 방식으로 돌아간다.</summary>
+    public bool HasMouth
+    {
+        get { return neckFromBottom >= 0f && portraitImage != null && portraitImage.enabled; }
+    }
+
+    /// <summary>말투 하나의 목 높이. 처음 한 번만 재고 그 뒤로는 기억해 둔 값을 쓴다.</summary>
+    private static float NeckOf(string personaId, Sprite sprite)
+    {
+        float found;
+        if (!string.IsNullOrEmpty(personaId) && neckCache.TryGetValue(personaId, out found)) return found;
+
+        found = MeasureNeck(sprite);
+        if (!string.IsNullOrEmpty(personaId)) neckCache[personaId] = found;
+
+        return found;
+    }
+
+    /// <summary>
+    /// 그림 아래변에서 목까지 몇 칸인지 잰다. 못 재면 음수.
+    ///
+    /// 살색을 찾지 않는다. 손님마다 피부 톤도 옷도 달라서, 살색으로 얼굴을 잡으려다
+    /// 열넷 중 둘에서 엉뚱한 줄이 잡혔다(모자챙, 그리고 얼굴보다 넓은 손).
+    ///
+    /// 대신 불투명한 칸이 가로로 가장 좁아지는 줄을 쓴다. 머리와 어깨 사이가 잘록한 것은
+    /// 열넷 모두에서 또렷하고, 그 자리가 곧 턱 밑이다.
+    /// 위아래 끝은 건너뛴다 — 머리끝과 몸통은 애초에 목이 아니다.
+    /// </summary>
+    private static float MeasureNeck(Sprite sprite)
+    {
+        if (sprite == null || sprite.texture == null || !sprite.texture.isReadable) return -1f;
+
+        Rect area = sprite.textureRect;
+        int w = Mathf.RoundToInt(area.width);
+        int h = Mathf.RoundToInt(area.height);
+        if (w <= 0 || h <= 0) return -1f;
+
+        Color[] px = sprite.texture.GetPixels(Mathf.RoundToInt(area.x), Mathf.RoundToInt(area.y), w, h);
+
+        // 텍스처 좌표는 아래가 0 이라, 찾은 줄 번호가 그대로 "아래에서 몇 칸" 이다.
+        int lo = Mathf.RoundToInt(h * 0.22f);
+        int hi = Mathf.RoundToInt(h * 0.55f);
+
+        int neck = lo;
+        int thinnest = int.MaxValue;
+
+        for (int y = lo; y < hi; y++)
+        {
+            int wide = 0;
+            for (int x = 0; x < w; x++)
+                if (px[y * w + x].a > 0.5f) wide++;
+
+            if (wide >= thinnest) continue;
+
+            thinnest = wide;
+            neck = y;
+        }
+
+        return neck;
+    }
+
+    private Sprite SilhouetteFor(string personaId)
+    {
+        if (string.IsNullOrEmpty(personaId) || silhouettes == null) return null;
+
+        string wanted = "Silhouette_" + personaId;
+        foreach (Sprite sprite in silhouettes)
+        {
+            if (sprite != null && sprite.name == wanted) return sprite;
+        }
+
+        return null;
+    }
+
     /// <summary>고정을 풀고 다시 깜빡이게 한다. 뜬 눈에서 새로 시작한다.</summary>
     public void ReleaseFrame()
     {
@@ -167,27 +307,28 @@ public class CustomerAppearance : MonoBehaviour
             portraitImage.sprite = idleFrames[0];
     }
 
-    /// <summary>이 장을 얼마나 물고 있을지. 뜬 눈(0번)만 길고 나머지는 짧다.</summary>
+    /// <summary>이 장을 얼마나 물고 있을지. 뜬 눈(0번)은 무작위로 길고, 감은 눈은 정해진 값이다.</summary>
     private float NextHold(int frame)
     {
-        if (frame != 0) return Mathf.Max(0.01f, blinkFrameSeconds);
+        if (frame != 0) return Mathf.Max(0.01f, closedSeconds);
 
         return Random.Range(Mathf.Max(0.1f, openSecondsMin), Mathf.Max(openSecondsMin, openSecondsMax));
     }
 
     /// <summary>
-    /// 깜빡이는 차례. 감았다가 왔던 길로 되돌아온다.
-    /// 두 장짜리는 되짚을 중간이 없어 그냥 감았다 뜬다.
+    /// 깜빡이는 차례. **완전히 뜬 장과 완전히 감은 장 둘만 쓴다.**
+    ///
+    /// 그림은 손님마다 2·3·4장으로 제각각인데(중간은 반쯤 감은 장이다), 예전에는 있는 장을
+    /// 다 거쳐 갔다 되짚었다(0→1→2→3→2→1→0). 그래서 4장짜리는 느릿하게 감기고 2장짜리는
+    /// 툭 감겨 손님마다 박자가 달랐다. 중간 장을 버리면 장수와 무관하게 전부 같아진다.
+    ///
+    /// 중간 장은 그림에 그대로 남는다. 안 쓸 뿐이다.
     /// </summary>
     private static int[] BuildBlinkOrder(int frameCount)
     {
         if (frameCount < 2) return null;
-        if (frameCount == 2) return new[] { 0, 1 };
 
-        var order = new int[frameCount * 2 - 2];
-        for (int i = 0; i < frameCount; i++) order[i] = i;
-        for (int i = 1; i < frameCount - 1; i++) order[frameCount - 1 + i] = frameCount - 1 - i;
-        return order;
+        return new[] { 0, frameCount - 1 };
     }
 
     /// <summary>이름 앞머리가 personaId 와 같은 프레임을 모은다.</summary>
@@ -291,8 +432,15 @@ public class CustomerAppearance : MonoBehaviour
         }
     }
 
-    /// <summary>그림 꼭대기에서 귀까지가 그림 높이의 몇 할인가.</summary>
-    private const float EarFromTop = 0.2f;
+    /// <summary>
+    /// 그림 꼭대기에서 귀까지가 그림 높이의 몇 할인가.
+    ///
+    /// 0.2 였다. 그 값이면 꼬리가 귀가 아니라 정수리를 가리킨다.
+    /// 2026-09-14 에 손님 그림 열넷을 실제로 재서 다시 잡았다 — 살색이 이어지는 구간으로
+    /// 얼굴 위아래를 찾고 그 한가운데를 귀로 봤다. 잡힌 아홉 명이 0.415~0.479 였고
+    /// 중앙값이 0.44 다(모자·안경에 가린 다섯은 자동으로 못 재서 뺐다).
+    /// </summary>
+    private const float EarFromTop = 0.44f;
 
     public void Randomize()
     {
@@ -329,15 +477,53 @@ public class CustomerAppearance : MonoBehaviour
     public void SetFade(float t)
     {
         t = Mathf.Clamp01(t);
+        SetTint(1f - t, 1f - t * t);
+    }
 
-        float shade = 1f - t;
-        float alpha = 1f - t * t;
-        var tint = new Color(shade, shade, shade, alpha);
+    /// <summary>
+    /// 밝기와 진하기를 따로 준다. shade 0 은 새까만 인영, 1 은 제 색이다.
+    ///
+    /// <see cref="SetFade"/> 는 이 둘을 "어둠에 잠기며 지워진다" 한 줄기로 묶어 쓴 것이고,
+    /// 걸어 들어오는 연출은 까맣게 보이는 채로 서 있어야 해서 둘을 갈라 쓴다.
+    /// </summary>
+    public void SetTint(float shade, float alpha)
+    {
+        var tint = new Color(shade, shade, shade, Mathf.Clamp01(alpha));
 
         if (bodyImage != null) bodyImage.color = tint;
         if (headImage != null) headImage.color = tint;
         if (portraitImage != null) portraitImage.color = tint;
     }
+
+    /// <summary>
+    /// 손님을 제자리에서 옆으로·위로 밀어 둔다. (0,0)이 카운터 앞 제자리다.
+    ///
+    /// 이 스크립트가 붙은 자리(CustomerSlot)를 통째로 옮긴다. 안쪽 그림만 옮기면
+    /// 자리에 씌운 마스크가 옆으로 나간 부분을 잘라 내어, 걸어오는 도중에 몸이 잘린다.
+    ///
+    /// 제자리는 빌더가 정해 준 값을 처음 쓸 때 한 번 적어 둔다. Awake 에서 읽지 않는 것은
+    /// 이 자리가 꺼진 채로 시작할 수 있기 때문이다.
+    ///
+    /// 칸은 정수로 끊는다. 픽셀아트라 반 칸에 놓이면 그림 전체가 한 겹 흐려진다.
+    /// </summary>
+    public void SetOffset(Vector2 offset)
+    {
+        if (!seatCaptured)
+        {
+            seat = transform as RectTransform;
+            if (seat == null) return;
+
+            seatHome = seat.anchoredPosition;
+            seatCaptured = true;
+        }
+
+        seat.anchoredPosition = new Vector2(Mathf.Round(seatHome.x + offset.x),
+                                            Mathf.Round(seatHome.y + offset.y));
+    }
+
+    private RectTransform seat;
+    private Vector2 seatHome;
+    private bool seatCaptured;
 
     private void SetBody(Sprite sprite)
     {

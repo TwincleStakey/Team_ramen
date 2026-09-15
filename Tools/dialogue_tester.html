@@ -75,15 +75,35 @@ const randInt = (lo, hiExcl) => lo + Math.floor(rnd() * (hiExcl - lo)); // Unity
 const pick = a => a[Math.floor(rnd() * a.length)];
 function shuffle(a) { for (let i = 0; i < a.length; i++) { const j = randInt(i, a.length); [a[i], a[j]] = [a[j], a[i]]; } }
 
-function findTemplates(ing, amt, diff) {
-  return DB.templates.filter(r => r.ingredient === ing && r.amount === amt && r.difficulty === diff).map(r => r.template);
+const KEEP_NOODLE_CHANCE = { 1: 0.4, 2: 0.3, 3: 0.25 }; // 생성기 keepNoodleChance
+const personaOk = (r, pid) => !r.persona || r.persona === pid;
+function findTemplates(ing, amt, diff, pid) {
+  const out = [];
+  for (const r of DB.templates) {
+    if (r.ingredient !== ing || r.amount !== amt || (r.difficulty !== diff && r.difficulty !== 0) || !personaOk(r, pid)) continue;
+    out.push(r.template);
+    if (r.persona) out.push(r.template); // 말투 전용 행은 두 번
+  }
+  return out;
 }
-function randomTemplate(ing, amt, diff) {
-  const exact = findTemplates(ing, amt, diff).concat(findTemplates('Any', amt, diff));
+function randomTemplate(ing, amt, diff, pid) {
+  const exact = findTemplates(ing, amt, diff, pid).concat(findTemplates('Any', amt, diff, pid));
   if (exact.length) return pick(exact);
-  const fb = DB.templates.filter(r => (r.ingredient === ing || r.ingredient === 'Any') && r.amount === amt).map(r => r.template);
-  if (!fb.length) return amt === -1 ? '{ing} {remove}.' : amt === -2 ? '{ing} {less}.' : amt === -3 ? '면은 {ing}으로 바꿔서 {give}.' : '{ing} {amt} {give}.';
+  const fb = DB.templates.filter(r => (r.ingredient === ing || r.ingredient === 'Any') && r.amount === amt && personaOk(r, pid)).map(r => r.template);
+  if (!fb.length) return amt === -1 ? '{ing} {remove}.' : amt === -2 ? '{ing} {less}.' : amt === -3 ? '면은 {ing}으로 바꿔서 {give}.' : amt === -4 ? '면은 {ing} 그대로 {make}.' : '{ing} {amt} {give}.';
   return pick(fb);
+}
+// ㄹ 받침 뒤 "으로" → "로" ("면발으로" → "면발로"). 생성기 FixRieulParticle 과 같다.
+function fixRieul(text) {
+  let out = '';
+  for (let i = 0; i < text.length; i++) {
+    if (i > 0 && text[i] === '으' && text[i + 1] === '로') {
+      const code = text.charCodeAt(i - 1) - 0xAC00;
+      if (code >= 0 && code < 11172 && code % 28 === 8) continue;
+    }
+    out += text[i];
+  }
+  return out;
 }
 function randomKeyword(type, en) {
   const v = DB.keywords.filter(r => r.type === type && r.enumName === en).map(r => r.value);
@@ -132,7 +152,7 @@ function render(text, ramen, p, change, connecting) {
     head = head.split('{' + k + '}').join(pickSpeech(p, k, false));
     tail = tail.split('{' + k + '}').join(pickSpeech(p, k, connecting));
   }
-  text = head + tail;
+  text = fixRieul(head + tail);
   text = text.split('!.').join('!').split('?.').join('?');
   text = text.split('  ').join(' ').trim();
   if (connecting && text.endsWith('.') && !text.endsWith('..')) text = text.slice(0, -1) + ',';
@@ -178,27 +198,34 @@ function generate(personaId, difficulty, ramenType) {
   for (const [ing, d] of requests) target[ing] = Math.min(4, Math.max(0, (target[ing] || 0) + d));
 
   // BuildDialogue — 각 줄에 출처를 같이 남긴다
+  const pid = p.personaId;
+  const keep = !swap && changes.length < MAX_REQUEST_COUNT && rnd() < KEEP_NOODLE_CHANCE[diff]; // 기본면 유지 언급
   const lines = [];
   const add = (text, src) => { if (text && text.trim()) lines.push({ text, src }); };
-  add(randomPersonaText(DB.openers, p.personaId), 'opener');
+  add(randomPersonaText(DB.openers, pid), 'opener');
   if (rawHint) add(render(rawHint, ramen, p, null, true), 'hint: ' + rawHint);
-  const rt = randomTemplate('Ramen', 0, diff);
-  add(render(rt, ramen, p, null, changes.length > 0), 'Ramen d' + diff + ': ' + rt);
+  const rt = randomTemplate('Ramen', 0, diff, pid);
+  add(render(rt, ramen, p, null, changes.length > 0 || keep), 'Ramen d' + diff + ': ' + rt);
   const used = new Set();
+  if (keep) {
+    const t = randomTemplate(defaultNoodle, -4, diff, pid); used.add(t);
+    const conn = changes.length > 0 && rnd() < 0.55;
+    add(render(t, ramen, p, { ingredient: defaultNoodle, expressionAmount: 1 }, conn), `면 유지 a-4 d${diff}${conn ? ' (연결)' : ''}: ${t}`);
+  }
   changes.forEach((ch, i) => {
     const code = ch.kind === 'Remove' ? -1 : ch.kind === 'Less' ? -2 : ch.kind === 'Swap' ? -3 : ch.expressionAmount;
-    let t = randomTemplate(ch.ingredient, code, diff);
-    for (let r = 0; r < 4 && used.has(t); r++) t = randomTemplate(ch.ingredient, code, diff);
+    let t = randomTemplate(ch.ingredient, code, diff, pid);
+    for (let r = 0; r < 4 && used.has(t); r++) t = randomTemplate(ch.ingredient, code, diff, pid);
     used.add(t);
     const conn = i < changes.length - 1 && rnd() < 0.55;
     add(render(t, ramen, p, ch, conn), `${ch.ingredient} a${code} d${diff}${conn ? ' (연결)' : ''}: ${t}`);
   });
-  if (changes.length < 3 && rnd() < FILLER_CHANCE) {
+  if (!keep && changes.length < 3 && rnd() < FILLER_CHANCE) {
     const f = pick(DB.fillers);
     if (!swap || !f.includes('면')) add(render(f, ramen, p, null, false), 'filler: ' + f);
   }
-  add(randomPersonaText(DB.closers, p.personaId), 'closer');
-  return { persona: p, diff, ramen, changes, target, lines, hint: rawHint };
+  add(randomPersonaText(DB.closers, pid), 'closer');
+  return { persona: p, diff, ramen, changes, target, lines, hint: rawHint, keep };
 }
 
 // ===== 검사 (dialogue_sim.py 와 같은 규칙) =====
@@ -210,15 +237,21 @@ function check(s) {
     if (/[!?]\./.test(l)) mark('문장부호 중복', i);
     if (/\{\w+\}/.test(l)) mark('슬롯 미치환', i);
     if (/(고|는데|은데|니까|니께)\.$/.test(l)) mark('연결어미+마침표', i);
-    if (/(고|는데|은데|고요|고예|고잉)[!.] /.test(l) || /(?<!되)구유[!.] /.test(l)) mark('문장 중간 연결어미', i);
+    if (/(고|는데|은데|고요|고예|고잉)[!.] /.test(l) || /(?<![되라])구유[!.] /.test(l)) mark('문장 중간 연결어미', i);
     if (l.includes('면로')) mark('조사 오류(면로)', i);
   });
   if (new Set(L).size !== L.length) mark('같은 문장 반복');
-  if (full.includes('라면') && full.includes('라멘')) mark('라멘/라면 혼용');
+  if (/(?<![이다])라면(?!서)/.test(full) && full.includes('라멘')) mark('라멘/라면 혼용');
   if ((full.match(/이번엔/g) || []).length > 1 || (full.match(/그냥/g) || []).length > 1) mark('이번엔/그냥 중복');
   if ((full.match(/많을수록/g) || []).length > 1) mark('많을수록 중복');
   if (s.hint && ['시오 라멘','쇼유 라멘','돈코츠 라멘'].some(k => L[2] && L[2].includes(k))) mark('힌트 뒤 라멘 직접 지명', 2);
   if (L.length > 8) mark('9줄 이상');
+  // 면 — 대사에 나온 면과 정답 면이 다르면 손님이 거짓말한 것이다. 제일 중요한 검사.
+  const wantNoodle = s.target.ThinNoodles ? 'ThinNoodles' : 'ThickNoodles';
+  const noodleWords = DB.keywords.filter(k => (k.type === 'Ingredient' || k.type === 'IngDesc') && k.enumName.includes('Noodle'));
+  L.forEach((l, i) => { if (i > 0 && i < L.length - 1 && noodleWords.some(k => l.includes(k.value) && k.enumName !== wantNoodle)) mark('면 모순(대사≠정답)', i); });
+  if ((full.match(/그대로/g) || []).length > 1) mark('그대로 중복');
+  L.forEach((l, i) => { for (const m of l.matchAll(/([가-힣])으로/g)) if ((m[1].charCodeAt(0) - 0xAC00) % 28 === 8) mark('ㄹ받침+으로', i); });
   return { flags, bad };
 }
 
@@ -265,7 +298,7 @@ function run() {
     });
     if (c.flags.length) { const f = document.createElement('div'); f.className = 'flags'; f.textContent = '⚠ ' + [...new Set(c.flags)].join(' · '); card.appendChild(f); }
     const r = document.createElement('div'); r.className = 'recipe';
-    r.innerHTML = `<b>요청</b> ${describeChanges(s)}<br><b>정답</b> ${targetText(s)}`; card.appendChild(r);
+    r.innerHTML = `<b>요청</b> ${describeChanges(s)}${s.keep ? ' · (면 그대로 언급)' : ''}<br><b>정답</b> ${targetText(s)} · 면 ${ingKo(s.target.ThinNoodles ? 'ThinNoodles' : 'ThickNoodles')}`; card.appendChild(r);
     out.appendChild(card);
   }
 }

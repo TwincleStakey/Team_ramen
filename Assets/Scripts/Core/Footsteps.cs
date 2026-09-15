@@ -18,8 +18,11 @@ public class Footsteps : MonoBehaviour
     /// <summary>걸음과 걸음 사이(초). 사람이 천천히 다가오는 정도로 잡았다.</summary>
     [SerializeField] private float stride = 0.42f;
 
+    /// <summary>걸어 들어오는 그림이 같은 박자를 쓰도록 내어 준다(GameManager.EnterCustomer).</summary>
+    public float Stride { get { return stride; } }
+
     private AudioSource source;
-    private AudioClip step;
+    private AudioClip[] steps;
     private Coroutine walking;
 
     private void Awake()
@@ -29,27 +32,37 @@ public class Footsteps : MonoBehaviour
         source.loop = false;
         source.spatialBlend = 0f;   // UI 소리라 거리와 무관해야 한다
 
-        step = BuildStep();
+        // 음원 파일이 있으면 두세 종을 번갈아 쓰고, 하나도 없으면 예전처럼 파형을 만든다.
+        var files = new[] { Sfx.Clip("sfx_step_wood_a"), Sfx.Clip("sfx_step_wood_b"), Sfx.Clip("sfx_step_wood_c") };
+        steps = System.Array.FindAll(files, c => c != null);
+        if (steps.Length == 0) steps = new[] { BuildStep() };
     }
 
     /// <summary>seconds 동안 뚜벅뚜벅 걷는 소리를 낸다.</summary>
-    public void Walk(float seconds)
+    /// <param name="firstDelay">
+    /// 첫 걸음까지 기다리는 시간(초). 음수면 반 박자를 쓴다.
+    ///
+    /// 걷는 그림과 함께 쓸 때는 0 을 준다. 그림의 첫 발이 화면에 닿는 순간과 소리를 맞추려는 것이다.
+    /// 소리만 낼 때는 반 박자 늦춘다 — 앞 손님이 사라지자마자 소리가 나면 그 손님이 낸 것처럼 들린다.
+    /// </param>
+    public void Walk(float seconds, float firstDelay = -1f)
     {
         if (walking != null) StopCoroutine(walking);
-        walking = gameObject.activeInHierarchy ? StartCoroutine(WalkRoutine(seconds)) : null;
+        walking = gameObject.activeInHierarchy
+            ? StartCoroutine(WalkRoutine(seconds, firstDelay < 0f ? stride * 0.5f : firstDelay))
+            : null;
     }
 
-    private IEnumerator WalkRoutine(float seconds)
+    private IEnumerator WalkRoutine(float seconds, float firstDelay)
     {
-        // 첫 걸음은 반 박자 늦게 낸다. 앞 손님이 사라지자마자 소리가 나면 그 손님이 낸 것처럼 들린다.
-        float elapsed = stride * 0.5f;
-        yield return new WaitForSecondsRealtime(stride * 0.5f);
+        float elapsed = firstDelay;
+        if (firstDelay > 0f) yield return new WaitForSecondsRealtime(firstDelay);
 
         while (elapsed < seconds)
         {
             // 왼발 오른발이 똑같으면 기계처럼 들린다. 한 걸음씩 조금씩 엇갈리게 둔다.
             source.pitch = 1f + Random.Range(-0.08f, 0.08f);
-            source.PlayOneShot(step, volume);
+            source.PlayOneShot(steps[Random.Range(0, steps.Length)], volume);
 
             yield return new WaitForSecondsRealtime(stride);
             elapsed += stride;

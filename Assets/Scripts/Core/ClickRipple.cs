@@ -40,7 +40,8 @@ public class ClickRipple : MonoBehaviour
         if (!Mouse.current.leftButton.wasPressedThisFrame) return;
 
         // 링은 누른 자리에 머문다. 마우스를 따라가면 무엇을 눌렀는지가 흐려진다.
-        rect.position = Mouse.current.position.ReadValue();
+        // 화면 좌표를 캔버스 자리로 옮겨야 한다 — 그대로 넣으면 화면 밖으로 날아간다(CanvasPoint).
+        rect.position = CanvasPoint.ToWorld(rect.parent as RectTransform, Mouse.current.position.ReadValue());
 
         if (playing != null) StopCoroutine(playing);
         playing = StartCoroutine(Play());

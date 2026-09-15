@@ -31,13 +31,24 @@ public class OpeningNarration : MonoBehaviour
     /// <summary>줄이 끝났음을 알리는 ▼. 켰다 껐다 하며 깜빡인다.</summary>
     [SerializeField] private Image prompt;
 
+    /// <summary>
+    /// 글자가 찍힐 때 나는 톤. 손님 대사와 같은 것을 쓴다.
+    ///
+    /// 도입부만 소리 없이 찍히고 있었다. 가게가 열리고 손님이 말을 걸 때 비로소 소리가 나서,
+    /// 앞부분이 고장 난 것처럼 들렸다.
+    /// </summary>
+    [SerializeField] private DialogueBlip blip;
+
+    /// <summary>내레이션 목소리. 손님이 아니라 이야기하는 사람이라 낮고 차분한 쪽을 쓴다.</summary>
+    private const string NarratorVoice = "Formal";
+
     /// <summary>글자가 찍히는 속도(초당 글자 수).</summary>
     [SerializeField] private float charsPerSecond = 20f;
 
     /// <summary>▼ 가 한 번 깜빡이는 데 걸리는 시간(초). 절반은 켜져 있고 절반은 꺼져 있다.</summary>
     [SerializeField] private float blinkSeconds = 0.5f;
 
-    /// <summary>마지막 줄과 ▼ 사이 틈(칸).</summary>
+    /// <summary>마지막 줄 끝과 ▼ 사이 틈(칸).</summary>
     [SerializeField] private float promptGap = 10f;
 
     /// <summary>
@@ -63,6 +74,11 @@ public class OpeningNarration : MonoBehaviour
         root.SetActive(true);
         label.text = string.Empty;
         if (prompt != null) prompt.enabled = false;
+        if (blip != null) blip.SetPersona(NarratorVoice);
+
+        // 모드를 고른 그 클릭이 첫 줄 건너뛰기로 읽히지 않게 한 프레임 흘린다.
+        // 아래 WaitForPress 가 나갈 때 하는 것과 같은 처리다.
+        yield return null;
 
         // 지금까지 찍어 둔 줄들. 새 줄은 여기 뒤에 붙여 가며 그린다.
         var shown = new StringBuilder();
@@ -86,8 +102,14 @@ public class OpeningNarration : MonoBehaviour
 
                 if (next != count)
                 {
+                    // 이번에 드러난 마지막 글자로 소리를 낸다. 한 프레임에 두 글자가 나와도
+                    // 톤은 한 번만 낸다 — 겹쳐 내면 또로록이 아니라 잡음이 된다.
+                    char letter = line[next - 1];
+
                     count = next;
                     label.text = before + line.Substring(0, count);
+
+                    if (blip != null && !DialogueBlip.IsSilent(letter)) blip.PlayTone();
                 }
 
                 yield return null;
@@ -113,10 +135,16 @@ public class OpeningNarration : MonoBehaviour
     }
 
     /// <summary>
-    /// ▼ 를 마지막 줄 바로 밑으로 옮긴다.
+    /// ▼ 를 마지막 줄의 오른쪽 끝, 그 줄과 같은 높이에 놓는다.
     ///
-    /// 글상자는 피벗이 위쪽이라 anchoredPosition.y 가 곧 글의 윗변이다. 거기서 글 높이만큼
-    /// 내려오면 마지막 줄의 아랫변이다. 줄이 쌓일수록 ▼ 도 같이 내려간다.
+    /// 예전에는 글 덩이 아래 왼쪽에 두었다. 줄이 쌓일수록 방금 읽은 줄에서 멀어지고,
+    /// 다음 줄이 붙을 자리를 ▼ 가 먼저 차지해 한 줄이 밀린 것처럼 보였다.
+    ///
+    /// 자리는 TMP 가 실제로 짠 줄에서 읽는다. 글자 폭을 따로 재면 띄어쓰기와 자간 때문에
+    /// 한두 칸씩 어긋난다. 방금 text 를 바꿨으므로 ForceMeshUpdate 로 먼저 짜게 한다.
+    ///
+    /// 글상자 안 좌표의 원점은 피벗(윗변 가운데)이고, 글상자의 anchoredPosition 도 같은 점을
+    /// 가리킨다. ▼ 와 글상자가 같은 부모에 같은 앵커로 달려 있어 그대로 더하면 된다.
     ///
     /// 자리는 정수로 끊는다. 픽셀아트라 반 칸에 놓이면 삼각형 가장자리가 흐려진다.
     /// </summary>
@@ -124,11 +152,18 @@ public class OpeningNarration : MonoBehaviour
     {
         if (promptRect == null || prompt == null || label == null) return;
 
-        RectTransform rect = label.rectTransform;
-        float height = label.GetPreferredValues(label.text, rect.rect.width, 0f).y;
+        label.ForceMeshUpdate();
 
-        float x = rect.anchoredPosition.x - rect.rect.width * 0.5f + promptRect.rect.width * 0.5f;
-        float y = rect.anchoredPosition.y - height - promptGap;
+        TMP_TextInfo info = label.textInfo;
+        if (info == null || info.lineCount == 0) return;
+
+        TMP_LineInfo line = info.lineInfo[info.lineCount - 1];
+        Vector2 origin = label.rectTransform.anchoredPosition;
+
+        float x = origin.x + line.lineExtents.max.x + promptGap + promptRect.rect.width * 0.5f;
+
+        // ▼ 피벗이 윗변이라, 줄 한가운데에 맞추려면 제 높이의 절반만큼 올려 잡는다.
+        float y = origin.y + (line.ascender + line.descender) * 0.5f + promptRect.rect.height * 0.5f;
 
         promptRect.anchoredPosition = new Vector2(Mathf.Round(x), Mathf.Round(y));
     }
@@ -153,6 +188,14 @@ public class OpeningNarration : MonoBehaviour
         }
 
         if (prompt != null) prompt.enabled = false;
+        Sfx.Play("sfx_flow_next", 0.5f);
+
+        // 나갈 때도 한 프레임 흘린다. 들어올 때와 같은 이유다.
+        //
+        // wasPressedThisFrame 은 그 프레임 내내 참이라, 넘기려고 누른 그 입력이 바로 다음
+        // 줄의 "건너뛰기" 로 한 번 더 읽힌다. 이게 없어서 둘째 줄부터는 타자기가 한 글자도
+        // 안 돌고 통째로 찍혔다.
+        yield return null;
     }
 
     /// <summary>아무 키나, 또는 마우스 왼쪽.</summary>

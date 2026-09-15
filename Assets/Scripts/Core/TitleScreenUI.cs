@@ -56,6 +56,9 @@ public class TitleScreenUI : MonoBehaviour
         if (noticeRoot != null) noticeRoot.SetActive(false);
 
         ShowMain();
+
+        // 타이틀 BGM. [게임시작] 을 누르면 GameManager.BeginGame 이 끈다.
+        Sfx.Loop("bgm_title", Sfx.TitleBgm, 1f);
     }
 
     /// <summary>

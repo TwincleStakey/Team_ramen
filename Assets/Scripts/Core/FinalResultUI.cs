@@ -35,6 +35,7 @@ public class FinalResultUI : MonoBehaviour
     public void Open(int totalRevenue, float averageAccuracy, int perfectCount, int servedCount)
     {
         if (popupRoot != null) popupRoot.SetActive(true);
+        Sfx.Play("sfx_ui_final", 0.8f);
         if (titleText != null) titleText.text = "5일 영업 종료";
         if (revenueText != null) revenueText.text = "누적 매출 : " + totalRevenue.ToString("N0") + "원";
         if (accuracyText != null) accuracyText.text = "평균 정확도 : " + averageAccuracy.ToString("F1") + "%";

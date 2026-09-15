@@ -64,6 +64,7 @@ public class IrisFade : MonoBehaviour
         if (root == null) yield break;
 
         root.SetActive(true);
+        Sfx.Play("sfx_flow_iris", 0.7f);
 
         float max = MaxRadius;
 

@@ -103,7 +103,7 @@ public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
     private void Update()
     {
         // 드래그로 인정되기 전 몇 픽셀 동안에도 재료가 마우스를 따라와야 한다.
-        if (ghost != null && Mouse.current != null) ghost.transform.position = Mouse.current.position.ReadValue();
+        if (ghost != null && Mouse.current != null) MoveGhost(Mouse.current.position.ReadValue());
     }
 
     private void CreateGhost(Vector2 position)
@@ -137,12 +137,25 @@ public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
         // 고스트가 레이캐스트를 먹으면 마우스 밑이 항상 고스트라 그릇의 OnDrop이 영영 안 불린다.
         img.raycastTarget = false;
 
-        rt.position = position;
+        MoveGhost(position);
+    }
+
+    /// <summary>
+    /// 끌고 다니는 그림을 마우스 자리로 옮긴다.
+    ///
+    /// 화면 좌표를 그대로 넣으면 안 된다. 캔버스가 Screen Space - Camera 라 월드 한 칸이
+    /// 화면 한 픽셀이 아니어서, 그림이 화면 밖으로 날아간다(CanvasPoint 참고).
+    /// </summary>
+    private void MoveGhost(Vector2 screen)
+    {
+        if (ghost == null) return;
+
+        ghost.transform.position = CanvasPoint.ToWorld(ghost.transform.parent as RectTransform, screen);
     }
 
     public void OnDrag(PointerEventData eventData)
     {
-        if (ghost != null) ghost.transform.position = eventData.position;
+        MoveGhost(eventData.position);
     }
 
     public void OnEndDrag(PointerEventData eventData)

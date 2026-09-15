@@ -41,10 +41,11 @@ public class CutsceneSfx : MonoBehaviour
         source.loop = false;
         source.spatialBlend = 0f;   // UI 소리라 거리와 무관해야 한다
 
-        slurp = BuildSlurp();
-        thunder = BuildThunder();
-        caw = BuildCaw();
-        tick = BuildTick();
+        // 음원 파일이 있으면 그것을 쓰고, 없으면 예전처럼 파형을 만든다.
+        slurp = Sfx.ClipOr("sfx_cut_slurp", BuildSlurp);
+        thunder = Sfx.ClipOr("sfx_cut_thunder", BuildThunder);
+        caw = Sfx.ClipOr("sfx_cut_crow", BuildCaw);
+        tick = Sfx.ClipOr("sfx_cut_dot", BuildTick);
     }
 
     /// <summary>seconds 동안 후루룩거린다. 한 모금씩 끊어서 여러 번 낸다.</summary>

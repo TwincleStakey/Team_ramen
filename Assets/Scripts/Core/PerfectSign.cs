@@ -88,6 +88,7 @@ public class PerfectSign : MonoBehaviour
         group.alpha = 1f;
         sign.anchoredPosition = home;
         sign.localScale = Vector3.one * popFrom;
+        Sfx.Play("sfx_flow_perfect", 0.7f);
 
         // 팍 · 번쩍 · 흔들림 · 반짝임이 겹쳐 도는 구간.
         // 하나씩 차례로 돌리면 "번쩍 하고 나서 팻말이 뜬다" 처럼 끊겨 보인다.

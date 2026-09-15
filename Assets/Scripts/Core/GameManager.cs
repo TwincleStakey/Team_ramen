@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 /// <summary>
@@ -28,6 +29,17 @@ public class GameManager : MonoBehaviour
     [SerializeField] private OrderNoteUI orderNoteUI;
     [SerializeField] private OrderResultUI orderResultUI;
 
+    /// <summary>「주문마감」 붓글씨. 오늘 마지막 손님이 나간 뒤 한 자씩 박힌다.</summary>
+    [SerializeField] private ClosedSign closedSign;
+
+    /// <summary>
+    /// 마지막 손님이 스러져 나간 뒤 글자가 박히기까지 비워 두는 시간(초).
+    ///
+    /// 손님이 사라지자마자 글자가 떨어지면 손님을 지우려고 띄운 것처럼 보인다.
+    /// 빈 카운터를 한 박자 보여 줘야 "오늘은 여기까지" 가 된다.
+    /// </summary>
+    [SerializeField] private float closedSignDelay = 1.5f;
+
     /// <summary>
     /// 손님이 먹는 장면을 보여 주는 시간(초).
     /// 지금은 얼굴 그림이 없어 손님이 가만히 서 있기만 한다. 표정이 붙으면 거기 맞춰 늘린다.
@@ -40,8 +52,58 @@ public class GameManager : MonoBehaviour
     /// <summary>앞 손님이 나가고 다음 손님이 올 때까지 카운터가 비어 있는 시간(초).</summary>
     [SerializeField] private float emptySeconds = 3f;
 
-    /// <summary>새 손님이 밝아지며 나타나는 데 걸리는 시간(초).</summary>
+    /// <summary>손님이 자리에 선 뒤 인영에서 제 색으로 밝아지는 데 걸리는 시간(초).</summary>
     [SerializeField] private float enterSeconds = 0.6f;
+
+    /// <summary>
+    /// 걸어 들어오기 시작하는 자리. 제자리에서 오른쪽으로 이만큼 떨어진 곳이다.
+    /// 음수로 두면 왼쪽에서 걸어온다.
+    ///
+    /// 420 이면 손님이 화면 오른쪽 끄트머리에 걸친 채로 시작한다. 더 멀리 두면 한 걸음이
+    /// 그만큼 넓어져 성큼성큼 걷는 것으로 보인다 — 걸음 수는 발소리 박자가 정하기 때문이다.
+    /// </summary>
+    [SerializeField] private float walkInDistance = 420f;
+
+    /// <summary>한 걸음마다 몸이 들리는 높이(칸). 크게 주면 걷는 게 아니라 뛰는 것으로 보인다.</summary>
+    [SerializeField] private float walkBob = 3f;
+
+    /// <summary>
+    /// 걸어오는 동안 손님을 아래로 내리는 깊이(칸).
+    ///
+    /// 손님 자리는 아래변이 카운터 윗선에 딱 맞춰져 있고 거기서 잘린다. 그래서 그대로 걸으면
+    /// 몸이 카운터에 닿지 않고 선 위에서 툭 끊겨, 카운터 뒤가 아니라 공중에 뜬 것처럼 보인다.
+    /// 이만큼 내리면 아랫도리가 카운터에 가려져 그 뒤를 걸어오는 것으로 읽힌다.
+    /// 자리에 서면서 도로 올라온다.
+    /// </summary>
+    [SerializeField] private float walkSink = 24f;
+
+    /// <summary>튜토리얼 대사 한 마디를 읽힐 시간(초). 그 전에 아무 키나 누르면 바로 넘어간다.</summary>
+    [SerializeField] private float tutorialLineSeconds = 3f;
+
+    /// <summary>그릇을 받은 손님이 한 마디 하고 읽힐 시간(초). 그 전에 누르면 바로 넘어간다.</summary>
+    [SerializeField] private float servedLineSeconds = 2.5f;
+
+    /// <summary>그 말을 마치고 그릇을 들기까지 두는 짬(초). 말하자마자 들면 허겁지겁 먹는 꼴이다.</summary>
+    [SerializeField] private float servedPauseSeconds = 0.6f;
+
+
+    /// <summary>그릇을 내자마자 튜토리얼 손님이 하는 말.</summary>
+    private const string TutorialServedLine = "오, 벌써 나왔나요?\n잘 먹겠습니다.";
+
+    /// <summary>
+    /// 다 먹고 나서 하는 말. 마디마다 버튼을 눌러 넘긴다.
+    /// 마지막 마디의 버튼이 [안녕히 가세요.] 이고, 그걸 누르면 정확도 창이 열린다.
+    /// </summary>
+    private static readonly string[] TutorialClosingLines =
+    {
+        "맛있네요. 잘 먹었습니다.",
+        "앞으로 올 손님들은 취향이 각각 다르실 거에요.",
+        "손님들의 말을 귀 기울여 듣고, 완벽하게 만들어서 그 손님의 인생라멘집이 되어보세요.",
+        "그럼 이만.",
+    };
+
+    /// <summary>정확도 창에 싣는 튜토리얼 마무리 안내.</summary>
+    private const string TutorialEndLine = "튜토리얼은 여기까지입니다.\n손님이 원하는 라멘을 만들어주세요!";
 
     /// <summary>가게 문을 열 때 검은 화면에 머무는 시간(초). 장면이 바뀌었다는 사이를 둔다.</summary>
     [SerializeField] private float blackHoldSeconds = 2f;
@@ -178,6 +240,82 @@ public class GameManager : MonoBehaviour
         BeginGame();
     }
 
+#if UNITY_EDITOR
+    /// <summary>
+    /// 개발용 건너뛰기. F2 를 누르면 그릇을 한 번에 채우고 제출한다.
+    ///
+    /// 손님 앞에 놓이는 그릇을 손볼 때마다 재료를 여덟 번 끌어 담아야 하는 것이 번거로워서 둔다.
+    /// 타이틀의 F1 과 같이 에디터에서만 듣는다 — 빌드에는 이 키가 아예 없다.
+    /// </summary>
+    private void Update()
+    {
+        Keyboard keyboard = Keyboard.current;
+        if (keyboard == null || !keyboard.f2Key.wasPressedThisFrame) return;
+
+        StartCoroutine(FillAndSubmit());
+    }
+
+    private IEnumerator FillAndSubmit()
+    {
+        Bowl bowl = FindFirstObjectByType<Bowl>();
+        if (bowl == null)
+        {
+            Debug.LogWarning("[F2] 조리 화면에 그릇이 없습니다.");
+            yield break;
+        }
+
+        // 재료 그림은 재료통이 들고 있다. 그림 없이 넣으면 그릇에 아무것도 안 올라간다.
+        var icons = new Dictionary<IngredientType, Sprite>();
+        foreach (IngredientSlot slot in FindObjectsByType<IngredientSlot>(FindObjectsSortMode.None))
+        {
+            icons[slot.type] = slot.bowlSprite;
+        }
+
+        TutorialManager tutorial = TutorialManager.Instance;
+        bool inTutorial = tutorial != null && tutorial.IsRunning;
+
+        if (inTutorial)
+        {
+            // 안내가 시키는 차례를 그대로 따라간다. 다른 것을 넣으면 안내가 그 자리에 멈춰 선다.
+            // Tab(주문서)·B(레시피책) 차례는 재료가 아니라서 넘길 수 없다 — 사람이 눌러 준다.
+            while (tutorial.IsRunning && !tutorial.ReadyToSubmit)
+            {
+                if (tutorial.CurrentStep is IngredientType step)
+                {
+                    icons.TryGetValue(step, out Sprite icon);
+                    bowl.TryAdd(step, icon);
+                    yield return new WaitForSeconds(0.05f);
+                    continue;
+                }
+
+                Debug.LogWarning("[F2] 재료가 아닌 차례입니다(Tab 이나 B). 그것만 누르고 다시 F2.");
+                yield break;
+            }
+        }
+        else
+        {
+            foreach (IngredientType type in DebugRecipe)
+            {
+                icons.TryGetValue(type, out Sprite icon);
+                bowl.TryAdd(type, icon);
+                yield return new WaitForSeconds(0.05f);
+            }
+        }
+
+        // 타래와 육수는 붓는 장면이 끝나야 그릇 그림이 자리를 잡는다. 그 전에 제출하면
+        // 손님 앞에 붓다 만 그릇이 올라간다.
+        yield return new WaitForSeconds(1.2f);
+        bowl.Submit();
+    }
+
+    /// <summary>튜토리얼이 끝난 뒤 F2 가 마는 한 그릇. 정답일 필요는 없다.</summary>
+    private static readonly IngredientType[] DebugRecipe =
+    {
+        IngredientType.ShioTare, IngredientType.Broth, IngredientType.ThickNoodles,
+        IngredientType.Chashu, IngredientType.GreenOnion, IngredientType.Egg, IngredientType.Nori,
+    };
+#endif
+
     /// <summary>
     /// 실제로 게임을 연다. 시작 화면의 [게임시작]이 부른다.
     ///
@@ -186,6 +324,9 @@ public class GameManager : MonoBehaviour
     /// </summary>
     public void BeginGame()
     {
+        // 타이틀 BGM 은 화면이 검어지는 동안 같이 잦아든다.
+        Sfx.Stop("bgm_title", 1.5f);
+
         bool resumed = pendingSave != null;
         if (resumed) Resume();
 
@@ -193,7 +334,7 @@ public class GameManager : MonoBehaviour
 
         // 이어하기는 Resume이 그때 상태를 그대로 되살린다. 여기서 또 열면 주문이 새로 생긴다
         // (기획서 13.1 — 주문 재생성 금지).
-        if (resumed) return;
+        if (resumed) { StartShopSounds(); return; }
 
         StartCoroutine(OpenShop());
     }
@@ -347,8 +488,7 @@ public class GameManager : MonoBehaviour
         // 미끄러지며 들어오는 연출은 끊는다. 걷히자마자 이미 가게에 와 있어야 한다.
         if (orderScreenUI != null) orderScreenUI.SnapOpen();
 
-        CustomerAppearance look = orderScreenUI != null ? orderScreenUI.Appearance : null;
-        if (look != null) look.SetFade(1f);
+        HideCustomerForEntrance();
 
         if (orderScreenUI != null) orderScreenUI.ShowBubble(false);
 
@@ -358,22 +498,8 @@ public class GameManager : MonoBehaviour
 
         yield return RevealShop(fade);
 
-        // 빈 카운터. 발소리가 이 사이를 채운다.
-        if (EnsureFootsteps()) footsteps.Walk(emptySeconds);
-        yield return new WaitForSecondsRealtime(emptySeconds);
-
-        // 손님이 밝아지며 나타난다.
-        yield return FadeCustomer(1f, 0f, enterSeconds);
-
-        // 다 들어온 뒤에 말을 건다.
-        //
-        // 대사를 처음부터 다시 친다. 말풍선을 감춘 채로 화면을 차려 두는 동안에도 타자기는
-        // 돌아서, 여기까지 오면 이미 다 찍혀 있다. 다시 쳐야 찍히는 것이 보인다.
-        if (orderScreenUI != null)
-        {
-            orderScreenUI.ShowBubble(true);
-            orderScreenUI.ReplayCurrentLine();
-        }
+        // 빈 카운터로 첫 손님이 걸어 들어온다. 말을 거는 것까지 EnterCustomer 가 맡는다.
+        yield return EnterCustomer();
     }
 
     /// <summary>
@@ -387,6 +513,9 @@ public class GameManager : MonoBehaviour
     /// </summary>
     private IEnumerator RevealShop(ScreenFade fade)
     {
+        // 화면이 걷히는 것과 같이 가게 소리가 올라온다.
+        StartShopSounds();
+
         if (iris == null)
         {
             if (narration != null) narration.Hide();
@@ -403,6 +532,20 @@ public class GameManager : MonoBehaviour
     }
 
     /// <summary>
+    /// 가게 BGM 과 앰비언스를 켠다. 문을 열 때와 이어하기 둘 다 여기로 온다.
+    ///
+    /// 냄비 소리는 주문 화면이 조리대를 덮은 채로 시작하므로 낮게 켠다.
+    /// 화면이 내려가면 OrderScreenUI 가 올린다.
+    /// </summary>
+    private void StartShopSounds()
+    {
+        Sfx.Loop("bgm_shop", Sfx.ShopBgm, 1.5f);
+        Sfx.Loop("amb_street_night", Sfx.StreetAmbience, 1.5f);
+        Sfx.Loop("amb_broth_boil", Sfx.KitchenAmbienceCovered, 1.5f);
+        Sfx.Loop("amb_noodle_pot", Sfx.KitchenAmbienceCovered, 1.5f);
+    }
+
+    /// <summary>
     /// 튜토리얼 손님이 먹고 그냥 가는 장면.
     ///
     /// 결과창을 안 띄운다. 낼 돈이 없으니 보여 줄 정산도 없다.
@@ -415,19 +558,48 @@ public class GameManager : MonoBehaviour
             orderScreenUI.OpenEating(1, currentHour, totalRevenue);
             yield return orderScreenUI.WaitForSlide();
 
-            if (EnsureCutscene()) yield return cutscene.Play(100f);
+            // 받자마자 한 마디. 먹기 전이라 컷신보다 앞이다.
+            orderScreenUI.ShowBubble(true);
+            orderScreenUI.StartTypingBubble(TutorialServedLine);
+            yield return ReadLine(tutorialLineSeconds);
+
+            // 천천히 들어서 후루룩, 눈 감고 한 박자.
+            //
+            // 우주도 따봉도 쓰지 않는다(EatingCutscene.PlayTutorial). 튜토리얼은 안내대로만
+            // 넣게 해 둬서 늘 100점인데, 거기서 제일 센 연출을 다 보여 주면 본편에서 진짜로
+            // 100점을 냈을 때 아무렇지 않다.
+            if (EnsureCutscene()) yield return cutscene.PlayTutorial();
             else yield return new WaitForSecondsRealtime(eatSeconds);
+
+            // 먹고 나서 하는 말. 맛 이야기로 시작해 게임을 어떻게 하는지까지 일러 준다.
+            // 마지막 마디의 버튼이 [넵] 이 아니라 [안녕히 가세요.] 이고, 그걸 눌러야 넘어간다.
+            bool spoken = false;
+            orderScreenUI.PlayLines(TutorialClosingLines, "안녕히 가세요.", () => spoken = true);
+            while (!spoken) yield return null;
 
             orderScreenUI.ShowBubble(false);
         }
 
-        // 값을 안 치르고 사라진다.
+        // 정확도 창. 튜토리얼이 끝났다는 안내가 여기에 실린다.
+        //
+        // 기획 9.2 대로 채점도 정산도 하지 않으므로 EvaluateRamen 을 부르지 않는다.
+        // 누적 매출·손님 수·평균 정확도에는 아무것도 남지 않는다.
+        if (orderResultUI != null)
+        {
+            bool closed = false;
+            orderResultUI.OpenTutorial(totalRevenue, TutorialEndLine, () => closed = true);
+            while (!closed) yield return null;
+        }
+
+        // 손님이 나간다.
         yield return FadeCustomer(0f, 1f, exitSeconds);
-        if (EnsureFootsteps()) footsteps.Walk(emptySeconds);
-        yield return new WaitForSecondsRealtime(emptySeconds);
 
         // 여기서부터 본편이다. 1일차를 열면 DayManager 가 첫 주문을 만든다.
         if (EnsureDayManager()) dayManager.StartDay();
+
+        // 본편 첫 손님도 걸어 들어온다. StartDay 가 손님을 세워 두었으므로 바로 물린다.
+        HideCustomerForEntrance();
+        yield return EnterCustomer();
     }
 
     /// <summary>5일차까지 다 팔면 온다. 하루 정산과 달리 전체 누계를 보여 준다.</summary>
@@ -522,6 +694,13 @@ public class GameManager : MonoBehaviour
             // 화면이 다 올라온 다음에 먹는 연출을 시작한다.
             yield return orderScreenUI.WaitForSlide();
 
+            // 받자마자 들이켜지 않는다. 고맙다고 한 마디 하고 한 박자 쉰 뒤에 그릇을 든다.
+            // 말풍선은 컷신이 시작하면서 스스로 치운다.
+            orderScreenUI.ShowBubble(true);
+            orderScreenUI.StartTypingBubble(ReactionLines.Served());
+            yield return ReadLine(servedLineSeconds);
+            yield return new WaitForSecondsRealtime(servedPauseSeconds);
+
             // 컷신이 없으면(빌더를 안 돌린 경우) 예전처럼 잠깐 기다리기만 한다.
             if (EnsureCutscene()) yield return cutscene.Play(accuracy);
             else yield return new WaitForSecondsRealtime(eatSeconds);
@@ -563,22 +742,173 @@ public class GameManager : MonoBehaviour
     /// </summary>
     private IEnumerator SwapCustomer(int day)
     {
-        CustomerAppearance look = orderScreenUI != null ? orderScreenUI.Appearance : null;
-
         // 나간다. 어두워지다가 지워진다.
         yield return FadeCustomer(0f, 1f, exitSeconds);
 
-        // 빈 카운터. 발소리가 이 사이를 채운다.
-        if (EnsureFootsteps()) footsteps.Walk(emptySeconds);
-        yield return new WaitForSecondsRealtime(emptySeconds);
-
-        // 새 손님을 세운다. Open 이 스러짐을 0으로 되돌리므로 같은 프레임에 다시 지운다.
-        // 코루틴은 그려지기 전에 도므로 이 사이에 손님이 번쩍이지 않는다.
+        // 새 손님을 세우고 같은 프레임에 옆으로 물러난 인영으로 만든다.
         OpenOrderScreen(day);
-        if (look != null) look.SetFade(1f);
+        HideCustomerForEntrance();
 
-        // 밝아지며 나타난다.
-        yield return FadeCustomer(1f, 0f, enterSeconds);
+        // 빈 카운터로 걸어 들어온다. 발소리가 이 사이를 채운다.
+        yield return EnterCustomer();
+    }
+
+    /// <summary>
+    /// 걸어 들어오기 직전 상태로 만들어 둔다. 옆으로 물러난 채 아직 안 보인다.
+    ///
+    /// OrderScreenUI.Open 이 스러짐을 0 으로 되돌리므로, 손님을 세운 그 프레임 안에서
+    /// 곧바로 불러야 한다. 코루틴은 화면이 그려지기 전에 도니 사이에 손님이 번쩍이지 않는다.
+    /// </summary>
+    private void HideCustomerForEntrance()
+    {
+        CustomerAppearance look = orderScreenUI != null ? orderScreenUI.Appearance : null;
+        if (look == null) return;
+
+        look.SetOffset(new Vector2(walkInDistance, -walkSink));
+        look.SetTint(0f, 0f);
+
+        // 걷는 동안에는 구멍을 메운 인영 한 장으로 선다. 원래 그림을 까맣게 칠하면
+        // 팔과 몸 사이 같은 빈 자리로 배경이 비쳐 몸에 구멍이 뚫린 것처럼 보인다.
+        look.ShowSilhouette(true);
+    }
+
+    /// <summary>
+    /// 빈 카운터로 새 손님이 걸어 들어온다.
+    ///
+    /// 검은 인영이 옆에서 한 걸음씩 다가와 자리에 서고, 거기서 제 색으로 밝아진다.
+    /// 걸음 수와 박자는 발소리(Footsteps)에서 그대로 가져온다. 소리와 그림이 어긋나면
+    /// 발소리가 손님 것이 아니라 어디 딴 데서 나는 것처럼 들린다.
+    ///
+    /// 부르기 전에 <see cref="HideCustomerForEntrance"/> 로 옆에 물러나 있어야 한다.
+    /// </summary>
+    private IEnumerator EnterCustomer()
+    {
+        CustomerAppearance look = orderScreenUI != null ? orderScreenUI.Appearance : null;
+
+        float stride = EnsureFootsteps() ? footsteps.Stride : 0.42f;
+        int steps = Mathf.Max(1, Mathf.RoundToInt(emptySeconds / stride));
+
+        // 첫 발은 늦추지 않는다. 그림의 첫 걸음과 같이 떨어져야 한 사람의 발소리로 들린다.
+        if (footsteps != null) footsteps.Walk(steps * stride, 0f);
+
+        if (look == null)
+        {
+            yield return new WaitForSecondsRealtime(steps * stride);
+            yield break;
+        }
+
+        // 걸어오는 동안에는 말이 없다. 아직 자리에 서지도 않았는데 말풍선이 뜨면
+        // 대사가 허공에서 나오는 것처럼 보인다.
+        if (orderScreenUI != null) orderScreenUI.ShowBubble(false);
+
+        for (int i = 0; i < steps; i++)
+        {
+            // 첫 걸음에 인영이 배어 나온다. 대뜸 새까만 사람이 서 있으면 튄다.
+            yield return StepIn(look, i, steps, i == 0 ? 0f : 1f, stride);
+        }
+
+        // 자리에 서면 인영을 내려놓고 제 그림이 어둠에서 밝아진다.
+        // 밝아지기 전에 바꿔야 한다 — 인영은 흰 그림이라 밝히면 하얀 덩어리가 된다.
+        // 내려 두었던 몸도 여기서 제자리로 올라온다.
+        look.ShowSilhouette(false);
+        yield return LightCustomer(look, enterSeconds);
+
+        // 다 들어온 뒤에 말을 건다.
+        //
+        // 대사를 처음부터 다시 친다. 말풍선을 감춘 채로 화면을 차려 두는 동안에도 타자기는
+        // 돌아서, 여기까지 오면 이미 다 찍혀 있다. 다시 쳐야 찍히는 것이 보인다.
+        if (orderScreenUI != null)
+        {
+            orderScreenUI.ShowBubble(true);
+            orderScreenUI.ReplayCurrentLine();
+        }
+    }
+
+    /// <summary>
+    /// 한 걸음. 자리 쪽으로 한 칸 다가오면서 몸이 한 번 떴다 내린다.
+    ///
+    /// 사인 반 주기라 걸음의 처음과 끝에서 가장 낮다. 발소리가 나는 순간이 거기라,
+    /// 소리가 날 때 발이 바닥에 닿아 있는 것으로 보인다.
+    /// </summary>
+    private IEnumerator StepIn(CustomerAppearance look, int index, int steps, float fromAlpha, float seconds)
+    {
+        float from = 1f - (float)index / steps;
+        float to = 1f - (float)(index + 1) / steps;
+
+        float elapsed = 0f;
+        while (elapsed < seconds)
+        {
+            float t = elapsed / seconds;
+
+            look.SetOffset(new Vector2(Mathf.Lerp(from, to, t) * walkInDistance,
+                                       Mathf.Sin(t * Mathf.PI) * walkBob - walkSink));
+            look.SetTint(0f, Mathf.Lerp(fromAlpha, 1f, t));
+
+            elapsed += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        look.SetOffset(new Vector2(to * walkInDistance, -walkSink));
+        look.SetTint(0f, 1f);
+    }
+
+    /// <summary>
+    /// 한 마디를 읽힌다. 정해진 시간을 기다리되, 다 읽은 사람이 누르면 바로 넘어간다.
+    ///
+    /// 한 프레임 흘리고 시작한다. 앞 연출을 넘기려고 누른 그 입력이 같은 프레임에
+    /// "다 읽었다" 로 한 번 더 읽히면 한 마디가 통째로 지나간다.
+    /// </summary>
+    private IEnumerator ReadLine(float seconds)
+    {
+        yield return null;
+
+        float elapsed = 0f;
+        while (elapsed < seconds)
+        {
+            if (Pressed()) yield break;
+
+            elapsed += Time.unscaledDeltaTime;
+            yield return null;
+        }
+    }
+
+    /// <summary>아무 키나, 또는 마우스 왼쪽.</summary>
+    private static bool Pressed()
+    {
+        Keyboard keyboard = Keyboard.current;
+        if (keyboard != null && keyboard.anyKey.wasPressedThisFrame) return true;
+
+        Mouse mouse = Mouse.current;
+        return mouse != null && mouse.leftButton.wasPressedThisFrame;
+    }
+
+    /// <summary>
+    /// 인영에서 제 색으로. 진하기는 그대로 두고 밝기만 올린다.
+    /// 걷는 동안 내려 두었던 몸도 같이 제자리로 올라온다 — 자리에 들어서는 한 동작이다.
+    /// </summary>
+    private IEnumerator LightCustomer(CustomerAppearance look, float seconds)
+    {
+        if (seconds <= 0f)
+        {
+            look.SetTint(1f, 1f);
+            look.SetOffset(Vector2.zero);
+            yield break;
+        }
+
+        float elapsed = 0f;
+        while (elapsed < seconds)
+        {
+            elapsed += Time.unscaledDeltaTime;
+
+            float t = Mathf.Clamp01(elapsed / seconds);
+            look.SetTint(t, 1f);
+            look.SetOffset(new Vector2(0f, -walkSink * (1f - t)));
+
+            yield return null;
+        }
+
+        look.SetTint(1f, 1f);
+        look.SetOffset(Vector2.zero);
     }
 
     /// <summary>손님을 from 에서 to 까지 스러뜨리거나 밝힌다. 시간은 실시간으로 잰다.</summary>
@@ -631,20 +961,62 @@ public class GameManager : MonoBehaviour
         currentHour++;
         RefreshDayLabel(dayManager.CurrentDay);
 
-        dayManager.OnCustomerServed();
+        // 오늘 마지막 손님인지 먼저 센다. OnCustomerServed() 안에서 하루가 마감되고 정산 팝업이
+        // 곧바로 열리기 때문에, 부르고 난 뒤에는 그 앞에 「주문마감!」 을 끼울 자리가 없다.
+        bool dayEnds = dayManager.CurrentCustomerCount + 1 >= dayManager.TargetCustomerCount;
+        if (dayEnds)
+        {
+            StartCoroutine(CloseShop());
+            return;
+        }
 
-        // 손님을 다 받았으면 다음 주문이 없다. 그때는 하루 마감 정산 팝업이 대신 뜬다.
-        bool dayContinues = dayManager.CurrentCustomerCount < dayManager.TargetCustomerCount;
-        if (dayContinues)
+        dayManager.OnCustomerServed();                            // 그 안에서 다음 주문이 만들어진다
+        StartCoroutine(SwapCustomer(dayManager.CurrentDay));      // 그 안에서 저장된다
+    }
+
+    /// <summary>
+    /// 오늘 장사가 끝났다.
+    ///
+    /// 마지막 손님이 스러져 나가고 → 빈 카운터를 한 박자 두고 → 「주문마감」 이 한 자씩
+    /// 박히고 → 화면이 검게 물드는 동안 글자만 남았다가 스러지고 → 정산 팝업.
+    ///
+    /// 손님을 여기서 내보내는 까닭은, 마지막 손님에게는 <see cref="SwapCustomer"/> 가
+    /// 오지 않기 때문이다. 그대로 두면 앉아 있는 손님 얼굴 위로 글자가 떨어진다.
+    ///
+    /// 팝업은 <see cref="DayManager.OnCustomerServed"/> 안에서 열린다. 그래서 그 호출을
+    /// 화면이 다 어두워질 때까지 미룬다 — 먼저 부르면 팝업이 페이드 도중에 비친다.
+    /// </summary>
+    private IEnumerator CloseShop()
+    {
+        // 마지막 손님이 나간다. 어두워지다가 지워진다(SwapCustomer 의 첫 박자와 같다).
+        yield return FadeCustomer(0f, 1f, exitSeconds);
+
+        if (closedSign != null)
         {
-            StartCoroutine(SwapCustomer(dayManager.CurrentDay));   // 그 안에서 저장된다
+            yield return new WaitForSecondsRealtime(closedSignDelay);   // 빈 카운터
+            yield return closedSign.Play();               // 주 · 문 · 마 · 감
+
+            // 화면이 검게 물드는 동안 글자는 그 위에 남아 있다가 뒤늦게 스러진다.
+            // 둘을 나란히 돌리고 늦게 끝나는 쪽까지 기다린다.
+            Coroutine black = ScreenFade.Instance != null
+                ? StartCoroutine(ScreenFade.Instance.FadeOut())
+                : null;
+
+            yield return closedSign.FadeAway();
+            if (black != null) yield return black;
         }
-        else
+        else if (ScreenFade.Instance != null)
         {
-            // 하루가 끝났다. 먹는 화면을 띄운 채로 여기까지 왔으므로 닫아야 정산 팝업만 남는다.
-            if (orderScreenUI != null) orderScreenUI.Close();
-            SaveNow();                                            // 하루가 끝난 자리도 남긴다
+            yield return ScreenFade.Instance.FadeOut();
         }
+
+        // 먹는 화면을 띄운 채로 여기까지 왔으므로 닫아야 정산 팝업만 남는다.
+        if (orderScreenUI != null) orderScreenUI.Close();
+
+        dayManager.OnCustomerServed();                            // 그 안에서 하루가 마감된다
+        SaveNow();                                                // 하루가 끝난 자리도 남긴다
+
+        if (ScreenFade.Instance != null) yield return ScreenFade.Instance.FadeIn();
     }
 
     /// <summary>인스펙터가 비어 있으면 씬에서 한 번 찾아 둔다.</summary>
