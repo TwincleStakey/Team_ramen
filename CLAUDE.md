@@ -58,9 +58,28 @@
 
 ## 파일 소유권
 
-2026-09-11 마무리 단계에 들어가면서 분담이 끝났다. **`Assets/` 아래 전 코드를 단독으로 담당한다.**
-`Assets/Scripts/Customer/` 도 포함이라 그냥 고치면 된다. 예전 「Customer/ 는 건드리지 말고
-리플렉션으로 우회」 규칙은 무효다.
+2026-09-15 에 **B(김은서)가 다시 합류했다.** 2026-09-11 의 「전 코드 단독 담당」은 끝났다.
+
+- **`Assets/Scripts/Customer/` 는 B 영역이다.** 주문 생성·대사·채점·정산·일차 진행이 여기 있다.
+- **그 밖의 `Assets/` 는 내 영역이다.** 조리·연출·UI·빌더.
+
+B 가 없던 9/08~9/11 사이에 내가 B 파일 여섯을 고쳐 두었다. 대부분 **B 영역의 기획 반영**을
+대신 한 것이라, 되돌리는 것이 아니라 B 에게 넘겨 주는 자리다.
+
+| B 파일 | 내가 넣은 것 |
+|---|---|
+| `RamenCalculator.cs` | 정가 10000 통일, `PERFECT_ACCURACY 99.95`, 3대 요소 미달 시 0%/0원 |
+| `OrderManager.cs` | `DialogueScenario` 통합, `SetScenario`(튜토리얼 주문 꽂기) |
+| `RecipeGenerator.cs` | `MAX_TOPPING_COUNT = 4` 상한 |
+| `DayManager.cs` | 손님 수 5/5/6/6/8, `OpenPopup` 에 `todayPerfect` |
+| `DailyResultUI.cs` | 「완벽한 한 그릇 : N건」, 마감 소리 |
+| `RamenType.cs` | `Noodles` → `ThickNoodles` / `ThinNoodles` |
+
+**`RamenType.cs` 는 특히 조심한다.** enum 하나를 조리·채점 양쪽이 같이 쓴다. C# 은 enum 을
+파일 나눠 쓸 수 없어서 우회할 자리가 없다. 값을 고치려면 반드시 먼저 알린다.
+
+`RecipeGenerator` 의 상한 4 와 조리 화면이 받는 최대치는 맞물려 있다. 한쪽만 바뀌면
+100% 가 불가능한 주문이 생긴다. 예전에 실제로 그랬다.
 
 asmdef 가 없어 Assets 아래 모든 스크립트가 Assembly-CSharp 하나로 묶인다는 점은 그대로다.
 같은 타입을 두 벌 만들면 CS0101 로 프로젝트 전체가 컴파일에 실패한다.
