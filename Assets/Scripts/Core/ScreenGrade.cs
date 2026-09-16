@@ -105,8 +105,10 @@ public class ScreenGrade : MonoBehaviour
         // 0 칸에서는 후처리 자체를 끈다. 효과만 끄는 것으로는 모자라다 — URP 는 후처리가
         // 켜져 있으면 활성 효과가 하나도 없어도 색보정 LUT 를 한 번 거치게 해서,
         // 옅게나마 색이 달라진다. 필터를 넣기 전 화면으로 정확히 돌아가려면 통째로 꺼야 한다.
+        // 색온도(WhiteBalance)는 프로파일에 늘 켜 있으므로 후처리 자체는 계속 돌려야 한다.
+        // 비네트는 여기 없다 — UI 까지 눌려서 그림(ScreenVignette)으로 옮겼다.
         UniversalAdditionalCameraData camera = CameraData();
-        if (camera != null) camera.renderPostProcessing = step > 0;
+        if (camera != null) camera.renderPostProcessing = true;
 
         if (volume == null) return;
 
@@ -121,5 +123,6 @@ public class ScreenGrade : MonoBehaviour
         grade.active = step > 0;
         grade.gamma.overrideState = true;
         grade.gamma.value = new Vector4(1f, 1f, 1f, GammaPerStep * step);
+
     }
 }

@@ -21,13 +21,25 @@ public class TutorialPrompt : MonoBehaviour
     [SerializeField] private Image panel;
 
     /// <summary>
-    /// 글자와 판 가장자리 사이 여백. 9-슬라이스 테두리가 사방 8이라 그보다는 넓어야
-    /// 글자가 테두리에 붙지 않는다.
+    /// 글자와 판 가장자리 사이 여백. 9-슬라이스 테두리보다는 넓어야 글자가 테에 붙지 않는다.
+    ///
+    /// 판이 어두운 반투명으로 바뀌면서(Tools/make_cooking_ui.py) 테두리가 8에서 **10** 이 됐다.
+    /// (12, 8) 이던 것을 (16, 10) 으로 올린다 — 세로 8 은 테두리보다도 좁아서 글자가 둥근
+    /// 모서리 안쪽을 밟고 있었다.
+    ///
+    /// 가로를 세로보다 넉넉히 두는 것은 글자 상자 때문이다. 갈무리는 글자 위아래에 여백을
+    /// 이미 한 칸씩 물고 있어서, 같은 값을 주면 위아래만 벌어져 보인다.
     /// </summary>
-    [SerializeField] private Vector2 padding = new Vector2(12f, 8f);
+    [SerializeField] private Vector2 padding = new Vector2(16f, 10f);
 
     /// <summary>글이 이보다 넓어지면 줄을 접는다. 화면 밖으로 나가지 않게 잡은 값이다.</summary>
     [SerializeField] private float maxTextWidth = 400f;
+
+    /// <summary>
+    /// 글 상자를 잰 폭보다 이만큼 넓게 잡는다.
+    /// 딱 맞게 잡으면 TMP 가 그릴 때 마지막 글자가 한 칸 차이로 밀려 줄이 접힌다.
+    /// </summary>
+    private const float WrapSlack = 2f;
 
     /// <summary>
     /// 조리 화면에 들어선 뒤 안내가 뜨기까지 기다리는 시간(초).
@@ -149,8 +161,19 @@ public class TutorialPrompt : MonoBehaviour
         laidOut = text;
 
         Vector2 wanted = label.GetPreferredValues(text, maxTextWidth, 0f);
-        float w = Mathf.Ceil(Mathf.Min(wanted.x, maxTextWidth));
-        float h = Mathf.Ceil(wanted.y);
+
+        // 글자 폭에 딱 맞춰 상자를 잡으면 TMP 가 그릴 때 한 칸이 모자라 줄을 접는다.
+        //
+        // **짝수로 끊는다.** 판은 가운데 정렬이라 폭이 홀수면 좌우 끝이 반칸에 걸리고,
+        // 그 자리에 9-슬라이스 테두리가 있어서 테 한 줄이 흐려진다. 여백이 좌우 같은 값이라
+        // 글 상자만 짝수로 맞추면 판도 저절로 짝수가 된다.
+        float w = Even(Mathf.Min(wanted.x + WrapSlack, maxTextWidth));
+
+        // 높이는 **실제로 그 폭에 넣어 본 뒤** 읽는다. GetPreferredValues 는 줄을 접지 않고 재서,
+        // 상자에 안 들어가는 글도 한 줄 높이를 돌려준다. 손님 말풍선이 같은 자리에서 같은 일을 겪었다.
+        label.rectTransform.sizeDelta = new Vector2(w, 0f);
+        label.ForceMeshUpdate();
+        float h = Even(label.preferredHeight);
 
         label.rectTransform.sizeDelta = new Vector2(w, h);
 
@@ -158,5 +181,11 @@ public class TutorialPrompt : MonoBehaviour
         {
             panel.rectTransform.sizeDelta = new Vector2(w + padding.x * 2f, h + padding.y * 2f);
         }
+    }
+
+    /// <summary>올림해서 짝수로 맞춘다. 반칸에 걸친 그림은 가장자리가 흐려진다.</summary>
+    private static float Even(float v)
+    {
+        return Mathf.Ceil(v * 0.5f) * 2f;
     }
 }

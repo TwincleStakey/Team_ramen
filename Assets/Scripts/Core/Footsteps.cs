@@ -9,7 +9,6 @@ using UnityEngine;
 ///
 /// 발소리는 높낮이보다 빨리 꺼지는 것이 중요하다. 여운을 남기면 발소리가 아니라 북소리가 된다.
 /// </summary>
-[RequireComponent(typeof(AudioSource))]
 public class Footsteps : MonoBehaviour
 {
     [Range(0f, 1f)]
@@ -21,17 +20,11 @@ public class Footsteps : MonoBehaviour
     /// <summary>걸어 들어오는 그림이 같은 박자를 쓰도록 내어 준다(GameManager.EnterCustomer).</summary>
     public float Stride { get { return stride; } }
 
-    private AudioSource source;
     private AudioClip[] steps;
     private Coroutine walking;
 
     private void Awake()
     {
-        source = GetComponent<AudioSource>();
-        source.playOnAwake = false;
-        source.loop = false;
-        source.spatialBlend = 0f;   // UI 소리라 거리와 무관해야 한다
-
         // 음원 파일이 있으면 두세 종을 번갈아 쓰고, 하나도 없으면 예전처럼 파형을 만든다.
         var files = new[] { Sfx.Clip("sfx_step_wood_a"), Sfx.Clip("sfx_step_wood_b"), Sfx.Clip("sfx_step_wood_c") };
         steps = System.Array.FindAll(files, c => c != null);
@@ -61,8 +54,7 @@ public class Footsteps : MonoBehaviour
         while (elapsed < seconds)
         {
             // 왼발 오른발이 똑같으면 기계처럼 들린다. 한 걸음씩 조금씩 엇갈리게 둔다.
-            source.pitch = 1f + Random.Range(-0.08f, 0.08f);
-            source.PlayOneShot(steps[Random.Range(0, steps.Length)], volume);
+            Sfx.PlayClip(steps[Random.Range(0, steps.Length)], volume, 1f + Random.Range(-0.08f, 0.08f));
 
             yield return new WaitForSecondsRealtime(stride);
             elapsed += stride;

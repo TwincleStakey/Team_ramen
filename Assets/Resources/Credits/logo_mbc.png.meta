@@ -1,0 +1,248 @@
+fileFormatVersion: 2
+guid: 02d8d77f3e85245419f55ac63c49418e
+TextureImporter:
+  internalIDToNameTable:
+  - first:
+      213: 7473204473032121479
+    second: logo_mbc_0
+  - first:
+      213: 4793805102294883769
+    second: logo_mbc_1
+  - first:
+      213: -3472150415474719192
+    second: logo_mbc_2
+  - first:
+      213: 8942869813114728283
+    second: logo_mbc_3
+  - first:
+      213: -6306130805732295863
+    second: logo_mbc_4
+  - first:
+      213: -162258061954278328
+    second: logo_mbc_5
+  - first:
+      213: 1433503362712967025
+    second: logo_mbc_6
+  - first:
+      213: 217289674706376443
+    second: logo_mbc_7
+  - first:
+      213: -3883089850863308831
+    second: logo_mbc_8
+  - first:
+      213: 5437635424654311642
+    second: logo_mbc_9
+  - first:
+      213: -8254699062502107381
+    second: logo_mbc_10
+  - first:
+      213: -6327660803035100354
+    second: logo_mbc_11
+  - first:
+      213: -6182929314570290675
+    second: logo_mbc_12
+  - first:
+      213: 2087824600591740479
+    second: logo_mbc_13
+  - first:
+      213: 1080321425746099454
+    second: logo_mbc_14
+  - first:
+      213: 3661639553474567151
+    second: logo_mbc_15
+  - first:
+      213: 8955335830974132981
+    second: logo_mbc_16
+  - first:
+      213: 3421924786328842952
+    second: logo_mbc_17
+  - first:
+      213: 5946001563233909299
+    second: logo_mbc_18
+  - first:
+      213: 8836932962984055334
+    second: logo_mbc_19
+  - first:
+      213: -1051174614471569445
+    second: logo_mbc_20
+  - first:
+      213: 7197405833456722165
+    second: logo_mbc_21
+  - first:
+      213: -361579548538305310
+    second: logo_mbc_22
+  externalObjects: {}
+  serializedVersion: 13
+  mipmaps:
+    mipMapMode: 0
+    enableMipMap: 0
+    sRGBTexture: 1
+    linearTexture: 0
+    fadeOut: 0
+    borderMipMap: 0
+    mipMapsPreserveCoverage: 0
+    alphaTestReferenceValue: 0.5
+    mipMapFadeDistanceStart: 1
+    mipMapFadeDistanceEnd: 3
+  bumpmap:
+    convertToNormalMap: 0
+    externalNormalMap: 0
+    heightScale: 0.25
+    normalMapFilter: 0
+    flipGreenChannel: 0
+  isReadable: 0
+  streamingMipmaps: 0
+  streamingMipmapsPriority: 0
+  vTOnly: 0
+  ignoreMipmapLimit: 0
+  grayScaleToAlpha: 0
+  generateCubemap: 6
+  cubemapConvolution: 0
+  seamlessCubemap: 0
+  textureFormat: 1
+  maxTextureSize: 2048
+  textureSettings:
+    serializedVersion: 2
+    filterMode: 1
+    aniso: 1
+    mipBias: 0
+    wrapU: 1
+    wrapV: 1
+    wrapW: 1
+  nPOTScale: 0
+  lightmap: 0
+  compressionQuality: 50
+  spriteMode: 1
+  spriteExtrude: 1
+  spriteMeshType: 1
+  alignment: 0
+  spritePivot: {x: 0.5, y: 0.5}
+  spritePixelsToUnits: 100
+  spriteBorder: {x: 0, y: 0, z: 0, w: 0}
+  spriteGenerateFallbackPhysicsShape: 1
+  alphaUsage: 1
+  alphaIsTransparency: 1
+  spriteTessellationDetail: -1
+  textureType: 8
+  textureShape: 1
+  singleChannelComponent: 0
+  flipbookRows: 1
+  flipbookColumns: 1
+  maxTextureSizeSet: 0
+  compressionQualitySet: 0
+  textureFormatSet: 0
+  ignorePngGamma: 0
+  applyGammaDecoding: 0
+  swizzle: 50462976
+  cookieLightType: 0
+  platformSettings:
+  - serializedVersion: 4
+    buildTarget: DefaultTexturePlatform
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 0
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: Standalone
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: Android
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: WebGL
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: iOS
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  spriteSheet:
+    serializedVersion: 2
+    sprites: []
+    outline: []
+    customData: 
+    physicsShape: []
+    bones: []
+    spriteID: 5e97eb03825dee720800000000000000
+    internalID: 0
+    vertices: []
+    indices: 
+    edges: []
+    weights: []
+    secondaryTextures: []
+    spriteCustomMetadata:
+      entries: []
+    nameFileIdTable:
+      logo_mbc_0: 7473204473032121479
+      logo_mbc_1: 4793805102294883769
+      logo_mbc_10: -8254699062502107381
+      logo_mbc_11: -6327660803035100354
+      logo_mbc_12: -6182929314570290675
+      logo_mbc_13: 2087824600591740479
+      logo_mbc_14: 1080321425746099454
+      logo_mbc_15: 3661639553474567151
+      logo_mbc_16: 8955335830974132981
+      logo_mbc_17: 3421924786328842952
+      logo_mbc_18: 5946001563233909299
+      logo_mbc_19: 8836932962984055334
+      logo_mbc_2: -3472150415474719192
+      logo_mbc_20: -1051174614471569445
+      logo_mbc_21: 7197405833456722165
+      logo_mbc_22: -361579548538305310
+      logo_mbc_3: 8942869813114728283
+      logo_mbc_4: -6306130805732295863
+      logo_mbc_5: -162258061954278328
+      logo_mbc_6: 1433503362712967025
+      logo_mbc_7: 217289674706376443
+      logo_mbc_8: -3883089850863308831
+      logo_mbc_9: 5437635424654311642
+  mipmapLimitGroupName: 
+  pSDRemoveMatte: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

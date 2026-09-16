@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -42,10 +43,87 @@ public class CustomerAppearance : MonoBehaviour
     private Sprite silhouette;
 
     /// <summary>
-    /// 목에서 입까지(칸). 잘록한 자리가 턱 바로 밑이고, 입은 그보다 이만큼 위다.
-    /// 얼굴 크기는 손님마다 거의 같아서(가장 넓은 곳 105~145칸) 한 값으로 맞는다.
+    /// 주문 결과창 대사 옆에 붙는 작은 초상. 스프라이트 이름이 그대로 말투다("Polite").
+    /// 손님 그림에서 얼굴만 잘라 48칸으로 구워 둔 것이다(Tools/make_customer_thumbs.py).
+    ///
+    /// 손님 그림을 그대로 줄여 쓰지 않는 까닭 — 그 그림은 Point 필터로 들어와 있어서
+    /// 300칸을 40칸으로 줄이면 픽셀을 골라 쓰고 나머지를 버린다. 눈 한 줄이 통째로 사라진다.
     /// </summary>
-    private const float MouthAboveNeck = 25f;
+    [SerializeField] private Sprite[] faces;
+
+    /// <summary>지금 손님 초상. 그림이 없는 말투면 null 이다.</summary>
+    public Sprite Face { get; private set; }
+
+    /// <summary>
+    /// 목에서 그릇 윗변까지(칸). 손님별 값이 없을 때 쓰는 기본값이다.
+    ///
+    /// 25 는 **입 높이**다. 입만 가리면 코가 그대로 드러나 "그릇에 입을 대고 있다" 가 아니라
+    /// "그릇을 턱 밑에 들고 있다" 로 보인다. 손님별로 잰 값이 있으면 그쪽을 쓴다.
+    /// </summary>
+    private const float SipTopAboveNeckDefault = 25f;
+
+    /// <summary>
+    /// 말투마다 그릇 윗변이 목선에서 몇 칸 위에 서야 하는가.
+    ///
+    /// 목선은 <see cref="MeasureNeck"/> 가 잡는 **가장 잘록한 줄**이고, 실제로는 턱 밑이
+    /// 아니라 옷깃 근처다. 거기서부터 재기 때문에 값이 20~40 대로 나온다.
+    ///
+    /// 재는 법 — 손님 그림에 목선부터 5칸 간격으로 눈금을 그어 놓고 코와 눈 아랫변을 읽는다.
+    /// **코끝보다 위, 눈 아랫변보다 아래**가 들어갈 자리다. 그 사이가 10칸 남짓이라 좁다.
+    /// 눈까지 덮으면 그릇을 뒤집어쓴 꼴이 되고, 코가 보이면 마시는 걸로 안 읽힌다.
+    ///
+    /// **값은 눈 아랫변에서 6칸 내린 것**이다. 코를 직접 겨누는 것보다 이쪽이 덜 틀린다 —
+    /// 코끝은 그림마다 흐릿한데 눈은 또렷해서 읽기 쉽고, 눈보다 아래면 코는 저절로 덮인다.
+    /// 안경을 쓴 둘(Grandpa·Otaku)만 안경테 아랫변 기준으로 더 내렸다.
+    ///
+    /// Polite 실측 — 입 +18, 코끝 +30, 눈 아랫변 +42. 그래서 36.
+    ///
+    /// **편차가 크다.** 29(Otaku)에서 50(Jeolla)까지 스무 칸이 넘게 벌어진다. 목선을 잡는
+    /// 자리(가장 잘록한 줄)가 그림마다 옷깃이기도 하고 턱 밑이기도 해서다. 한 값으로는 안 된다.
+    /// </summary>
+    private static readonly Dictionary<string, float> sipTopAboveNeck =
+        new Dictionary<string, float>
+        {
+            { "Child", 32f },
+            { "Chungcheong", 34f },
+            { "Emotional", 30f },
+            { "Formal", 34f },
+            { "Gourmet", 34f },
+            { "Grandma", 38f },
+            { "Grandpa", 30f },       // 안경테 아랫변에 맞춤
+            { "Gyeongsang", 38f },
+            { "Jeolla", 50f },
+            { "Military", 42f },
+            { "Otaku", 29f },         // 안경테 아랫변에 맞춤
+            { "Polite", 36f },
+            { "Sageuk", 38f },
+            { "Youtuber", 38f },
+        };
+
+    /// <summary>지금 손님의 그릇 윗변 목표(목선에서 몇 칸 위). SetPersona 가 채운다.</summary>
+    private float sipTopOffset = SipTopAboveNeckDefault;
+
+    /// <summary>
+    /// 프레임이 거꾸로 구워진 손님 — **0번이 눈 감음이고 마지막이 눈 뜸**이다.
+    ///
+    /// 열넷 중 충청 하나뿐이다. 나머지 열셋은 0번이 뜸·마지막이 감음이라, 그 전제가
+    /// <see cref="OpenEyes"/> · <see cref="CloseEyes"/> · <see cref="BuildBlinkOrder"/> 에 박혀 있었다.
+    /// 그대로 두면 충청은 **시식 컷신에서 눈을 뜬 채로 먹고**, 평소에는 감고 서 있다가 잠깐 뜬다.
+    ///
+    /// 그림을 다시 구워 순서를 맞추는 쪽이 깔끔하지만, `bake_customers.py` 가 굽는 장 순서를
+    /// 바꾸면 그 그림을 쓰는 다른 곳도 같이 틀어진다. 여기서 뒤집는 편이 좁게 끝난다.
+    ///
+    /// (전라는 두 장 다 감은 눈이라 아예 안 뜬다. 그건 뒤집어도 안 고쳐지는 그림 쪽 일이다.)
+    /// </summary>
+    private static readonly HashSet<string> reversedEyes = new HashSet<string> { "Chungcheong" };
+
+    /// <summary>지금 손님이 거꾸로 구워졌는가. SetPersona 가 채운다.</summary>
+    private bool eyesReversed;
+
+    /// <summary>눈 뜬 장·감은 장. 장 수와 순서에 상관없이 이 둘만 쓴다.</summary>
+    private int OpenFrame { get { return eyesReversed ? FrameCount - 1 : 0; } }
+
+    private int ClosedFrame { get { return eyesReversed ? 0 : FrameCount - 1; } }
 
     /// <summary>그림 아래변에서 목까지(칸). 못 쟀으면 음수.</summary>
     private float neckFromBottom = -1f;
@@ -107,6 +185,8 @@ public class CustomerAppearance : MonoBehaviour
     {
         Sprite[] frames = FramesFor(personaId);
 
+        Face = FaceFor(personaId);
+
         if (frames == null || frames.Length == 0)
         {
             if (portraitImage != null) portraitImage.enabled = false;
@@ -122,11 +202,17 @@ public class CustomerAppearance : MonoBehaviour
         idleFrames = frames;
         silhouette = SilhouetteFor(personaId);
         neckFromBottom = NeckOf(personaId, frames[0]);
-        blinkOrder = BuildBlinkOrder(frames.Length);
+
+        float tuned;
+        sipTopOffset = personaId != null && sipTopAboveNeck.TryGetValue(personaId, out tuned)
+                       ? tuned : SipTopAboveNeckDefault;
+        eyesReversed = personaId != null && reversedEyes.Contains(personaId);
+
+        blinkOrder = BuildBlinkOrder();
         idleIndex = 0;
         idleElapsed = 0f;
-        idleHold = NextHold(0);
-        ShowPortrait(frames[0]);
+        idleHold = NextHold(OpenFrame);
+        ShowPortrait(frames[OpenFrame]);
     }
 
     /// <summary>
@@ -180,9 +266,9 @@ public class CustomerAppearance : MonoBehaviour
         portraitImage.sprite = idleFrames[Mathf.Clamp(frame, 0, idleFrames.Length - 1)];
     }
 
-    public void OpenEyes() { HoldFrame(0); }
+    public void OpenEyes() { HoldFrame(OpenFrame); }
 
-    public void CloseEyes() { HoldFrame(FrameCount - 1); }
+    public void CloseEyes() { HoldFrame(ClosedFrame); }
 
     /// <summary>
     /// 걸어 들어오는 동안 인영 한 장으로 고정한다. 끄면 원래 그림으로 돌아가 다시 깜빡인다.
@@ -206,23 +292,23 @@ public class CustomerAppearance : MonoBehaviour
     }
 
     /// <summary>
-    /// 지금 손님 입 높이(자리 아래변이 0). 시식 연출이 그릇을 여기까지 들어 올린다.
+    /// 국물을 마실 때 그릇 윗변이 서야 할 높이(자리 아래변이 0).
     ///
     /// 손님마다 그림 높이도 목 자리도 달라서, 한 값을 더하면 누구에게는 그릇이 입에 못 미치고
-    /// 누구에게는 눈까지 덮인다. 실제로 열넷을 재 보니 목이 그림 아래에서 105~135 로
-    /// 서른 칸이나 벌어져 있었다.
+    /// 누구에게는 눈까지 덮인다. 실제로 열넷을 재 보니 목이 그림 아래에서 104~132 로
+    /// 서른 칸 가까이 벌어져 있었다. 그래서 목선에서 거꾸로 잰다.
     /// </summary>
-    public float MouthInSlot
+    public float SipTopInSlot
     {
         get
         {
             RectTransform rect = portraitImage.rectTransform;
-            return rect.anchoredPosition.y + neckFromBottom + MouthAboveNeck;
+            return rect.anchoredPosition.y + neckFromBottom + sipTopOffset;
         }
     }
 
-    /// <summary>입 높이를 잴 수 있는가. 못 재면 부르는 쪽이 예전 방식으로 돌아간다.</summary>
-    public bool HasMouth
+    /// <summary>목선을 잴 수 있는가. 못 재면 부르는 쪽이 예전 방식으로 돌아간다.</summary>
+    public bool HasSipTop
     {
         get { return neckFromBottom >= 0f && portraitImage != null && portraitImage.enabled; }
     }
@@ -295,6 +381,19 @@ public class CustomerAppearance : MonoBehaviour
         return null;
     }
 
+    /// <summary>초상은 파일 이름이 곧 말투라 앞머리를 붙일 것이 없다.</summary>
+    private Sprite FaceFor(string personaId)
+    {
+        if (string.IsNullOrEmpty(personaId) || faces == null) return null;
+
+        foreach (Sprite sprite in faces)
+        {
+            if (sprite != null && sprite.name == personaId) return sprite;
+        }
+
+        return null;
+    }
+
     /// <summary>고정을 풀고 다시 깜빡이게 한다. 뜬 눈에서 새로 시작한다.</summary>
     public void ReleaseFrame()
     {
@@ -310,7 +409,9 @@ public class CustomerAppearance : MonoBehaviour
     /// <summary>이 장을 얼마나 물고 있을지. 뜬 눈(0번)은 무작위로 길고, 감은 눈은 정해진 값이다.</summary>
     private float NextHold(int frame)
     {
-        if (frame != 0) return Mathf.Max(0.01f, closedSeconds);
+        // 0 번이 아니라 **눈 뜬 장**과 견준다. 충청은 0 번이 감은 장이라, 0 으로 견주면
+        // 뜬 채로 1초만 있다가 감은 채로 몇 초씩 서 있게 된다.
+        if (frame != OpenFrame) return Mathf.Max(0.01f, closedSeconds);
 
         return Random.Range(Mathf.Max(0.1f, openSecondsMin), Mathf.Max(openSecondsMin, openSecondsMax));
     }
@@ -324,11 +425,11 @@ public class CustomerAppearance : MonoBehaviour
     ///
     /// 중간 장은 그림에 그대로 남는다. 안 쓸 뿐이다.
     /// </summary>
-    private static int[] BuildBlinkOrder(int frameCount)
+    private int[] BuildBlinkOrder()
     {
-        if (frameCount < 2) return null;
+        if (FrameCount < 2) return null;
 
-        return new[] { 0, frameCount - 1 };
+        return new[] { OpenFrame, ClosedFrame };
     }
 
     /// <summary>이름 앞머리가 personaId 와 같은 프레임을 모은다.</summary>
@@ -506,6 +607,70 @@ public class CustomerAppearance : MonoBehaviour
     ///
     /// 칸은 정수로 끊는다. 픽셀아트라 반 칸에 놓이면 그림 전체가 한 겹 흐려진다.
     /// </summary>
+    /// <summary>
+    /// 카운터 밑으로 무너진다. 크레딧 마지막의 「콰당」에 쓴다.
+    ///
+    /// **돌리지 않는다.** 손님 그림은 흉상이라 아래가 평평하게 잘려 있어서, 기울이면
+    /// 그 자른 선이 드러나 사람이 아니라 판때기가 넘어가는 것으로 보인다. 실제로
+    /// 예전 연출이 −72도로 돌렸는데 그 문제가 그대로 났다.
+    ///
+    /// 대신 <see cref="SetOffset"/> 로 아래로 민다. 카운터(주문화면 카운터.png)가
+    /// 손님 **앞**에 덮인 진짜 레이어라, 내려가는 만큼 알아서 가려 준다. 눈속임이 아니다.
+    ///
+    /// 내리는 깊이 185 는 네 값을 세워 놓고 고른 것이다.
+    ///   112 구부정하다 · 150 카운터에 얼굴을 묻었다 · <b>185 쓰러졌다</b> · 220 사라졌다
+    ///
+    /// 가속하는 까닭 — 등속으로 내려가면 쓰러지는 것이 아니라 엘리베이터를 탄 것으로 보인다.
+    ///
+    /// 끝나고 제자리로 돌리지 않는다. 쓰러진 채로 있어야 그 위로 까마귀가 지나간다.
+    /// 다음 손님을 받기 전에 부르는 쪽이 <see cref="Reseat"/> 로 세워 준다.
+    /// </summary>
+    /// <param name="drop">아래로 내리는 거리.</param>
+    /// <param name="sideways">옆으로도 밀고 싶을 때. 양수면 오른쪽이다.
+    /// 0 이 아니면 「의자에서 흘러내린다」가 된다 — 다만 까마귀가 앉는 자리(x −120)와 겹치지 않게 볼 것.</param>
+    public IEnumerator Collapse(float drop = 185f, float sideways = 0f, float seconds = 0.8f)
+    {
+        // **제 크기로 되돌려 놓고 시작한다.**
+        //
+        // 시식 컷신이 손님을 확대해서 눈을 창 한가운데에 맞춘다(EatingCutscene.ApplyFraming).
+        // 그때 자리(anchoredPosition)와 **배율(localScale)** 을 둘 다 직접 박는데,
+        // SetOffset 은 자리만 건드리고 배율은 모른다. 확대가 남은 채로 쓰러지면
+        // 손님이 엉뚱한 크기·자리에 있어서, 재어 둔 깊이(185)도 까마귀 앉을 자리도 다 어긋난다.
+        //
+        // 실제로 크레딧에서 그 일이 났다 — 머리가 카운터 밑으로 사라지고, 까마귀는 아무것도
+        // 없는 허공에 앉고, 아이리스도 그 까마귀를 따라가 엉뚱한 데를 조였다.
+        var seatRect = transform as RectTransform;
+        if (seatRect != null) seatRect.localScale = Vector3.one;
+
+        CloseEyes();
+
+        // 버티다 무너지는 맛. 넘어가기 직전에 좌우로 두 칸 휘청인다.
+        SetOffset(new Vector2(2f, 0f));
+        yield return null;
+        SetOffset(new Vector2(-2f, 0f));
+        yield return null;
+
+        for (float t = 0f; t < seconds; t += Mathf.Min(Time.unscaledDeltaTime, 0.05f))
+        {
+            float k = Mathf.Pow(Mathf.Clamp01(t / seconds), 1.8f);
+            SetOffset(new Vector2(sideways * k, -drop * k));
+            yield return null;
+        }
+
+        SetOffset(new Vector2(sideways, -drop));
+        Sfx.Play("sfx_cook_drop", 0.9f, 0.7f);
+    }
+
+    /// <summary>쓰러진 손님을 제자리에 세운다. 눈도 다시 뜨고 크기도 되돌린다.</summary>
+    public void Reseat()
+    {
+        var seatRect = transform as RectTransform;
+        if (seatRect != null) seatRect.localScale = Vector3.one;
+
+        SetOffset(Vector2.zero);
+        ReleaseFrame();
+    }
+
     public void SetOffset(Vector2 offset)
     {
         if (!seatCaptured)

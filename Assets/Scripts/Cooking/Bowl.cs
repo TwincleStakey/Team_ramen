@@ -21,6 +21,15 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler
     //   4~6  육수를 부어 국물이 차오르는 구간
     //   7    면을 넣은 모습
     // RamenLayoutBuilder가 시트를 잘라 넣어 준다.
+    /// <summary>
+    /// 그릇 위로 피어오르는 김. 빌더가 꽂아 준다. 없으면 그냥 지나간다.
+    ///
+    /// 손님 앞 그릇은 김이 그림에 구워져 있는데(손님그릇.png), 그쪽은 **옆에서 본 각도**라
+    /// 그릇 뒤로 김이 올라가면 된다. 조리 화면은 위에서 내려다본 각도라 같은 방법을 쓰려면
+    /// 국물 그림을 전부 다시 구워야 한다(타래 4종 x 붓기 8칸 x 찰랑임). 김만 떼어 얹는다.
+    /// </summary>
+    [SerializeField] private SpriteLoop steam;
+
     public Sprite[] shioFrames;
     public Sprite[] shoyuFrames;
     public Sprite[] tonkotsuFrames;
@@ -727,6 +736,10 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler
     /// </summary>
     private void RefreshBowlSprite()
     {
+        // 육수가 들어간 순간부터 김이 오른다. 그릇 그림이 바뀌는 자리마다 여기를 지나므로
+        // (재료 추가·폐기·비우기) 여기 한 줄이면 켜고 끄는 자리를 따로 안 찾아도 된다.
+        ShowSteam(bowl.ContainsKey(IngredientType.Broth));
+
         Sprite[] sheet = CurrentSheet;
         if (sheet == null || sheet.Length <= NoodleFrame)
         {
@@ -766,6 +779,18 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler
         else if (bowl.ContainsKey(IngredientType.Broth)) frame = BrothLastFrame;
 
         if (sheet[frame] != null) image.sprite = sheet[frame];
+    }
+
+    /// <summary>
+    /// 김을 켜고 끈다. 오브젝트를 껐다 켜면 <see cref="SpriteLoop"/> 가 첫 장부터 다시
+    /// 시작해 김이 툭 끊겼다 이어지는데, Image 만 끄면 돌던 자리를 그대로 이어받는다.
+    /// </summary>
+    private void ShowSteam(bool on)
+    {
+        if (steam == null) return;
+
+        var image = steam.GetComponent<Image>();
+        if (image != null && image.enabled != on) image.enabled = on;
     }
 
     private void AddIcon(IngredientType type, Sprite icon, int count)

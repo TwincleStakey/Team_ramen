@@ -151,6 +151,13 @@ public class OrderManager : MonoBehaviour
     {
         currentScenario = scenario;
 
+        // 밖에서 만들어 꽂은 손님(튜토리얼)도 최근 말투 목록에 얹는다.
+        // 안 얹으면 생성기가 그 말투를 "아직 안 나온 것" 으로 알고 바로 다음 손님에 또 쓴다.
+        if (scenario != null && dialogueScenarioGenerator != null)
+        {
+            dialogueScenarioGenerator.NotePersonaUsed(scenario.personaId);
+        }
+
         if (dialogueText != null && scenario != null)
         {
             dialogueText.text = scenario.Dialogue;

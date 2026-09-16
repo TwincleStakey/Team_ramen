@@ -86,7 +86,12 @@ public class EatingCutscene : MonoBehaviour
     /// 일이 있어 조금 낮춰 잡는다.
     /// </summary>
     [SerializeField] private float perfectFrom = 99.5f;
-    [SerializeField] private float goodFrom = 90f;
+
+    /// <summary>
+    /// Good 의 아래끝. 따봉이 나오는 선이기도 하다 — 이 값 미만이면 엄지도 반짝임도 없다.
+    /// 90 은 한 가지만 어긋나도 떨어지는 선이라 85 로 내렸다.
+    /// </summary>
+    [SerializeField] private float goodFrom = 85f;
     [SerializeField] private float okayFrom = 70f;
 
     [Header("박자 길이(초)")]
@@ -155,9 +160,40 @@ public class EatingCutscene : MonoBehaviour
     [SerializeField] private int sipCount = 3;
     [SerializeField] private float sipTipSeconds = 0.4f;
 
-    /// <summary>까딱할 때 그릇이 더 올라가는 칸과 고개가 숙여지는 칸. 둘 다 아주 작아야 한다.</summary>
-    [SerializeField] private float sipTipPixels = 7f;
+    /// <summary>고개가 숙여지는 칸. 아주 작아야 한다.</summary>
     [SerializeField] private float sipNodPixels = 2f;
+
+    /// <summary>
+    /// 한 모금마다 그릇이 더 올라가는 칸.
+    ///
+    /// **3 이다. 예전 7 에서 줄였다.** 그릇 윗변을 코 바로 위에 세우게 되면서
+    /// 위로 남은 자리가 눈 아랫변까지 6칸뿐이 되었다(Polite 기준 — 그릇 +36, 눈 +42).
+    /// 7 을 그대로 두면 까딱할 때마다 눈을 물었다 놓는다.
+    ///
+    /// **0 으로 두면 김만 움직이는데, 그걸로는 박자가 안 산다.** 그릇 그림의 김은
+    /// 칸의 8%만 차 있고 평균 알파가 48/255 이라 거의 안 보이고, 그릇을 올리면
+    /// 그 김이 얼굴 위로 올라가 더 묻힌다. 한 번 그렇게 만들어 보고 되돌렸다.
+    /// </summary>
+    [SerializeField] private float sipTipPixels = 3f;
+
+    /// <summary>
+    /// 한 모금 삼킬 때와 쉴 때의 김 넘김 속도(초당 장).
+    ///
+    /// 그릇 그림(손님그릇.png)은 여덟 장짜리고 위쪽 80칸이 김이다. 평소 6장으로 천천히
+    /// 피어오르다가, **그릇이 올라가는 동안만** 빨라져 훅 오르고 내려놓으며 잦아든다.
+    ///
+    /// 김만으로 한 모금을 내 보려고 했는데 안 됐다 — 김이 칸의 8%에 평균 알파 48/255 이라
+    /// 거의 안 보이고, 그릇을 올리면 그 김이 얼굴 위로 올라가 더 묻힌다.
+    /// 박자는 <see cref="sipTipPixels"/> 가 내고 김은 거드는 쪽이다.
+    /// </summary>
+    [SerializeField] private float sipSteamFps = 20f;
+    [SerializeField] private float steamRestFps = 6f;
+
+    /// <summary>다 마신 뒤 김이 잦아드는 데 걸리는 시간(초). 뚝 끊기면 꺼진 것으로 보인다.</summary>
+    [SerializeField] private float steamFadeSeconds = 1.1f;
+
+    /// <summary>손님 앞 그릇의 김 애니메이션. 빌더가 CustomerBowl 에 붙여 둔 것을 Awake 에서 잡는다.</summary>
+    private SpriteLoop bowlSteam;
 
     /// <summary>
     /// 그릇을 다 들어 올렸을 때 그림자가 줄어드는 정도와 남는 진하기.
@@ -312,7 +348,17 @@ public class EatingCutscene : MonoBehaviour
 
     /// <summary>연출 전 손님 자리. 끝나면 여기로 돌려놓는다.</summary>
     private Vector2 homePosition;
-    private Vector3 homeScale;
+
+    /// <summary>
+    /// 손님 자리의 제 크기. 확대를 풀면 이 값으로 돌아간다.
+    ///
+    /// <b>반드시 1 로 시작해야 한다.</b> Vector3 는 기본이 (0,0,0) 인데, 이 판이 꺼진 채로
+    /// 씬이 열리면 Awake 가 안 돌아 여기가 0 인 채로 남는다. 그 상태에서 누군가
+    /// <see cref="ResetStage"/> 를 부르면(개발용 건너뛰기·크레딧이 그렇다) 손님 자리가
+    /// 크기 0 으로 눌려 **손님이 통째로 안 보인다**. 그림도 알파도 멀쩡한데 안 보여서
+    /// 한참 헤맸다.
+    /// </summary>
+    private Vector3 homeScale = Vector3.one;
 
     /// <summary>손님 앞 그릇의 제자리. 국물을 마실 때만 여기서 벗어난다.</summary>
     private Vector2 bowlHomePosition;
@@ -336,11 +382,22 @@ public class EatingCutscene : MonoBehaviour
         if (customerSlot != null)
         {
             homePosition = customerSlot.anchoredPosition;
-            homeScale = customerSlot.localScale;
+
+            // 0 이면 받지 않는다. 앞선 연출이 눌러 둔 값을 「제 크기」로 기억해 버리면
+            // 그다음부터 손님이 영영 안 보인다.
+            if (customerSlot.localScale.x > 0.001f) homeScale = customerSlot.localScale;
         }
 
         // 그릇 제자리. 들이켜다 건너뛰면 들린 채로 남으므로 여기서 기억해 둔다.
-        if (customerBowl != null) bowlHomePosition = customerBowl.anchoredPosition;
+        if (customerBowl != null)
+        {
+            bowlHomePosition = customerBowl.anchoredPosition;
+
+            // 빌더가 CustomerBowl 에 붙여 둔 김 애니메이션. 여기서 잡아 두면 빌더를 다시
+            // 돌리지 않아도 된다 — 새 직렬화 칸을 만들면 씬을 새로 구워야 한다.
+            bowlSteam = customerBowl.GetComponentInChildren<SpriteLoop>(true);
+        }
+
         if (thumb != null) thumbHome = thumb.rectTransform.anchoredPosition;
         if (sweat != null) sweatHomePosition = sweat.rectTransform.anchoredPosition;
 
@@ -396,7 +453,17 @@ public class EatingCutscene : MonoBehaviour
         while (playing)
         {
             // 마지막 컷에서는 누르는 것이 "건너뛰기"가 아니라 "다음"이다. 본체가 직접 받는다.
-            if (!skipped && !waitingForNext && WantsSkip())
+            //
+            // 건너뛸 수 없는 동안에는 게이지를 **매 프레임 접는다**. Poll 을 안 부르면 게이지가
+            // 마지막 모습 그대로 얼어붙어서, 소감 대사를 읽는 내내 오른쪽 아래에 남아 있었다.
+            if (skipped || waitingForNext)
+            {
+                if (skipGauge != null) skipGauge.Hide();
+                yield return null;
+                continue;
+            }
+
+            if (WantsSkip())
             {
                 // 연출만 건너뛴다. 여기서 통째로 끝내면 손님이 소감 한 마디 없이 사라진다.
                 StopCoroutine(body);
@@ -414,11 +481,195 @@ public class EatingCutscene : MonoBehaviour
         ResetStage();
     }
 
-    /// <summary>누르는 순간 건너뛴다. 뗄 때가 아니라 누를 때라야 반응이 빠르다.</summary>
-    private static bool WantsSkip()
+    // ── 크레딧이 쓰는 문 ──────────────────────────────────────────
+    //
+    // 크레딧은 까마귀를 「가로지르는 것」이 아니라 「앉아서 지켜보는 것」으로 쓴다.
+    // 연출 본체(PlayAwkward)는 손님 반응에 묶여 있어 그대로는 못 쓴다.
+
+    /// <summary>까마귀가 화면 밖에서 날아와 <paramref name="stopX"/> 에 멈춘다.</summary>
+    public IEnumerator CrowFlyTo(float stopX, float flySeconds)
+    {
+        if (crow == null || crowFrames == null || crowFrames.Length == 0) yield break;
+
+        float from = -0.5f * (crowSpan > 0f ? crowSpan : 960f) - crow.rectTransform.sizeDelta.x;
+
+        crow.sprite = crowFrames[0];
+        crow.enabled = true;
+
+        float flap = 0f;
+        int frame = 0;
+
+        for (float t = 0f; t < flySeconds; t += Time.unscaledDeltaTime)
+        {
+            flap += Time.unscaledDeltaTime;
+            if (flap >= crowFlapSeconds)
+            {
+                flap -= crowFlapSeconds;
+                frame = (frame + 1) % crowFrames.Length;
+                crow.sprite = crowFrames[frame];
+            }
+
+            crow.rectTransform.anchoredPosition =
+                new Vector2(Mathf.Round(Mathf.Lerp(from, stopX, t / flySeconds)), crowHeight);
+            yield return null;
+        }
+
+        crow.rectTransform.anchoredPosition = new Vector2(stopX, crowHeight);
+        crow.sprite = crowFrames[0];
+    }
+
+    /// <summary>
+    /// 어색한 침묵 한 박자. 머리 위에 `.` `.` `.` 이 하나씩 찍힌다.
+    ///
+    /// 까마귀는 안 쓴다 — 크레딧에서는 까마귀가 **마지막에** 날아와 앉으므로,
+    /// 여기서 한 번 지나가 버리면 같은 패를 두 번 쓰는 꼴이 된다.
+    ///
+    /// 무너지기 전에 이 박자를 넣으면 「갑자기 쓰러짐」이 아니라 「버티다 무너짐」이 된다.
+    /// </summary>
+    public IEnumerator SilentBeat(float perDot = 0.42f)
+    {
+        if (orderScreen != null) orderScreen.ShowBubble(false);
+        HideDots();
+
+        if (silenceDots == null) yield break;
+
+        foreach (var dot in silenceDots)
+        {
+            if (dot == null) continue;
+
+            // 오브젝트까지 켠다. enabled 만 켜면 오브젝트가 꺼져 있을 때 아무것도 안 나온다 —
+            // 실제로 씬에서 점 셋이 꺼진 채로 있어서 한참 안 나왔다.
+            dot.gameObject.SetActive(true);
+            dot.enabled = true;
+            if (sfx != null) sfx.Tick();
+
+            for (float t = 0f; t < perDot; t += Mathf.Min(Time.unscaledDeltaTime, 0.05f))
+                yield return null;
+        }
+    }
+
+    /// <summary>찍어 둔 침묵의 점을 지운다. 크레딧이 장면을 넘길 때 부른다.</summary>
+    public void ClearDots()
+    {
+        HideDots();
+    }
+
+    /// <summary>
+    /// 까마귀가 날아와 <paramref name="x"/>, <paramref name="y"/> 에 **내려앉는다.**
+    ///
+    /// <see cref="CrowFlyTo"/> 와 달리 높이가 변한다. 날아오는 동안은 제 높이(crowHeight)로
+    /// 오다가, 마지막 구간에서 목표로 **내려꽂는다.** 쭉 비스듬히 오면 착륙이 아니라
+    /// 미끄럼틀을 탄 것으로 보인다.
+    ///
+    /// 내려앉는 동안 날갯짓이 빨라진다 — 새가 속도를 죽일 때 하는 짓이다.
+    /// 앉고 나면 첫 장으로 돌아가 가만히 있는다.
+    /// </summary>
+    public IEnumerator CrowLandOn(float x, float y, float flySeconds)
+    {
+        if (crow == null || crowFrames == null || crowFrames.Length == 0) yield break;
+
+        float from = -0.5f * (crowSpan > 0f ? crowSpan : 960f) - crow.rectTransform.sizeDelta.x;
+
+        // **까마귀를 맨 앞으로 낸다.** 평소에는 손님보다 뒤에 그려진다 — 지나갈 때 얼굴을
+        // 덮지 않으려고 일부러 그렇게 만들어 두었다(빌더). 그런데 머리 위에 앉으려면 앞이어야
+        // 한다. 뒤에 두면 발이 모자에 가려 공중에 뜬 것처럼 보인다.
+        crowHomeOrder = crow.transform.GetSiblingIndex();
+        crow.transform.SetAsLastSibling();
+
+        crow.gameObject.SetActive(true);
+        crow.sprite = crowFrames[0];
+        crow.enabled = true;
+
+        // 마지막 이만큼을 내려앉는 데 쓴다.
+        const float DescendFrom = 0.55f;
+
+        float flap = 0f;
+        int frame = 0;
+        bool cawed = false;
+
+        for (float t = 0f; t < flySeconds; t += Mathf.Min(Time.unscaledDeltaTime, 0.05f))
+        {
+            float k = Mathf.Clamp01(t / flySeconds);
+
+            // 내려앉기 시작하면 날갯짓이 빨라진다.
+            float beat = k < DescendFrom ? crowFlapSeconds : crowFlapSeconds * 0.6f;
+            flap += Mathf.Min(Time.unscaledDeltaTime, 0.05f);
+            if (flap >= beat)
+            {
+                flap -= beat;
+                frame = (frame + 1) % crowFrames.Length;
+                crow.sprite = crowFrames[frame];
+            }
+
+            if (!cawed && k >= DescendFrom && sfx != null) { sfx.Caw(); cawed = true; }
+
+            // 높이는 내려앉는 구간에서만 바뀐다. 끝에서 부드럽게 멎도록 제곱근을 쓴다.
+            float dive = k < DescendFrom ? 0f : Mathf.Sqrt((k - DescendFrom) / (1f - DescendFrom));
+
+            crow.rectTransform.anchoredPosition =
+                new Vector2(Mathf.Round(Mathf.Lerp(from, x, k)),
+                            Mathf.Round(Mathf.Lerp(crowHeight, y, dive)));
+            yield return null;
+        }
+
+        crow.rectTransform.anchoredPosition = new Vector2(Mathf.Round(x), Mathf.Round(y));
+        crow.sprite = crowFrames[0];
+    }
+
+    /// <summary>앉아 있는 까마귀의 자리. 역 아이리스의 한가운데로 쓴다.</summary>
+    public Vector2 CrowSpot
+    {
+        get { return crow != null ? crow.rectTransform.anchoredPosition : Vector2.zero; }
+    }
+
+    /// <summary>까마귀를 치운다. 앞으로 냈던 것도 제자리로 돌린다.</summary>
+    public void HideCrow()
+    {
+        if (crow == null) return;
+
+        crow.enabled = false;
+
+        // CrowLandOn 이 맨 앞으로 냈다면 원래 층으로 돌려놓는다. 안 돌리면 다음에
+        // 지나가는 까마귀가 손님 얼굴 앞을 덮는다.
+        if (crowHomeOrder >= 0)
+        {
+            crow.transform.SetSiblingIndex(crowHomeOrder);
+            crowHomeOrder = -1;
+        }
+    }
+
+    /// <summary>앞으로 내기 전의 층. 음수면 아직 안 냈다는 뜻이다.</summary>
+    private int crowHomeOrder = -1;
+
+    /// <summary>오른쪽 아래 「꾹 눌러서 넘기기」 게이지. 빌더가 꽂아 준다.</summary>
+    [SerializeField] private HoldToSkip skipGauge;
+
+    /// <summary>
+    /// 연출을 **건너뛰고** 싶은가. 게이지를 다 채워야 참이 된다.
+    ///
+    /// 예전에는 한 번 누르면 그 자리에서 넘어갔다. 손이 미끄러져 한 번 눌린 것으로 100점 우주가
+    /// 통째로 날아가는 것이 아까워서 바꿨다.
+    /// 게이지가 없는 씬(빌더를 안 돌린 경우)에서는 예전처럼 한 번 누르면 넘어간다.
+    /// </summary>
+    private bool WantsSkip()
+    {
+        // 크레딧은 사람이 보고만 있는 자리다. 입력을 막아 두었어도 이쪽은 UI 를 안 거치고
+        // 키보드·마우스를 직접 읽으므로, 막이만으로는 안 막힌다. 여기서 끊는다.
+        if (CreditsSequence.Running) return false;
+
+        if (skipGauge != null) return skipGauge.Poll();
+        return WantsNext();
+    }
+
+    /// <summary>
+    /// **다음으로** 넘기는 입력. 한 번 누르면 된다.
+    ///
+    /// 건너뛰기와 갈라 둔다. 소감 대사를 넘기는 자리까지 게이지를 쓰면 한 마디마다 1.2초를
+    /// 붙잡고 있어야 하고, 붙잡은 김에 게이지가 계속 차서 결과창까지 한 번에 지나가 버린다.
+    /// </summary>
+    private static bool WantsNext()
     {
         if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame) return true;
-
         return Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame;
     }
 
@@ -460,10 +711,21 @@ public class EatingCutscene : MonoBehaviour
         // 말풍선은 연출 내내 꺼 둔다. 마지막 소감 때 FinishBeat 가 다시 켠다.
         if (orderScreen != null) orderScreen.ShowBubble(false);
 
+        // 갓 나온 그릇이라 김이 다시 진해진다. 앞 손님 컷신 끝에 옅게 해 둔 것을 되살린다.
+        // **ResetStage 에 넣으면 안 된다** — 그쪽은 컷신이 끝날 때도 돌아서, 옅어지자마자 다시 진해진다.
+        //
+        // 넘김 속도는 안 건드린다. 김은 컷신 밖에서도 늘 돌고 있어야 한다 —
+        // 그릇이 나와 있는 내내 뜨거운 것이지, 먹는 동안에만 뜨거운 것이 아니다.
+        SteamAlpha(1f);
+        SteamFps(steamRestFps);
+
         // 공통 — 국물을 마신다. 먹는 동안에는 눈을 감겨 둔다.
         if (customerAppearance != null) customerAppearance.CloseEyes();
         if (sfx != null) sfx.Slurp(slurpSeconds);
         yield return Sip();
+
+        // 후루룩 뒤 한 박자, 말풍선에 「…」. 넷 다 이걸 거치고 나서 갈린다.
+        yield return SilentBeat();
 
         switch (ReactionOf(accuracy))
         {
@@ -631,10 +893,16 @@ public class EatingCutscene : MonoBehaviour
         if (customerSlot != null) customerSlot.anchoredPosition = slotHome - new Vector2(0f, sipNodPixels);
         yield return new WaitForSecondsRealtime(sipHoldSeconds);
 
+        // 한 모금 — 그릇이 3칸 올라갔다 내려오고, 올라가는 동안 김이 같이 세진다.
+        // 들이켤 때 훅 오르고 내려놓으며 잦아든다. 김만으로는 박자가 안 살고(§sipTipPixels),
+        // 그릇만으로는 예전처럼 밋밋하다.
         for (int i = 0; i < sipCount; i++)
         {
+            SteamFps(sipSteamFps);
             yield return MoveY(customerBowl, up, up + sipTipPixels, sipTipSeconds * 0.35f, ApplyBowlShadow);
             yield return new WaitForSecondsRealtime(sipTipSeconds * 0.15f);
+
+            SteamFps(steamRestFps);
             yield return MoveY(customerBowl, up + sipTipPixels, up, sipTipSeconds * 0.35f, ApplyBowlShadow);
 
             // 한 모금 사이의 숨. 없으면 세 번이 한 번의 떨림으로 뭉친다.
@@ -644,6 +912,17 @@ public class EatingCutscene : MonoBehaviour
         if (customerSlot != null) customerSlot.anchoredPosition = slotHome;
         yield return new WaitForSecondsRealtime(sipHoldSeconds);
         yield return MoveY(customerBowl, up, bowlHome.y, sipDownSeconds, ApplyBowlShadow);
+
+        // **다 마셨다.** 김을 서서히 옅게 해서 「비운 그릇」으로 읽히게 한다.
+        //
+        // 예전에는 넘김을 0 으로 **끊었다.** 그러면 김이 그 자리에 그대로 멈춰 서서
+        // 사라지는 것이 아니라 정지화면이 됐다. 이제 김이 따로 있는 판이라 알파만 내리면
+        // 되고, 넘김은 계속 돌아서 옅어지는 동안에도 흔들린다.
+        //
+        // 빈 그릇 그림을 따로 그리는 쪽도 있었는데 안 하기로 했다 — 손님 앞 그릇은 무엇을
+        // 말아 줬든 늘 같은 한 장이고(§ServedBowlMirror), 컷신 꼬리와 손님이 나가는 동안만
+        // 잠깐 보인다. 그 자리에서 「먹었다」를 내는 데는 김이 잦아드는 것으로 충분하다.
+        yield return FadeSteam(1f, 0f, steamFadeSeconds);
 
         customerBowl.anchoredPosition = bowlHome;
         ApplyBowlShadow(bowlHome.y);
@@ -711,27 +990,40 @@ public class EatingCutscene : MonoBehaviour
         if (sfx != null) sfx.Slurp(slurpSeconds);
         yield return Sip();
 
-        // 감은 채로 한 박자 더 쉰다.
-        yield return new WaitForSecondsRealtime(silenceSeconds);
+        // 후루룩 뒤 한 박자. 머리 위 점이 아니라 말풍선에 「…」 이 뜬다.
+        // 점은 Bad 의 까마귀 연출이 쓰는 것이라, 튜토리얼에서까지 쓰면 그쪽과 뜻이 겹친다.
+        yield return SilentBeat();
 
-        // 점 셋이 한 박자씩. 까마귀는 부르지 않는다 — 그건 못 만들었을 때의 연출이다.
-        if (silenceDots != null)
+        if (customerAppearance != null) customerAppearance.ReleaseFrame();
+    }
+
+    /// <summary>먹고 나서 한 박자 말이 없는 구간. 말풍선에 「…」 만 뜬다.</summary>
+    private const string SilentLine = "…";
+
+    /// <summary>「…」 이 떠 있는 시간(초).</summary>
+    [SerializeField] private float silentBeatSeconds = 1.1f;
+
+    /// <summary>
+    /// 후루룩과 리액션 사이의 한 박자.
+    ///
+    /// 모든 손님이 거친다. 바로 리액션으로 넘어가면 맛을 본 것이 아니라 삼키자마자 반응한
+    /// 것처럼 보인다. 말풍선을 쓰는 것은 그게 "말이 없다" 를 보여 주는 자리이기 때문이다.
+    /// </summary>
+    private IEnumerator SilentBeat()
+    {
+        if (orderScreen == null)
         {
-            foreach (Image dot in silenceDots)
-            {
-                if (dot == null) continue;
-
-                dot.enabled = true;
-                if (sfx != null) sfx.Tick();
-
-                yield return new WaitForSecondsRealtime(dotGapSeconds);
-            }
+            yield return new WaitForSecondsRealtime(silentBeatSeconds);
+            yield break;
         }
 
-        yield return new WaitForSecondsRealtime(silenceTailSeconds);
+        orderScreen.ShowBubble(true);
+        orderScreen.SetBubbleLine(SilentLine);
 
-        HideDots();
-        if (customerAppearance != null) customerAppearance.ReleaseFrame();
+        yield return new WaitForSecondsRealtime(silentBeatSeconds);
+
+        // 리액션 동안에는 다시 감춘다. 마지막 소감은 FinishBeat 가 새로 켠다.
+        orderScreen.ShowBubble(false);
     }
 
     /// <summary>튜토리얼에서 점 하나와 다음 점 사이(초). 까마귀 없이 찍을 때의 박자다.</summary>
@@ -812,8 +1104,13 @@ public class EatingCutscene : MonoBehaviour
         }
 
         // 점 셋이 다 찍힌 채로 한 박자 남는다. 여기가 이 연출의 마지막 정적이다.
-
         yield return new WaitForSecondsRealtime(silenceTailSeconds);
+
+        // 그 박자가 끝나면 점도 걷는다.
+        //
+        // ResetStage 도 점을 끄지만 그건 연출이 **다 끝난 뒤**다. 그 사이에 손님 소감 대사가
+        // 도는데, 그동안 점 셋이 포렴 위에 그대로 떠 있었다. 침묵이 끝나는 자리는 여기다.
+        HideDots();
     }
 
     /// <summary>부리가 활짝 벌어지는 칸. 그 칸에서 까악 소리를 낸다(시트 0 다묾 1 반쯤 2 까악 3 반쯤).</summary>
@@ -945,7 +1242,9 @@ public class EatingCutscene : MonoBehaviour
             yield return WaitWhileTyping();
 
             // 다 찍혔으니 "다음" 버튼을 띄운다. 눌러야 넘어간다는 것이 보여야 한다.
-            orderScreen.ShowNextButton(true);
+            // 크레딧에서는 아무도 안 누르므로 띄우지 않는다 — 누를 수 없는 버튼이 떠 있으면
+            // 화면이 멈춘 것으로 보이고, 크레딧에는 UI 를 올리지 않기로 했다.
+            if (!CreditsSequence.Running) orderScreen.ShowNextButton(true);
         }
 
         // 다 찍었으면 누를 때까지 기다린다.
@@ -991,11 +1290,25 @@ public class EatingCutscene : MonoBehaviour
     {
         yield return null;
 
-        while (!WantsSkip()) yield return null;
+        // 크레딧에서는 누를 사람이 없다. 읽을 만큼 두고 스스로 넘어간다.
+        if (CreditsSequence.Running)
+        {
+            yield return new WaitForSecondsRealtime(CreditsSequence.AutoReadSeconds);
+            yield break;
+        }
+
+        // 여기서는 건너뛰기가 아니라 "다음" 이므로 게이지를 쓰지 않는다.
+        while (!WantsNext()) yield return null;
     }
 
     /// <summary>연출용 판을 전부 끄고 손님을 제자리로 돌린다.</summary>
-    private void ResetStage()
+    /// <summary>
+    /// 무대를 원래대로 돌린다. 바·확대·우주·그릇·소리까지 전부.
+    ///
+    /// 개발용 건너뛰기가 연출 도중에 코루틴을 끊을 수 있어서 밖에서도 부를 수 있게 열어 두었다.
+    /// 안 부르면 검은 바가 남거나 확대된 채로 굳는다.
+    /// </summary>
+    public void ResetStage()
     {
         waitingForNext = false;
         ShowGameUI(true);
@@ -1003,6 +1316,13 @@ public class EatingCutscene : MonoBehaviour
         SetFlash(0f);
         SetDim(0f);
         SetCosmos(false);
+
+        // 소리도 같이 되돌린다. 건너뛰면 FadeCosmos 의 나오는 쪽이 아예 안 돌아서,
+        // 우주 BGM 이 가게에 계속 깔리고 가게 BGM 은 눌린 채로 남는다. StartShopSounds 는
+        // 게임을 열 때만 도는 것이라 일차가 넘어가도 저절로 풀리지 않는다.
+        // 우주에 안 갔던 경우에는 둘 다 아무 일도 안 한다(안 돌고 있는 루프 / 이미 같은 크기).
+        Sfx.Stop("bgm_cosmos", 0.3f);
+        Sfx.SetLoopVolume("bgm_shop", Sfx.ShopBgm, 0.5f);
 
         // 들이켜다 건너뛰면 그릇이 입 앞에 뜬 채로 남는다. 그림자도 좁아진 채로 남으므로 같이 되돌린다.
         if (customerBowl != null) customerBowl.anchoredPosition = bowlHomePosition;
@@ -1016,6 +1336,7 @@ public class EatingCutscene : MonoBehaviour
 
         if (crow != null) crow.enabled = false;
         HideDots();
+        if (skipGauge != null) skipGauge.Hide();
 
         if (bolt != null) bolt.enabled = false;
         if (aura != null) aura.enabled = false;
@@ -1086,8 +1407,18 @@ public class EatingCutscene : MonoBehaviour
     /// 연출과 상관없는 판을 껐다 켠다. ResetStage 가 늘 다시 켜 주므로,
     /// 건너뛰든 중간에 멈추든 상단바가 사라진 채로 남지 않는다.
     /// </summary>
+    /// <summary>
+    /// 조리 화면 물건(상단바·그릇)을 내렸다 올린다.
+    ///
+    /// **주문 화면이 떠 있으면 도로 켜지 않는다.** 조리 상단바는 정렬 183 이라 주문 화면(180)
+    /// 보다 앞이고, 그래서 주문 화면이 열릴 때 OrderScreenUI 가 일부러 내려 둔다.
+    /// 여기서 무조건 켜면 두 화면의 「N일차」 판이 나란히 보인다 — 건너뛰기로 ResetStage 가
+    /// 일찍 돌 때 실제로 그렇게 됐다.
+    /// </summary>
     private void ShowGameUI(bool show)
     {
+        if (show && orderScreen != null && orderScreen.IsOpen) return;
+
         Show(hiddenDuringCut, show);
         if (show) Show(hiddenAtZoom, true);
     }
@@ -1324,16 +1655,75 @@ public class EatingCutscene : MonoBehaviour
     /// </summary>
     private float SipTop(float bowlHome)
     {
-        if (customerAppearance == null || !customerAppearance.HasMouth || customerSlot == null)
+        if (customerAppearance == null || !customerAppearance.HasSipTop || customerSlot == null)
             return bowlHome + sipRise;
 
-        // 손님 자리와 그릇이 같은 판에 얹혀 있어 좌표를 그대로 견줄 수 있다.
-        float mouth = customerSlot.anchoredPosition.y - customerSlot.rect.height * 0.5f
-                      + customerAppearance.MouthInSlot;
+        // 목표 높이는 손님 자리가 얹힌 판(OrderScreen) 기준이다.
+        float target = customerSlot.anchoredPosition.y - customerSlot.rect.height * 0.5f
+                       + customerAppearance.SipTopInSlot;
 
-        // 그릇은 한가운데 자리로 옮기므로, 윗변이 입에 오도록 그만큼 내려 잡는다.
-        // 제자리보다 낮게 나오면 들어 올리지 않는다 — 이미 입보다 높이 놓여 있다는 뜻이다.
-        return Mathf.Max(bowlHome, mouth - bowlRimAboveCenter);
+        // 그릇은 한가운데 자리로 옮기므로, 윗변이 그 높이에 오도록 그만큼 내려 잡는다.
+        // 제자리보다 낮게 나오면 들어 올리지 않는다 — 이미 목표보다 높이 놓여 있다는 뜻이다.
+        return Mathf.Max(bowlHome, target - bowlRimAboveCenter - BowlParentY);
+    }
+
+    /// <summary>김 넘김 속도를 바꾼다. 그릇이 없거나 김이 안 붙어 있으면 아무 일도 없다.</summary>
+    private void SteamFps(float fps)
+    {
+        if (bowlSteam != null) bowlSteam.fps = fps;
+    }
+
+    /// <summary>
+    /// 김의 진하기. 1 이면 그대로고 0 이면 안 보인다.
+    ///
+    /// **끄지 않고 옅게 만든다.** 김은 이제 그릇과 따로 있는 판이라(손님그릇_김.png)
+    /// 알파만 내리면 그릇은 그대로 남는다. 넘김은 계속 돈다 — 멈춘 김은 정지화면으로 보인다.
+    /// </summary>
+    private void SteamAlpha(float alpha)
+    {
+        if (bowlSteam == null) return;
+
+        var image = bowlSteam.GetComponent<Image>();
+        if (image == null) return;
+
+        Color c = image.color;
+        image.color = new Color(c.r, c.g, c.b, Mathf.Clamp01(alpha));
+    }
+
+    /// <summary>김을 서서히 옅게 만든다. 다 마신 뒤 「식어 간다」를 내는 데 쓴다.</summary>
+    private IEnumerator FadeSteam(float from, float to, float seconds)
+    {
+        SteamAlpha(from);
+
+        for (float t = 0f; t < seconds; t += Mathf.Min(Time.unscaledDeltaTime, 0.05f))
+        {
+            SteamAlpha(Mathf.Lerp(from, to, t / seconds));
+            yield return null;
+        }
+
+        SteamAlpha(to);
+    }
+
+    /// <summary>
+    /// 그릇이 얹힌 판이 손님 자리와 얼마나 어긋나 있는가(칸).
+    ///
+    /// **그릇과 손님 자리는 같은 판에 있지 않다.** 2026-09-14 에 그릇과 접지 그림자를
+    /// `ServedBowl` 한 자리로 묶었는데(그림자만 남는 것을 막으려고), 그 자리가 −26 에 있다.
+    /// 손님 자리는 그 바깥이라, 두 좌표를 그대로 견주면 그릇이 26칸 낮게 선다 —
+    /// 실제로 그릇 윗변이 턱은커녕 목선 아래에 서 있었다.
+    ///
+    /// 묶기 전에는 그릇이 손님 자리와 같은 판이어서 맞는 계산이었다. 그때 쓰던 식이 남은 것이다.
+    /// 판이 다시 바뀌면 0 으로 떨어져 예전 방식으로 돌아간다.
+    /// </summary>
+    private float BowlParentY
+    {
+        get
+        {
+            RectTransform parent = customerBowl != null ? customerBowl.parent as RectTransform : null;
+            if (parent == null || customerSlot == null) return 0f;
+
+            return parent.parent == customerSlot.parent ? parent.anchoredPosition.y : 0f;
+        }
     }
 
     /// <summary>흔든 자세 하나를 shakeHoldSeconds 동안 쥔다.</summary>

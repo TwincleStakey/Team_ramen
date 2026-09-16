@@ -9,7 +9,6 @@ using UnityEngine;
 ///
 /// 말투(personaId)는 읽기만 한다. 대사 생성은 B 코드가 하고 이쪽은 소리만 낸다.
 /// </summary>
-[RequireComponent(typeof(AudioSource))]
 public class DialogueBlip : MonoBehaviour
 {
     /// <summary>말투 하나의 목소리 성격.</summary>
@@ -64,17 +63,11 @@ public class DialogueBlip : MonoBehaviour
     [Range(0f, 1f)]
     [SerializeField] private float volume = 0.25f;
 
-    private AudioSource source;
     private AudioClip tone;
     private Voice voice = Fallback;
 
     private void Awake()
     {
-        source = GetComponent<AudioSource>();
-        source.playOnAwake = false;
-        source.loop = false;
-        source.spatialBlend = 0f;   // UI 소리라 거리와 무관해야 한다
-
         // 음원 파일이 있으면 그것을 쓰고, 없으면 예전처럼 사인파를 만든다.
         tone = Sfx.ClipOr("sfx_voice_blip", BuildTone);
     }
@@ -125,10 +118,7 @@ public class DialogueBlip : MonoBehaviour
     /// <summary>글자 하나가 찍힐 때 부른다.</summary>
     public void PlayTone()
     {
-        if (source == null || tone == null) return;
-
-        source.pitch = voice.Pitch + Random.Range(-voice.Jitter, voice.Jitter);
-        source.PlayOneShot(tone, volume);
+        Sfx.PlayClip(tone, volume, voice.Pitch + Random.Range(-voice.Jitter, voice.Jitter));
     }
 
     /// <summary>이 손님이 글자 하나를 찍는 데 걸리는 시간.</summary>

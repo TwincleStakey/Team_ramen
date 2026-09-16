@@ -7,7 +7,6 @@ using UnityEngine;
 /// 프로젝트에 오디오 파일이 하나도 없다. 대사 톤(DialogueBlip)·발소리(Footsteps)와 같이
 /// 파형을 코드로 만들어 쓴다.
 /// </summary>
-[RequireComponent(typeof(AudioSource))]
 public class CutsceneSfx : MonoBehaviour
 {
     [Range(0f, 1f)]
@@ -27,7 +26,6 @@ public class CutsceneSfx : MonoBehaviour
 
     private const int Rate = 44100;
 
-    private AudioSource source;
     private AudioClip slurp;
     private AudioClip thunder;
     private AudioClip caw;
@@ -36,11 +34,6 @@ public class CutsceneSfx : MonoBehaviour
 
     private void Awake()
     {
-        source = GetComponent<AudioSource>();
-        source.playOnAwake = false;
-        source.loop = false;
-        source.spatialBlend = 0f;   // UI 소리라 거리와 무관해야 한다
-
         // 음원 파일이 있으면 그것을 쓰고, 없으면 예전처럼 파형을 만든다.
         slurp = Sfx.ClipOr("sfx_cut_slurp", BuildSlurp);
         thunder = Sfx.ClipOr("sfx_cut_thunder", BuildThunder);
@@ -61,8 +54,7 @@ public class CutsceneSfx : MonoBehaviour
         while (elapsed < seconds)
         {
             // 모금마다 높낮이를 조금씩 바꾼다. 똑같으면 녹음을 반복 재생하는 티가 난다.
-            source.pitch = Random.Range(0.92f, 1.10f);
-            source.PlayOneShot(slurp, slurpVolume);
+            Sfx.PlayClip(slurp, slurpVolume, Random.Range(0.92f, 1.10f));
 
             float wait = slurpGap * Random.Range(0.85f, 1.15f);
             yield return new WaitForSecondsRealtime(wait);
@@ -74,21 +66,15 @@ public class CutsceneSfx : MonoBehaviour
 
     public void Thunder()
     {
-        if (source == null || thunder == null) return;
-
-        source.pitch = Random.Range(0.95f, 1.05f);
-        source.PlayOneShot(thunder, thunderVolume);
+        Sfx.PlayClip(thunder, thunderVolume, Random.Range(0.95f, 1.05f));
     }
 
     /// <summary>톡. 침묵의 점이 하나 찍힐 때 낸다.</summary>
     public void Tick()
     {
-        if (source == null || tick == null) return;
-
         // 셋이 연달아 찍히므로 높이를 조금씩 올려 준다. 같은 높이로 세 번이면 오류음처럼 들린다.
-        source.pitch = 1f + 0.09f * ticksSoFar;
+        Sfx.PlayClip(tick, tickVolume, 1f + 0.09f * ticksSoFar);
         ticksSoFar = (ticksSoFar + 1) % 3;
-        source.PlayOneShot(tick, tickVolume);
     }
 
     private int ticksSoFar;
@@ -122,10 +108,7 @@ public class CutsceneSfx : MonoBehaviour
     /// <summary>까악. 어색한 침묵에 까마귀가 지나갈 때 낸다.</summary>
     public void Caw()
     {
-        if (source == null || caw == null) return;
-
-        source.pitch = Random.Range(0.94f, 1.06f);
-        source.PlayOneShot(caw, cawVolume);
+        Sfx.PlayClip(caw, cawVolume, Random.Range(0.94f, 1.06f));
     }
 
     /// <summary>

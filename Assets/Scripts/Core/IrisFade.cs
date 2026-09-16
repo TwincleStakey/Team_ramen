@@ -28,6 +28,9 @@ public class IrisFade : MonoBehaviour
 
     [SerializeField] private float seconds = 1.4f;
 
+    /// <summary>멈춰 선 뒤 마저 닫는 데 적어도 쓰는 시간(초). <see cref="CloseTo"/> 참고.</summary>
+    [SerializeField] private float minShutSeconds = 0.45f;
+
     /// <summary>
     /// 구멍 반지름에 대한 판 절반 크기의 비.
     ///
@@ -49,6 +52,22 @@ public class IrisFade : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 판을 치운다. 오므린 뒤 다른 검은 판이 화면을 넘겨받았을 때 부른다.
+    ///
+    /// 안 치우면 이 판(층 320)이 화면 맨 앞에 검게 남아, 그 뒤에서 무엇을 드러내도
+    /// 아무것도 안 보인다. 자리도 가운데로 되돌린다 — 다음에 열 때 엉뚱한 데서 열린다.
+    /// </summary>
+    public void Hide()
+    {
+        if (root == null) return;
+
+        var self = root.transform as RectTransform;
+        if (self != null) self.anchoredPosition = Vector2.zero;
+
+        root.SetActive(false);
+    }
+
     /// <summary>구멍을 완전히 닫은 채로 켠다. 화면이 통째로 검어진다.</summary>
     public void Close()
     {
@@ -58,13 +77,108 @@ public class IrisFade : MonoBehaviour
         SetRadius(0f);
     }
 
+    /// <summary>
+    /// 구멍을 <paramref name="center"/> 를 한가운데로 두고 오므린다. <see cref="Open"/> 의 반대다.
+    ///
+    /// 크레딧 끝에서 쓴다 — 쓰러진 손님을 지켜보던 까마귀를 한가운데 두고 화면이 오므라든다.
+    /// 다 오므리면 화면이 통째로 검으므로, 그 뒤는 검은 판이 넘겨받으면 된다.
+    ///
+    /// 반지름은 <b>그 자리에서 제일 먼 귀퉁이까지</b>로 잡는다. 가운데가 한쪽으로 치우쳐
+    /// 있으면 화면 대각선 절반으로는 반대편 귀퉁이가 안 덮여 검은 삼각형이 남는다.
+    /// </summary>
+    /// <param name="holdRadius">
+    /// 오므리다 <b>한 번 멈춰 서는</b> 반지름. 0이면 안 멈추고 내리 닫는다.
+    /// 크레딧에서는 까마귀에 딱 맞는 크기를 준다 — 구멍이 새 모양만 하게 줄어든 데서
+    /// 잠깐 서면, 그냥 닫히는 것이 아니라 <b>그 새를 한 번 보고</b> 닫는 것으로 읽힌다.
+    /// </param>
+    /// <param name="holdSeconds">그 자리에서 서 있는 시간(초).</param>
+    public IEnumerator CloseTo(Vector2 center, float closeSeconds, float holdRadius, float holdSeconds)
+    {
+        if (root == null) yield break;
+
+        var area = transform as RectTransform;
+        if (area != null)
+        {
+            var self = root.transform as RectTransform;
+            if (self != null) self.anchoredPosition = center;
+        }
+
+        root.SetActive(true);
+        Sfx.Play("sfx_flow_iris", 0.4f);
+
+        float max = FarthestCorner(center);
+        float length = closeSeconds > 0f ? closeSeconds : seconds;
+
+        float hold = Mathf.Clamp(holdRadius, 0f, max);
+        bool pauses = holdSeconds > 0f && hold > 0f;
+
+        // 시간을 **지나는 거리에 비례해** 나눈다. 반씩 주면 남은 조금을 같은 시간에 닫느라
+        // 뒤 토막이 느려져, 멈췄다 다시 갈 때 속도가 툭 바뀐 것으로 보인다.
+        float first = pauses ? length * (max - hold) / max : length;
+
+        // 다만 뒤 토막에는 바닥을 둔다. 멈춰 서는 자리가 까마귀만 하게 작아서 비례대로면
+        // 0.12초가 나온다 — 일곱 프레임이라 닫히는 것이 안 보이고 툭 꺼진 것이 된다.
+        float rest = pauses ? Mathf.Max(length - first, minShutSeconds) : 0f;
+
+        yield return Sweep(max, pauses ? hold : 0f, first);
+
+        if (pauses)
+        {
+            SetRadius(hold);
+            yield return new WaitForSecondsRealtime(holdSeconds);
+            yield return Sweep(hold, 0f, rest);
+        }
+
+        SetRadius(0f);
+    }
+
+    /// <summary>반지름을 한 값에서 다른 값으로 민다. 시작과 끝이 느리다.</summary>
+    private IEnumerator Sweep(float from, float to, float length)
+    {
+        if (length <= 0f)
+        {
+            SetRadius(to);
+            yield break;
+        }
+
+        for (float t = 0f; t < length; t += Time.unscaledDeltaTime)
+        {
+            float k = t / length;
+            k = k * k * (3f - 2f * k);
+
+            SetRadius(Mathf.Lerp(from, to, k));
+            yield return null;
+        }
+
+        SetRadius(to);
+    }
+
+    /// <summary>그 자리에서 화면 네 귀퉁이 중 제일 먼 곳까지의 거리.</summary>
+    private float FarthestCorner(Vector2 center)
+    {
+        var area = transform as RectTransform;
+        if (area == null) return 0f;
+
+        float w = area.rect.width * 0.5f;
+        float h = area.rect.height * 0.5f;
+
+        float best = 0f;
+        for (int i = 0; i < 4; i++)
+        {
+            var corner = new Vector2(i < 2 ? -w : w, (i % 2) == 0 ? -h : h);
+            best = Mathf.Max(best, Vector2.Distance(corner, center));
+        }
+        return best;
+    }
+
     /// <summary>구멍을 넓혀 화면을 연다. 다 열리면 판을 치운다.</summary>
     public IEnumerator Open()
     {
         if (root == null) yield break;
 
         root.SetActive(true);
-        Sfx.Play("sfx_flow_iris", 0.7f);
+        // 0.7 이면 게임에서 제일 큰 소리였다. 화면이 바뀔 때마다 나는 것이라 가운데로 내린다.
+        Sfx.Play("sfx_flow_iris", 0.4f);
 
         float max = MaxRadius;
 

@@ -284,11 +284,26 @@ def sfx_cut_slurp():
 
 
 def sfx_cut_thunder():
-    sec = 1.15
+    # 이 게임에서 가장 센 한 방이어야 하는데 전체에서 두 번째로 작은 파일이었다.
+    #
+    # 크기를 정하는 것은 피크가 아니라 평균이다. 갈라지는 앞머리가 워낙 뾰족해서 피크를
+    # 혼자 다 먹으면, finish 가 그 피크를 0.5 에 맞추는 순간 정작 몸통인 우르릉이 바닥에
+    # 깔린다(크레스트 9.4 였다). 두 군데를 손본다 — 꺼지는 모양을 "훅 꺼짐"에서
+    # "울리다 잦아듦"으로 바꾸고(expdecay → 물고 있다 감쇠), 끝에서 살짝 포화시켜 남은
+    # 뾰족함을 눌러 준다. 피크는 그대로인데 평균이 세 배가 된다.
+    sec = 1.7
     nz = noise(sec, 4)
     crack = expdecay(lowpass(nz, 4000), 60.0)
-    rumble = expdecay(mul(lowpass(nz, 140), lfo(sec, 7, 0.25, 0.75)), 3.2)
-    return mix(gain(crack, 0.9), gain(rumble, 6.0))
+    rumble = env(mul(lowpass(nz, 140), lfo(sec, 7, 0.25, 0.75)), attack=0.12, hold=0.30, curve=1.4)
+    body = env(mul(lowpass(highpass(nz, 90), 500), lfo(sec, 4, 0.2, 0.8)), attack=0.05, hold=0.20, curve=1.9)
+
+    x = mix(gain(crack, 0.40), gain(rumble, 9.0), gain(body, 2.4))
+
+    # 포화. 먼저 ±1 로 맞춰 두어야 drive 가 늘 같은 세기로 걸린다.
+    m = max(abs(v) for v in x) or 1.0
+    drive = 2.5
+    d = math.tanh(drive)
+    return [math.tanh(v / m * drive) / d for v in x]
 
 
 def sfx_cut_crow():
@@ -347,13 +362,19 @@ def sfx_cook_pour_ladle():
 
 
 def sfx_cook_noodle_shake():
-    sec = 1.7  # 이음매 없이 도는 루프
+    # 소쿠리를 통 위에 올려 둔 동안 계속 도는 루프(CookingCursor.TickNoodleDrain).
+    # 1.7초에 여섯 번, 세기는 1.0/0.7 교대, 간격은 딱 등간격이었다. 이음매는 멀쩡했지만
+    # 같은 마디가 1.7초마다 토씨 하나 안 틀리고 돌아서 메트로놈처럼 들렸다.
+    # 주기를 두 배로 늘리고 세기·길이·간격을 한 번씩 흐트러뜨린다.
+    sec = 3.4
     out = silence(sec)
-    shakes = 6
+    shakes = 12
+    r = random.Random(9)
     for i in range(shakes):
-        burst = highpass(lowpass(noise(0.12, 60 + i), 2500), 400)
-        burst = env(burst, attack=0.004, curve=2.5)
-        place(out, burst, i * sec / shakes, 1.0 if i % 2 == 0 else 0.7, wrap=True)
+        burst = highpass(lowpass(noise(r.uniform(0.10, 0.15), 60 + i), r.uniform(2200, 2900)), 400)
+        burst = env(burst, attack=0.004, curve=r.uniform(2.2, 3.0))
+        # 뒤로만 민다. 앞으로 밀면 i=0 이 음수 자리로 가 꼬리에 얹힌다.
+        place(out, burst, i * sec / shakes + r.uniform(0.0, 0.05), r.uniform(0.6, 1.0), wrap=True)
     return out
 
 
@@ -447,6 +468,13 @@ def sfx_ui_result():
     place(out, pluck(midi(76), 0.3, harm=0.3, k=5.0), 0.0)
     place(out, pluck(midi(79), 0.38, harm=0.3, k=5.0), 0.12)
     return out
+
+
+def sfx_ui_count():
+    # 정산표 숫자가 올라갈 때 한 칸마다 나는 「띡」. 0.05초 간격으로 겹쳐 울려 「띠리리릭」이 된다.
+    # 40ms 를 넘기면 다음 칸과 꼬리가 겹쳐 뭉개진다.
+    x = mix(osc(0.035, 1320), gain(osc(0.035, 2640), 0.18))
+    return env(x, attack=0.001, curve=3.0)
 
 
 def sfx_ui_dayend():
@@ -723,7 +751,7 @@ ONESHOTS = [
     sfx_cook_noodle_shake, sfx_cook_noodle_pour, sfx_cook_ripple, sfx_cook_shaker,
     sfx_cook_discard, sfx_cook_serve, sfx_cook_hover,
     sfx_ui_press, sfx_ui_dialog_open, sfx_ui_note_open, sfx_ui_note_close,
-    sfx_ui_book_open, sfx_ui_book_close, sfx_ui_result, sfx_ui_dayend, sfx_ui_final,
+    sfx_ui_book_open, sfx_ui_book_close, sfx_ui_result, sfx_ui_count, sfx_ui_dayend, sfx_ui_final,
     sfx_flow_logo, sfx_flow_cascade, sfx_flow_fade, sfx_flow_iris, sfx_flow_next, sfx_flow_hint,
     sfx_flow_stamp,
     sfx_cut_bars, sfx_cut_zoom, sfx_cut_cosmos, sfx_cut_aura, sfx_cut_sweat,

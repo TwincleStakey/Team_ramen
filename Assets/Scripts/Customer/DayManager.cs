@@ -46,6 +46,14 @@ public class DayManager : MonoBehaviour
     public event Action<int, int> OnDayEnded;
     public event Action OnGameCompleted;
 
+    /// <summary>
+    /// 목표 미달로 1일차부터 다시 시작할 때 StartDay() 직전에 쏜다.
+    ///
+    /// 이쪽이 지우는 것은 RamenCalculator 의 금액뿐이다. 5일치 누계(매출·정확도·완벽 건수)는
+    /// GameManager 가 따로 들고 있어서, 이 신호가 없으면 버린 판의 매출을 그대로 안고 간다.
+    /// </summary>
+    public event Action OnGameRestart;
+
     public int CurrentDay => currentDay;
     public int CurrentCustomerCount => currentCustomerCount;
     public int TargetCustomerCount => GetTargetCustomerCount(currentDay);
@@ -209,6 +217,10 @@ public class DayManager : MonoBehaviour
         {
             ramenCalculator.ResetAllProfit();
         }
+
+        // 반드시 StartDay() 앞이어야 한다. StartDay 가 쏘는 OnDayStarted 를 받아 주문 화면이
+        // 열리면서 누적 매출을 그려 버리므로, 그 전에 GameManager 쪽 누계를 비워야 한다.
+        OnGameRestart?.Invoke();
 
         Debug.Log("[DayManager] 게임을 1일차부터 다시 시작합니다.");
         StartDay();

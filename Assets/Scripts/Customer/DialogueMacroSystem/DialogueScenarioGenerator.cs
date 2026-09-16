@@ -41,6 +41,16 @@ public class DialogueScenarioGenerator : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 여기서 만들지 않은 손님의 말투를 최근 목록에 얹는다. 튜토리얼 손님이 그렇다.
+    /// 안 얹으면 바로 다음 손님이 같은 얼굴로 나온다.
+    /// </summary>
+    public void NotePersonaUsed(string personaId)
+    {
+        if (database == null) Awake();
+        if (database != null) database.NotePersonaUsed(personaId);
+    }
+
     public DialogueScenario GenerateScenario(int currentDay)
     {
         if (database == null) Awake();

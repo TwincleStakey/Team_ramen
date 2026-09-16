@@ -2,10 +2,13 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// 조리 화면 단축키. 둘 다 누르고 있는 동안만 뜨고 떼면 사라진다.
-/// 손이 바쁜 중에 잠깐 확인하는 용도라, 펼쳐 두고 조리하게 두지 않는다.
+/// 조리 화면 단축키. 한 번 누를 때마다 여닫는 토글이다.
+/// 붙잡고 있어야 하면 한 손이 묶여서 보면서 조리를 못 한다.
 ///
-/// Tab 은 손님 주문 내역(왼쪽에서 미끄러져 나옴), B 는 기본 레시피(아래에서 올라옴)다.
+/// 상단바의 Tab·B 아이콘을 눌러도 같은 자리로 들어온다(ToggleOrderNote / ToggleRecipeBook).
+/// 키를 모르는 사람은 아이콘이 떠 있어도 누를 생각을 못 한다.
+///
+/// Tab 은 손님 주문 내역(가운데 위에서 내려옴), B 는 기본 레시피(왼쪽에서 나옴)다.
 ///
 /// 조리 중이 아닐 때는 둘 다 안 먹는다. 주문을 듣는 중이거나 결과창이 떠 있을 때
 /// 주문서가 튀어나오면 화면이 겹쳐 보이고, 애초에 그때는 볼 이유가 없다.
@@ -40,17 +43,31 @@ public class CookingHotkeys : MonoBehaviour
             return;
         }
 
-        if (orderNote != null)
-        {
-            if (keyboard.tabKey.wasPressedThisFrame) orderNote.Show(CurrentDialogue);
-            if (keyboard.tabKey.wasReleasedThisFrame) orderNote.Hide();
-        }
+        // 누르고 있는 동안이 아니라 한 번 누를 때마다 여닫는다.
+        // 붙잡고 있으면 한 손이 묶여서 보면서 조리를 못 한다.
+        if (keyboard.tabKey.wasPressedThisFrame) ToggleOrderNote();
+        if (keyboard.bKey.wasPressedThisFrame) ToggleRecipeBook();
+    }
 
-        if (recipeBook != null)
-        {
-            if (keyboard.bKey.wasPressedThisFrame) recipeBook.Show();
-            if (keyboard.bKey.wasReleasedThisFrame) recipeBook.Hide();
-        }
+    /// <summary>
+    /// 주문서를 여닫는다. Tab 키와 상단바 아이콘이 같이 쓴다.
+    ///
+    /// 아이콘 쪽에서도 이 자리를 거쳐야 「조리 중일 때만」 판정이 한 곳에만 남는다.
+    /// 아이콘이 따로 열면 주문 화면 위로 주문서가 튀어나온다.
+    /// </summary>
+    public void ToggleOrderNote()
+    {
+        if (!IsCooking || orderNote == null) return;
+        orderNote.Toggle(CurrentDialogue);
+    }
+
+    /// <summary>레시피북을 여닫는다. B 키와 상단바 아이콘이 같이 쓴다.</summary>
+    public void ToggleRecipeBook()
+    {
+        if (!IsCooking || recipeBook == null) return;
+
+        if (recipeBook.IsOpen) recipeBook.Hide();
+        else recipeBook.Show();
     }
 
     /// <summary>

@@ -3,10 +3,11 @@ using System.Collections.Generic;
 using System.Text;
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 /// <summary>
-/// B 키를 누르고 있는 동안 아래에서 올라오는 기본 레시피표.
+/// B 키로 여닫는 기본 레시피표. 왼쪽에서 미끄러져 나온다.
 ///
 /// 기본 레시피만 담는다. 예전에는 재료 속성표(색·질감 같은 키워드)도 같이 실었는데,
 /// 그게 사실상 주문 해석의 정답지라 퍼즐이 성립하지 않았다. 지금은 뺐다.
@@ -29,13 +30,34 @@ public class RecipeBookUI : MonoBehaviour
     /// <summary>아래에서 올라오는 판. 이것만 움직이고 root는 껐다 켜기만 한다.</summary>
     [SerializeField] private RectTransform panel;
 
-    /// <summary>다 올라왔을 때 판이 설 자리. 화면 아래쪽에 살짝만 띄운다 —
-    /// 판 490 높이의 아래끝이 화면 아래(-270)에서 15칸 위에 온다.</summary>
-    [SerializeField] private Vector2 shownPosition = new Vector2(0f, -10f);
+    /// <summary>판 전체를 한꺼번에 흐리게 하는 데 쓴다. 빌더가 판에 붙여 준다.</summary>
+    [SerializeField] private CanvasGroup fade;
 
-    /// <summary>숨었을 때 자리. 화면 아래 바깥이라 판이 안 보인다.
-    /// 화면 반높이 270 + 판 반높이 245 = 515 보다 아래여야 위쪽 코일이 안 비친다.</summary>
-    [SerializeField] private Vector2 hiddenPosition = new Vector2(0f, -530f);
+    /// <summary>
+    /// 마우스가 판 위에 있을 때의 진하기. 뒤에 있는 재료가 비쳐 보이는 정도.
+    ///
+    /// 책은 이제 토글이라 켜 둔 채로 조리할 수 있는데, 왼쪽 타래 3통과 육수 냄비를 통째로 덮는다.
+    /// 주문서와 같은 방식으로 비켜 준다. 값도 주문서에 맞춘다 — 둘이 다르면 손이 헷갈린다.
+    /// </summary>
+    [SerializeField, Range(0.1f, 1f)] private float hoverAlpha = 0.4f;
+
+    /// <summary>흐려지고 돌아오는 데 걸리는 시간.</summary>
+    [SerializeField] private float fadeSeconds = 0.1f;
+
+    /// <summary>다 나왔을 때 판 왼쪽에 남기는 여백.</summary>
+    private const float ShownMargin = 8f;
+
+    /// <summary>판의 세로 자리. 490 높이가 540 화면에 들어가도록 살짝 내려 앉힌다.</summary>
+    private const float ShownY = -10f;
+
+    /// <summary>
+    /// 다 나왔을 때 판이 설 자리와 숨었을 때 자리. 판 폭에서 계산한다.
+    ///
+    /// 직렬화하지 않는다. [SerializeField] 로 두면 씬에 한 벌이 따로 저장되어, 여기를 고쳐도
+    /// 화면은 옛 자리 그대로다. 실제로 아래에서 올라오던 시절 값이 씬에 남아 있었다.
+    /// </summary>
+    private Vector2 shownPosition;
+    private Vector2 hiddenPosition;
 
     /// <summary>미끄러지는 데 걸리는 시간. 0.18 은 툭 튀어나오는 느낌이라 늦췄다.</summary>
     [SerializeField] private float slideSeconds = 0.4f;
@@ -74,6 +96,7 @@ public class RecipeBookUI : MonoBehaviour
         if (closeButton != null) closeButton.onClick.AddListener(Close);
 
         FillRecipeTable();
+        LayoutPositions();
 
         // 이 스크립트는 root 바깥에 붙어 있어야 한다. 안에 있으면 자기 자신을 꺼 버린다.
         if (panel != null) panel.anchoredPosition = Snap(hiddenPosition);
@@ -85,14 +108,62 @@ public class RecipeBookUI : MonoBehaviour
         if (closeButton != null) closeButton.onClick.RemoveListener(Close);
     }
 
-    /// <summary>B를 누르고 있는 동안 아래에서 올라온다.</summary>
+    /// <summary>
+    /// 판이 숨는 자리와 나오는 자리를 판 폭에서 계산한다.
+    ///
+    /// 값을 적어 두면 판 폭을 바꿀 때마다 같이 고쳐야 한다. 주문서(OrderNoteUI)도 같은 방식이다.
+    /// </summary>
+    private void LayoutPositions()
+    {
+        if (panel == null) return;
+
+        // 판이 놓인 그룹. 캔버스와 같은 크기고 가운데가 원점이다.
+        var area = panel.parent as RectTransform;
+        float half = area != null ? area.rect.width * 0.5f : 480f;
+        float bookHalf = panel.sizeDelta.x * 0.5f;
+
+        shownPosition = new Vector2(Mathf.Round(-half + ShownMargin + bookHalf), ShownY);
+
+        // 숨을 때는 오른쪽 끝까지 화면 밖으로 나가야 한다. 조금 더 밀어 여유를 둔다.
+        hiddenPosition = new Vector2(Mathf.Round(-half - bookHalf - 8f), ShownY);
+    }
+
+    /// <summary>B를 누르면 왼쪽에서 나온다.</summary>
     public void Show()
     {
         if (root != null) root.SetActive(true);
+
+        // 흐려진 채로 닫혔다가 다시 나오면 흐린 상태로 시작한다. 나올 때는 늘 진하게.
+        if (fade != null) fade.alpha = 1f;
+
         Slide(shownPosition, false);
     }
 
-    /// <summary>떼면 다시 아래로 내려간다. 다 내려간 뒤에 끈다.</summary>
+    /// <summary>
+    /// 마우스가 판 위에 오면 흐려진다. 책이 왼쪽 타래·육수를 덮고 있어도 뒤가 비쳐 보여야 한다.
+    ///
+    /// 레이캐스트를 쓰지 않는다. 판에 raycastTarget 을 켜는 순간 판이 클릭을 가로채
+    /// 뒤에 있는 재료통을 못 만지게 된다. 그래서 상자 안에 들었는지만 좌표로 본다.
+    /// 캔버스가 Screen Space - Camera 라 그리는 카메라를 같이 넘긴다 — null 을 넘기면
+    /// 판이 화면 어디에 있는지 잘못 계산한다. (OrderNoteUI 와 같은 방식이다.)
+    /// </summary>
+    private void Update()
+    {
+        if (fade == null || root == null || !root.activeSelf) return;
+
+        bool over = panel != null && Mouse.current != null
+                    && RectTransformUtility.RectangleContainsScreenPoint(
+                           panel, Mouse.current.position.ReadValue(), CanvasPoint.CameraFor(panel));
+
+        float target = over ? hoverAlpha : 1f;
+
+        // 팝업이 떠서 게임이 멈춰 있어도 책은 반응해야 한다.
+        fade.alpha = fadeSeconds <= 0f
+            ? target
+            : Mathf.MoveTowards(fade.alpha, target, Time.unscaledDeltaTime / fadeSeconds);
+    }
+
+    /// <summary>다시 누르면 왼쪽으로 들어간다. 다 들어간 뒤에 끈다.</summary>
     public void Hide()
     {
         Slide(hiddenPosition, true);

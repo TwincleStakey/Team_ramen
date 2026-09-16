@@ -53,6 +53,71 @@ public class OrderScreenUI : MonoBehaviour
     [SerializeField] private GameObject servedBowl;
 
     /// <summary>
+    /// 손님 앞 그릇을 흐려 없앤다. 주문마감에서 손님이 스러질 때 그릇도 같이 스러져야
+    /// 빈 카운터가 된다. 그냥 끄면 그릇만 툭 사라져서 손님이 들고 간 것처럼 보인다.
+    ///
+    /// CanvasGroup 은 여기서 필요할 때 붙인다. 빌더가 미리 달아 두면 그릇을 어떻게 만들든
+    /// 따라다녀야 해서, 쓰는 쪽이 챙기는 편이 끊길 자리가 적다.
+    /// </summary>
+    public IEnumerator FadeServedBowl(float seconds)
+    {
+        if (servedBowl == null || !servedBowl.activeSelf) yield break;
+
+        var fade = servedBowl.GetComponent<CanvasGroup>();
+        if (fade == null) fade = servedBowl.AddComponent<CanvasGroup>();
+
+        float elapsed = 0f;
+        while (elapsed < seconds)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            fade.alpha = Mathf.Clamp01(1f - elapsed / seconds);
+            yield return null;
+        }
+
+        fade.alpha = 1f;               // 다음에 낼 때는 다시 진하게 나와야 한다
+        servedBowl.SetActive(false);
+    }
+
+    /// <summary>
+    /// 손님 앞 그릇을 <b>스르르 내놓는다.</b>
+    ///
+    /// 툭 나타나면 그릇이 「놓인」 것이 아니라 「원래 거기 있던」 것으로 보인다. 한 손님이
+    /// 여러 그릇을 비우는 자리(크레딧의 대식가)에서는 특히 그렇다 — 같은 그릇을 계속
+    /// 먹는 것처럼 보여서, 몇 그릇을 먹었는지가 아예 안 읽힌다.
+    ///
+    /// <see cref="OpenEating"/> 보다 <b>먼저</b> <see cref="HideServedBowl"/> 로 감춰 두어야
+    /// 한다. 그쪽이 그릇을 켜는데, 진하기를 미리 0 으로 내려 두지 않으면 한 프레임 번쩍인다.
+    /// </summary>
+    public IEnumerator FadeServedBowlIn(float seconds)
+    {
+        if (servedBowl == null) yield break;
+
+        CanvasGroup fade = ServedBowlFade();
+        fade.alpha = 0f;
+        servedBowl.SetActive(true);
+
+        for (float t = 0f; t < seconds; t += Time.unscaledDeltaTime)
+        {
+            fade.alpha = Mathf.Clamp01(t / seconds);
+            yield return null;
+        }
+
+        fade.alpha = 1f;
+    }
+
+    /// <summary>다음 그릇을 스르르 내놓을 수 있게 미리 감춰 둔다. 켜는 것은 그대로 둔다.</summary>
+    public void HideServedBowl()
+    {
+        if (servedBowl != null) ServedBowlFade().alpha = 0f;
+    }
+
+    private CanvasGroup ServedBowlFade()
+    {
+        CanvasGroup fade = servedBowl.GetComponent<CanvasGroup>();
+        return fade != null ? fade : servedBowl.AddComponent<CanvasGroup>();
+    }
+
+    /// <summary>
     /// 밤 배경(뒷판). 밀려 올라갈 때 같이 걷힌다.
     ///
     /// 이 판은 화면(640x360)이 아니라 1920x1080 이다. 16:9 가 아닌 창에서 판 바깥이
@@ -75,6 +140,36 @@ public class OrderScreenUI : MonoBehaviour
 
     /// <summary>먹는 동안 말풍선에 띄우는 말. 표정 그림이 들어오면 이 자리에 연출이 붙는다.</summary>
     private const string EatingLine = "…";
+
+    /// <summary>
+    /// 오늘 목표액. GameManager 가 하루를 열 때 넣어 준다.
+    ///
+    /// 여기서 DayManager 를 직접 찾지 않는다. 주문 화면이 일차 진행까지 알 이유가 없고,
+    /// 이미 알고 있는 쪽이 넣어 주는 편이 닿는 자리가 적다.
+    /// </summary>
+    private int goalProfit;
+
+    public void SetGoal(int goal)
+    {
+        goalProfit = goal;
+        WriteBar();
+    }
+
+    /// <summary>마지막으로 받은 일차·시각. 목표만 따로 바뀌어도 줄을 다시 쓸 수 있어야 한다.</summary>
+    private int barDay = 1;
+    private int barHour;
+    private int barRevenue;
+
+    /// <summary>
+    /// 상단 두 판을 채운다. **조리 화면 상단바와 같은 글이어야 한다** —
+    /// 두 화면을 오가는데 같은 정보가 다른 말로 떠 있으면 다른 게임의 UI 처럼 보인다.
+    /// </summary>
+    private void WriteBar()
+    {
+        if (dayTimeText != null) dayTimeText.text = barDay + "일차  " + barHour + ":00";
+        if (revenueText != null)
+            revenueText.text = "금일 수익 : " + barRevenue.ToString("N0") + " / " + goalProfit.ToString("N0") + "₩";
+    }
 
     private string[] lines = new string[0];
     private int lineIndex;
@@ -112,6 +207,14 @@ public class OrderScreenUI : MonoBehaviour
 
     /// <summary>말풍선 테두리와 글 사이 여백. 빌더가 창을 얼마나 안쪽으로 밀어 놨는지에서 읽는다.</summary>
     private Vector2 bubblePadding;
+
+    /// <summary>
+    /// 글 상자를 잰 폭보다 이만큼 넓게 잡는다.
+    ///
+    /// 딱 맞게 잡으면 TMP 가 그릴 때 마지막 글자가 한 칸 차이로 밀려 줄이 접힌다.
+    /// 2 면 충분하고, 말풍선이 눈에 띄게 넓어지지도 않는다.
+    /// </summary>
+    private const float WrapSlack = 2f;
 
     private void Awake()
     {
@@ -266,6 +369,9 @@ public class OrderScreenUI : MonoBehaviour
         if (screenRoot != null) screenRoot.SetActive(true);
         ShowCookingProps(false);
 
+        // 밤 포장마차라 가장자리를 세게 눌러도 어울린다. 조리 화면은 밝은 나무라 덜 누른다.
+        ScreenVignette.SetOrderScreen(true);
+
         // 아직 안 만들었다. 그릇은 내고 나서야 놓인다.
         if (servedBowl != null) servedBowl.SetActive(false);
 
@@ -288,11 +394,16 @@ public class OrderScreenUI : MonoBehaviour
         // 손님이 없는 동안 감춰 둔 것을 되돌린다.
         // 버튼이 말풍선 안에 있으므로 말풍선을 먼저 켜야 버튼도 살아난다.
         ShowBubble(true);
-        if (startButton != null) startButton.gameObject.SetActive(true);
+
+        // 크레딧에서는 누를 사람이 없다. 누를 수 없는 버튼이 말풍선에 떠 있으면
+        // 화면이 사람을 기다리는 것처럼 보인다 — 크레딧에는 UI 를 올리지 않는다.
+        if (startButton != null) startButton.gameObject.SetActive(!CreditsSequence.Running);
 
         // 시각은 손님이 갈 때마다 한 시간씩 흐른다. 시간 제한은 없다(기획서 5.4).
-        if (dayTimeText != null) dayTimeText.text = "영업 시간 " + day + "일차 / " + hour + " : 00";
-        if (revenueText != null) revenueText.text = "누적 수익 : " + totalRevenue.ToString("N0") + "₩";
+        barDay = day;
+        barHour = hour;
+        barRevenue = totalRevenue;
+        WriteBar();
 
         lines = SplitLines(dialogue);
         lineIndex = 0;
@@ -326,6 +437,7 @@ public class OrderScreenUI : MonoBehaviour
 
         if (screenRoot != null) screenRoot.SetActive(true);
         ShowCookingProps(false);
+        ScreenVignette.SetOrderScreen(true);
 
         // 라멘을 냈다. 이제 손님 앞에 그릇이 놓인다.
         if (servedBowl != null) servedBowl.SetActive(true);
@@ -333,8 +445,10 @@ public class OrderScreenUI : MonoBehaviour
         if (wasOpen) SnapSlide(true);
         else StartSlide(true);
 
-        if (dayTimeText != null) dayTimeText.text = "영업 시간 " + day + "일차 / " + hour + " : 00";
-        if (revenueText != null) revenueText.text = "누적 수익 : " + totalRevenue.ToString("N0") + "₩";
+        barDay = day;
+        barHour = hour;
+        barRevenue = totalRevenue;
+        WriteBar();
 
         SetBubbleLine(EatingLine);
 
@@ -459,6 +573,10 @@ public class OrderScreenUI : MonoBehaviour
         FinishTyping();
         ShowCookingProps(true);
 
+        // 조리 화면으로 내려간다. 비네트를 낮춘다 — 재료통이 화면 가장자리에 줄지어 있어서
+        // 구석이 어두우면 집기 나빠진다.
+        ScreenVignette.SetOrderScreen(false);
+
         // 꺼져 있거나 아직 살아나기 전이면 미끄러뜨릴 것도 없다.
         // Awake 에서도 이 함수를 부르는데, 거기서 코루틴을 돌리면 시작하지 못하고 끊긴다.
         if (screenRoot == null || !screenRoot.activeSelf || !gameObject.activeInHierarchy)
@@ -529,6 +647,15 @@ public class OrderScreenUI : MonoBehaviour
 
     /// <summary>마지막 마디의 버튼을 눌렀을 때 할 일. 없으면 평소대로 조리 화면으로 내려간다.</summary>
     private System.Action onLinesFinished;
+
+    /// <summary>
+    /// [시작] 을 한 번 누른 것과 같다. 개발용 손님 건너뛰기(<see cref="DevSkipCustomer"/>)가
+    /// 대사를 끝까지 밀 때 쓴다. 버튼을 직접 찾아 누르는 것보다 이름이 바뀌어도 안 끊긴다.
+    /// </summary>
+    public void PressStart()
+    {
+        Advance();
+    }
 
     private void Advance()
     {
@@ -783,8 +910,22 @@ public class OrderScreenUI : MonoBehaviour
         if (dialogueViewport == null || dialogueText == null) return;
 
         Vector2 wanted = dialogueText.GetPreferredValues(dialogueText.text, maxTextWidth, 0f);
-        float w = Mathf.Ceil(Mathf.Min(wanted.x, maxTextWidth));
-        float h = Mathf.Ceil(wanted.y);
+
+        // 글자 폭에 딱 맞춰 상자를 잡으면 TMP 가 실제로 그릴 때 한 칸이 모자라 줄을 접는다.
+        // 한 줄로 들어갈 글이 두 줄이 되는 것부터 막는다.
+        float w = Mathf.Ceil(Mathf.Min(wanted.x + WrapSlack, maxTextWidth));
+
+        // 높이는 **실제로 그 폭에 넣어 본 뒤** 읽는다.
+        //
+        // GetPreferredValues 는 줄을 접지 않고 잰다. 「앞으로 올 손님들은 취향이 각각 다르실
+        // 거에요.」는 330칸이라 326 상자에서 반드시 두 줄이 되는데도 한 줄 높이(19)를 돌려준다.
+        // 그래서 글만 두 줄로 흐르고 말풍선은 한 줄 크기로 남았다.
+        //
+        // 폭을 먼저 박고 ForceMeshUpdate 로 실제로 짜게 한 뒤 preferredHeight 를 읽으면
+        // 접힌 줄 수가 반영된 높이가 나온다.
+        dialogueText.rectTransform.sizeDelta = new Vector2(w, 0f);
+        dialogueText.ForceMeshUpdate();
+        float h = Mathf.Ceil(dialogueText.preferredHeight);
 
         dialogueViewport.sizeDelta = new Vector2(w, h);
         dialogueText.rectTransform.sizeDelta = new Vector2(w, h);

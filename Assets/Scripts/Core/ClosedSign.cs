@@ -33,10 +33,10 @@ public class ClosedSign : MonoBehaviour
     [SerializeField] private float settleSeconds = 0.07f;
 
     /// <summary>다음 자까지 쉬는 시간(초). 퉁, 퉁, 퉁, 퉁.</summary>
-    [SerializeField] private float stampGap = 0.2f;
+    [SerializeField] private float stampGap = 0.18f;
 
     [Header("머무는 구간")]
-    [SerializeField] private float holdSeconds = 0.8f;
+    [SerializeField] private float holdSeconds = 0.6f;
 
     [Header("스스스 사라지는 구간")]
 

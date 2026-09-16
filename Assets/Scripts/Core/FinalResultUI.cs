@@ -1,3 +1,4 @@
+using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -32,14 +33,36 @@ public class FinalResultUI : MonoBehaviour
         if (restartButton != null) restartButton.onClick.RemoveListener(Restart);
     }
 
+    /// <summary>
+    /// 뜨자마자 [확인]이 눌리지 않게 잠가 두는 시간(초).
+    ///
+    /// 하루 정산표의 [확인]과 이 창의 [확인]이 세로로 19칸 겹친다. 5일차 정산표를 누른
+    /// 그 자리에 이 버튼이 그대로 올라오므로, 손이 한 번 더 움직이면 성적표를 못 보고
+    /// 타이틀로 나가 버린다(Restart 는 씬을 다시 연다).
+    /// </summary>
+    private const float ArmDelay = 0.6f;
+
     public void Open(int totalRevenue, float averageAccuracy, int perfectCount, int servedCount)
     {
         if (popupRoot != null) popupRoot.SetActive(true);
+
+        if (restartButton != null)
+        {
+            restartButton.gameObject.SetActive(false);
+            StartCoroutine(ArmRestart());
+        }
         Sfx.Play("sfx_ui_final", 0.8f);
         if (titleText != null) titleText.text = "5일 영업 종료";
         if (revenueText != null) revenueText.text = "누적 매출 : " + totalRevenue.ToString("N0") + "원";
         if (accuracyText != null) accuracyText.text = "평균 정확도 : " + averageAccuracy.ToString("F1") + "%";
         if (perfectText != null) perfectText.text = "완벽한 한 그릇 : " + perfectCount + " / " + servedCount + "건";
+    }
+
+    /// <summary>잠깐 두었다 [확인]을 켠다. 그 사이 눌린 것은 아무 데도 안 닿는다.</summary>
+    private IEnumerator ArmRestart()
+    {
+        yield return new WaitForSecondsRealtime(ArmDelay);
+        if (restartButton != null) restartButton.gameObject.SetActive(true);
     }
 
     public void Close()

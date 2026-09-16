@@ -152,11 +152,13 @@ public class TutorialManager : MonoBehaviour
 
             switch (phase)
             {
+                // 「꾹 눌러」가 아니라 「열었다 닫아」다. 두 키는 이제 토글이고,
+                // 다음 단계로 넘어가는 조건도 열린 것이 아니라 **닫힌 것**이다(아래 Update).
                 case Phase.OrderNote:
-                    return "시오라멘 주문이 들어왔네요.\nTab 키를 꾹 눌러 주문서를 확인해보세요.";
+                    return "시오라멘 주문이 들어왔네요.\nTab 키를 눌러 주문서를 열고, 다시 눌러 닫아 보세요.";
 
                 case Phase.RecipeBook:
-                    return "기본 레시피를 확인해볼까요?\nB 키를 꾹 눌러 레시피북을 확인하세요.";
+                    return "기본 레시피를 확인해볼까요?\nB 키를 눌러 레시피북을 열고, 다시 눌러 닫아 보세요.";
 
                 case Phase.Ready:
                     return "레시피북을 참고해서 만들어볼까요?\n빛나는 재료를 그릇에 넣어주세요.";
@@ -200,8 +202,9 @@ public class TutorialManager : MonoBehaviour
     /// <summary>
     /// 주문서·레시피북을 열었다 닫았는지 지켜본다.
     ///
-    /// 열린 것만으로는 넘기지 않는다. Tab 은 누르고 있는 동안만 열려 있어서, 열린 순간
-    /// 넘겨 버리면 안내가 바뀌는 것을 손이 키에서 떨어지기 전에는 못 본다.
+    /// 열린 것만으로는 넘기지 않는다. 열어 둔 채로 안내가 바뀌면 방금 연 창에 가려 안 보인다.
+    /// 두 키가 토글로 바뀐 뒤로는 이것이 곧 "두 번 눌러야 넘어간다"가 되므로,
+    /// 안내 글도 「열고, 다시 눌러 닫아」로 적어 두었다(PromptText).
     /// </summary>
     private void Update()
     {

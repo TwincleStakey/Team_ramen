@@ -43,13 +43,18 @@ public class OrderNoteUI : MonoBehaviour
     /// <summary>흐려지고 돌아오는 데 걸리는 시간.</summary>
     [SerializeField] private float fadeSeconds = 0.1f;
 
-    /// <summary>다 나왔을 때 종이 왼쪽에 남기는 여백.</summary>
-    [SerializeField] private float shownMargin = 8f;
+    /// <summary>
+    /// 다 내려왔을 때 종이 위에 남기는 여백. 상단바(높이 36, 화면 위에서 6칸 아래)를 피한다.
+    ///
+    /// 직렬화하지 않는다. [SerializeField] 로 두면 씬에 한 벌이 따로 저장되어, 여기를 고쳐도
+    /// 화면은 옛 값 그대로다. 왼쪽에서 나오던 시절의 8 이 그렇게 남아 있었다.
+    /// </summary>
+    private const float ShownMargin = 50f;
 
-    /// <summary>다 나왔을 때 종이가 설 자리. 종이 폭에서 계산한다.</summary>
+    /// <summary>다 나왔을 때 종이가 설 자리. 종이 높이에서 계산한다.</summary>
     private Vector2 shownPosition;
 
-    /// <summary>숨었을 때 자리. 화면 왼쪽 바깥이라 종이가 안 보인다.</summary>
+    /// <summary>숨었을 때 자리. 화면 위 바깥이라 종이가 안 보인다.</summary>
     private Vector2 hiddenPosition;
 
     /// <summary>미끄러지는 데 걸리는 시간.</summary>
@@ -72,24 +77,28 @@ public class OrderNoteUI : MonoBehaviour
     }
 
     /// <summary>
-    /// 종이가 숨는 자리와 나오는 자리를 종이 폭에서 계산한다.
+    /// 종이가 숨는 자리와 나오는 자리를 종이 높이에서 계산한다.
     ///
-    /// 값을 적어 두면 종이 폭을 바꿀 때마다 같이 고쳐야 한다. 실제로 폭을 240에서 348로
+    /// 값을 적어 두면 종이 크기를 바꿀 때마다 같이 고쳐야 한다. 실제로 폭을 240에서 348로
     /// 넓혔더니 예전 값(-192)이 그대로 남아 종이 왼쪽이 46칸 화면 밖으로 나갔다.
+    ///
+    /// **높이는 대사 길이에 따라 매번 달라진다**(FitPaper). 그래서 Awake 한 번이 아니라
+    /// 종이를 다시 잰 뒤마다 이걸 불러야 한다. 안 부르면 짧은 주문이 화면 위로 붕 뜬다.
     /// </summary>
     private void LayoutPositions()
     {
         if (panel == null) return;
 
-        // 종이가 놓인 판. 화면과 같은 크기(640x360)고 가운데가 원점이다.
+        // 종이가 놓인 판. 캔버스와 같은 크기고 가운데가 원점이다.
         var area = panel.parent as RectTransform;
-        float half = area != null ? area.rect.width * 0.5f : 320f;
-        float paperHalf = panel.sizeDelta.x * 0.5f;
+        float half = area != null ? area.rect.height * 0.5f : 270f;
+        float paperHalf = panel.sizeDelta.y * 0.5f;
 
-        shownPosition = new Vector2(Mathf.Round(-half + shownMargin + paperHalf), 0f);
+        // 가로는 가운데. 세로는 상단바 밑에 머리를 붙이고 길이만큼 아래로 자란다.
+        shownPosition = new Vector2(0f, Mathf.Round(half - ShownMargin - paperHalf));
 
-        // 숨을 때는 오른쪽 끝까지 화면 밖으로 나가야 한다. 조금 더 밀어 여유를 둔다.
-        hiddenPosition = new Vector2(Mathf.Round(-half - paperHalf - 8f), 0f);
+        // 숨을 때는 아래끝까지 화면 위로 나가야 한다. 조금 더 밀어 여유를 둔다.
+        hiddenPosition = new Vector2(0f, Mathf.Round(half + paperHalf + 8f));
     }
 
     public void Show(string dialogue)
@@ -102,6 +111,9 @@ public class OrderNoteUI : MonoBehaviour
 
         WriteHeader();
         FitPaper();
+
+        // 종이 높이가 방금 정해졌다. 설 자리와 숨을 자리를 그 높이로 다시 잡는다.
+        LayoutPositions();
 
         // 흐려진 채로 숨었다가 다시 나오면 흐린 상태로 시작한다. 나올 때는 늘 진하게.
         if (fade != null) fade.alpha = 1f;

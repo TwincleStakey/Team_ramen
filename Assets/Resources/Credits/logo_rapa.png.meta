@@ -1,0 +1,228 @@
+fileFormatVersion: 2
+guid: 302d5f30932dd1444ad57e3016d3aae5
+TextureImporter:
+  internalIDToNameTable:
+  - first:
+      213: -7217721490632738209
+    second: logo_rapa_0
+  - first:
+      213: -7893695681205335025
+    second: logo_rapa_1
+  - first:
+      213: -3250970330591680654
+    second: logo_rapa_2
+  - first:
+      213: -3533204099143639805
+    second: logo_rapa_3
+  - first:
+      213: 4439996345278491255
+    second: logo_rapa_4
+  - first:
+      213: 1893922425813486469
+    second: logo_rapa_5
+  - first:
+      213: -5159378753469070279
+    second: logo_rapa_6
+  - first:
+      213: 7352547036096076546
+    second: logo_rapa_7
+  - first:
+      213: -2965335932267886030
+    second: logo_rapa_8
+  - first:
+      213: 4068614285873604399
+    second: logo_rapa_9
+  - first:
+      213: 3475041740930844786
+    second: logo_rapa_10
+  - first:
+      213: -451562527153438205
+    second: logo_rapa_11
+  - first:
+      213: 963020605189666012
+    second: logo_rapa_12
+  - first:
+      213: -6863960769413467213
+    second: logo_rapa_13
+  - first:
+      213: -4885420510014798154
+    second: logo_rapa_14
+  - first:
+      213: -7115129220022706350
+    second: logo_rapa_15
+  - first:
+      213: 7414661702907820658
+    second: logo_rapa_16
+  - first:
+      213: -711019239180302195
+    second: logo_rapa_17
+  externalObjects: {}
+  serializedVersion: 13
+  mipmaps:
+    mipMapMode: 0
+    enableMipMap: 0
+    sRGBTexture: 1
+    linearTexture: 0
+    fadeOut: 0
+    borderMipMap: 0
+    mipMapsPreserveCoverage: 0
+    alphaTestReferenceValue: 0.5
+    mipMapFadeDistanceStart: 1
+    mipMapFadeDistanceEnd: 3
+  bumpmap:
+    convertToNormalMap: 0
+    externalNormalMap: 0
+    heightScale: 0.25
+    normalMapFilter: 0
+    flipGreenChannel: 0
+  isReadable: 0
+  streamingMipmaps: 0
+  streamingMipmapsPriority: 0
+  vTOnly: 0
+  ignoreMipmapLimit: 0
+  grayScaleToAlpha: 0
+  generateCubemap: 6
+  cubemapConvolution: 0
+  seamlessCubemap: 0
+  textureFormat: 1
+  maxTextureSize: 2048
+  textureSettings:
+    serializedVersion: 2
+    filterMode: 1
+    aniso: 1
+    mipBias: 0
+    wrapU: 1
+    wrapV: 1
+    wrapW: 1
+  nPOTScale: 0
+  lightmap: 0
+  compressionQuality: 50
+  spriteMode: 1
+  spriteExtrude: 1
+  spriteMeshType: 1
+  alignment: 0
+  spritePivot: {x: 0.5, y: 0.5}
+  spritePixelsToUnits: 100
+  spriteBorder: {x: 0, y: 0, z: 0, w: 0}
+  spriteGenerateFallbackPhysicsShape: 1
+  alphaUsage: 1
+  alphaIsTransparency: 1
+  spriteTessellationDetail: -1
+  textureType: 8
+  textureShape: 1
+  singleChannelComponent: 0
+  flipbookRows: 1
+  flipbookColumns: 1
+  maxTextureSizeSet: 0
+  compressionQualitySet: 0
+  textureFormatSet: 0
+  ignorePngGamma: 0
+  applyGammaDecoding: 0
+  swizzle: 50462976
+  cookieLightType: 0
+  platformSettings:
+  - serializedVersion: 4
+    buildTarget: DefaultTexturePlatform
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 0
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: Standalone
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: Android
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: WebGL
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: iOS
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  spriteSheet:
+    serializedVersion: 2
+    sprites: []
+    outline: []
+    customData: 
+    physicsShape: []
+    bones: []
+    spriteID: 5e97eb03825dee720800000000000000
+    internalID: 0
+    vertices: []
+    indices: 
+    edges: []
+    weights: []
+    secondaryTextures: []
+    spriteCustomMetadata:
+      entries: []
+    nameFileIdTable:
+      logo_rapa_0: -7217721490632738209
+      logo_rapa_1: -7893695681205335025
+      logo_rapa_10: 3475041740930844786
+      logo_rapa_11: -451562527153438205
+      logo_rapa_12: 963020605189666012
+      logo_rapa_13: -6863960769413467213
+      logo_rapa_14: -4885420510014798154
+      logo_rapa_15: -7115129220022706350
+      logo_rapa_16: 7414661702907820658
+      logo_rapa_17: -711019239180302195
+      logo_rapa_2: -3250970330591680654
+      logo_rapa_3: -3533204099143639805
+      logo_rapa_4: 4439996345278491255
+      logo_rapa_5: 1893922425813486469
+      logo_rapa_6: -5159378753469070279
+      logo_rapa_7: 7352547036096076546
+      logo_rapa_8: -2965335932267886030
+      logo_rapa_9: 4068614285873604399
+  mipmapLimitGroupName: 
+  pSDRemoveMatte: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

@@ -54,20 +54,33 @@ public class OpeningNarration : MonoBehaviour
     /// <summary>
     /// 읽을 줄들.
     ///
-    /// 지금은 흐름을 보려고 넣어 둔 시험용 문장이다. 실제 도입부 글이 정해지면 여기만 갈아 끼우면 된다.
+    /// 일부러 직렬화하지 않는다. [SerializeField] 를 달아 두면 씬에 한 벌이 따로 저장되어,
+    /// 여기를 고쳐도 화면에는 옛 글이 그대로 나온다. 실제로 시험용 「냥냥」이 그렇게 남아 있었다.
+    /// 글을 바꾸려면 여기만 고치면 되고 빌더를 돌릴 필요도 없다.
     /// </summary>
-    [SerializeField]
-    private string[] lines =
+    private readonly string[] lines =
     {
-        "냥냥.",
-        "냥냥냥.",
-        "냥냥 냥냥냥.",
-        "냥냥냥 냥. 냥냥냥냥.",
-        "냥냥."
+        "모두가 하루를 마치고 집으로 돌아갈 무렵,",
+        "비로소 불을 밝히는 작은 라멘 가게가 있다.",
+        "먹고 싶은 맛을 이야기하면,",
+        "주인장이 그 말에 꼭 맞는 한 그릇을 내어 준다고.",
+        "그리고 오늘 밤..."
     };
 
     /// <summary>한 번 돌고 끝날 때까지 기다린다. GameManager 가 부른다.</summary>
     public IEnumerator Play()
+    {
+        return Play(lines);
+    }
+
+    /// <summary>
+    /// 다른 글로 같은 연출을 돌린다. 배드엔딩(목표 미달 → 다시하기)이 이걸 쓴다.
+    ///
+    /// 검은 판·타자기·▼·클릭 대기가 전부 같은 것이라 따로 만들 이유가 없다.
+    /// 끝나도 판을 안 걷는다 — 아이리스가 화면을 넘겨받은 뒤에 <see cref="Hide"/> 를 불러야
+    /// 한 프레임도 가게가 비치지 않는다. 도입부와 같은 규칙이다.
+    /// </summary>
+    public IEnumerator Play(string[] lines)
     {
         if (root == null || label == null || lines == null || lines.Length == 0) yield break;
 
@@ -132,6 +145,33 @@ public class OpeningNarration : MonoBehaviour
     {
         if (prompt != null) prompt.enabled = false;
         if (root != null) root.SetActive(false);
+    }
+
+    /// <summary>
+    /// 글자만 스르륵 지운다. 검은 판은 그대로 둔다.
+    ///
+    /// 마지막 줄을 넘기자마자 자막(「1일차」)이 뜨면 두 글 덩이가 한 화면에 겹친다.
+    /// 글자를 먼저 거두고 한 박자 쉰 뒤에 자막이 들어와야 장면이 넘어간 것으로 읽힌다.
+    /// 판을 같이 걷지 않는 것은, 걷는 순간 아직 안 열린 가게가 드러나기 때문이다.
+    /// </summary>
+    public IEnumerator FadeOutLines(float seconds)
+    {
+        if (label == null) yield break;
+
+        if (prompt != null) prompt.enabled = false;
+
+        Color from = label.color;
+        float elapsed = 0f;
+        while (elapsed < seconds)
+        {
+            elapsed += Mathf.Min(Time.unscaledDeltaTime, 0.05f);
+            float a = Mathf.Clamp01(1f - elapsed / seconds);
+            label.color = new Color(from.r, from.g, from.b, a);
+            yield return null;
+        }
+
+        label.text = string.Empty;
+        label.color = from;          // 다음에 쓸 때는 다시 진하게
     }
 
     /// <summary>

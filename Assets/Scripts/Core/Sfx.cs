@@ -17,8 +17,11 @@ public static class Sfx
 {
     private const string Folder = "Audio/";
 
-    /// <summary>효과음 동시 재생 수. 반짝임처럼 겹쳐 나는 소리를 위해 여럿 둔다.</summary>
-    private const int Voices = 8;
+    /// <summary>
+    /// 효과음 동시 재생 수. 반짝임처럼 겹쳐 나는 소리를 위해 여럿 둔다.
+    /// 대사 톤·발소리·컷신 소리도 이 자리를 같이 쓴다(<see cref="PlayClip"/>).
+    /// </summary>
+    private const int Voices = 12;
 
     // ── 배경음 크기 표 ──
     // 켜는 곳(GameManager)과 줄이는 곳(OrderScreenUI·EatingCutscene)이 서로 다른 파일이라
@@ -31,6 +34,100 @@ public static class Sfx
     public const float KitchenAmbienceCovered = 0.08f;  // 주문 화면이 덮었을 때
     public const float CosmosBgm = 0.5f;
 
+    // ── 사용자 볼륨 ──
+    //
+    // 위의 표는 **연출이 정한 크기**다(우주 컷 동안 가게 음악을 0.06 으로 줄이는 식).
+    // 여기 두 배율은 **사용자가 정하는 크기**다. 둘을 곱해서 실제 크기가 나온다.
+    //
+    // 눈금 0~10 으로 끊는다. 화면 필터(ScreenGrade.MaxStep)와 같은 눈금이라 설정창이
+    // 세 줄을 같은 위젯 하나로 그린다. 기본은 10(=1.0)이라 **아무것도 안 건드린 상태의
+    // 소리는 예전과 똑같다.**
+    //
+    // 어느 배율을 타는지는 **이름 앞머리**로 가른다. bgm_ 으로 시작하면 배경음(가게·타이틀·
+    // 우주·크레딧), 나머지는 전부 효과음이다. 거리·주방 앰비언스(amb_)도 효과음 쪽이다 —
+    // 음악이 아니라 현장음이라 효과음을 줄일 때 같이 줄어야 맞는다.
+    public const int MaxVolumeStep = 10;
+
+    private const string BgmPrefKey = "audio.bgm";
+    private const string SfxPrefKey = "audio.sfx";
+    private const string BgmPrefix = "bgm_";
+
+    private static int bgmStep = MaxVolumeStep;
+    private static int sfxStep = MaxVolumeStep;
+    private static bool volumesLoaded;
+
+    /// <summary>배경음 눈금(0~10). 바꾸면 돌고 있는 루프에 바로 먹는다.</summary>
+    public static int BgmStep
+    {
+        get { LoadVolumes(); return bgmStep; }
+        set
+        {
+            LoadVolumes();
+            int clamped = Mathf.Clamp(value, 0, MaxVolumeStep);
+            if (clamped == bgmStep) return;
+
+            bgmStep = clamped;
+            PlayerPrefs.SetInt(BgmPrefKey, bgmStep);
+            PlayerPrefs.Save();
+            ApplyLoopVolumes();
+        }
+    }
+
+    /// <summary>효과음 눈금(0~10). 다음에 나는 소리부터 먹는다.</summary>
+    public static int SfxStep
+    {
+        get { LoadVolumes(); return sfxStep; }
+        set
+        {
+            LoadVolumes();
+            int clamped = Mathf.Clamp(value, 0, MaxVolumeStep);
+            if (clamped == sfxStep) return;
+
+            sfxStep = clamped;
+            PlayerPrefs.SetInt(SfxPrefKey, sfxStep);
+            PlayerPrefs.Save();
+            ApplyLoopVolumes();      // 앰비언스 루프도 효과음 쪽이라 같이 다시 먹인다
+        }
+    }
+
+    private static void LoadVolumes()
+    {
+        if (volumesLoaded) return;
+        volumesLoaded = true;
+
+        bgmStep = Mathf.Clamp(PlayerPrefs.GetInt(BgmPrefKey, MaxVolumeStep), 0, MaxVolumeStep);
+        sfxStep = Mathf.Clamp(PlayerPrefs.GetInt(SfxPrefKey, MaxVolumeStep), 0, MaxVolumeStep);
+    }
+
+    /// <summary>그 이름이 타는 배율. 연출이 정한 크기에 이걸 곱한다.</summary>
+    private static float ScaleFor(string name)
+    {
+        LoadVolumes();
+        bool bgm = !string.IsNullOrEmpty(name) && name.StartsWith(BgmPrefix);
+        return (bgm ? bgmStep : sfxStep) / (float)MaxVolumeStep;
+    }
+
+    /// <summary>
+    /// 돌고 있는 루프에 바뀐 배율을 다시 먹인다.
+    ///
+    /// 루프는 한 번 켜면 계속 돌므로, 설정을 바꾼 순간 다시 먹이지 않으면 다음에 누가
+    /// <see cref="SetLoopVolume"/> 을 부를 때까지 옛 크기로 남는다. 그래서 **부탁받은
+    /// 크기**(연출이 정한 값)를 따로 기억해 둔다 — 그게 없으면 이미 배율이 곱해진 값에
+    /// 또 곱하게 된다.
+    /// </summary>
+    private static void ApplyLoopVolumes()
+    {
+        if (player == null) return;
+
+        foreach (KeyValuePair<string, AudioSource> pair in player.Loops)
+        {
+            float asked;
+            if (!player.Requested.TryGetValue(pair.Key, out asked)) continue;
+
+            player.Fade(pair.Key, pair.Value, asked * ScaleFor(pair.Key), 0.15f, false);
+        }
+    }
+
     private static Player player;
     private static readonly Dictionary<string, AudioClip> clips = new Dictionary<string, AudioClip>();
     private static readonly HashSet<string> missing = new HashSet<string>();
@@ -42,20 +139,47 @@ public static class Sfx
         player = null;
         clips.Clear();
         missing.Clear();
+
+        // 볼륨도 다시 읽게 둔다. PlayerPrefs 는 살아 있지만 여기 캐시가 옛 값이면
+        // 설정을 바꾸고 Play 를 다시 눌렀을 때 바뀌기 전 크기로 시작한다.
+        volumesLoaded = false;
     }
 
     /// <summary>효과음 한 번. jitter 는 높낮이를 ±얼마나 흔들지(0.08 이면 ±8%).</summary>
     public static void Play(string name, float volume = 1f, float pitch = 1f, float jitter = 0f)
     {
-        AudioClip clip = Clip(name);
+        // 배율은 PlayClip 이 한 번만 곱한다. 여기서도 곱하면 두 번 걸린다.
+        PlayClip(Clip(name), volume, pitch + Random.Range(-jitter, jitter));
+    }
+
+    /// <summary>
+    /// 이미 손에 든 클립을 한 번 낸다. 파형을 코드로 만들어 두는 쪽(대사 톤·발소리·컷신)이 쓴다.
+    ///
+    /// 자기 AudioSource 에 직접 내면 안 된다 — <c>pitch</c> 는 그 소스에서 아직 울리는 중인
+    /// 소리에까지 같이 걸려서 앞 소리의 음까지 틀어 놓는다. 대사 톤은 40ms 마다 60ms 짜리를
+    /// 쏘므로 늘 겹친다. 여기로 오면 소리마다 다른 자리를 받는다.
+    /// </summary>
+    public static void PlayClip(AudioClip clip, float volume = 1f, float pitch = 1f)
+    {
         if (clip == null) return;
 
         Player p = Get();
         if (p == null) return;
 
+        // 사용자 효과음 배율. 여기가 효과음이 나는 유일한 길목이라 한 군데만 곱하면 된다
+        // (Play 도 결국 여기로 온다). 0 이면 아예 자리를 안 쓴다.
+        float scaled = volume * SfxScale;
+        if (scaled <= 0f) return;
+
         AudioSource voice = p.NextVoice();
-        voice.pitch = pitch + Random.Range(-jitter, jitter);
-        voice.PlayOneShot(clip, volume);
+        voice.pitch = pitch;
+        voice.PlayOneShot(clip, scaled);
+    }
+
+    /// <summary>효과음 배율(0~1). 이름으로 가르지 않는 자리(PlayClip)가 쓴다.</summary>
+    private static float SfxScale
+    {
+        get { LoadVolumes(); return sfxStep / (float)MaxVolumeStep; }
     }
 
     /// <summary>루프를 켠다. 이미 돌고 있으면 크기만 맞춘다.</summary>
@@ -79,7 +203,10 @@ public static class Sfx
             p.Loops[name] = source;
         }
 
-        p.Fade(name, source, volume, fadeSeconds, false);
+        // 연출이 부탁한 크기를 그대로 기억해 둔다. 설정이 바뀌면 이 값에 새 배율을 곱해
+        // 다시 먹인다 — 이미 곱해진 값만 들고 있으면 곱하기가 겹쳐서 소리가 사그라든다.
+        p.Requested[name] = volume;
+        p.Fade(name, source, volume * ScaleFor(name), fadeSeconds, false);
     }
 
     /// <summary>루프를 줄여서 끈다. 안 돌고 있으면 아무 일도 없다.</summary>
@@ -99,7 +226,8 @@ public static class Sfx
         AudioSource source;
         if (p == null || !p.Loops.TryGetValue(name, out source)) return;
 
-        p.Fade(name, source, volume, fadeSeconds, false);
+        p.Requested[name] = volume;
+        p.Fade(name, source, volume * ScaleFor(name), fadeSeconds, false);
     }
 
     /// <summary>
@@ -149,6 +277,9 @@ public static class Sfx
     {
         public readonly Dictionary<string, AudioSource> Loops = new Dictionary<string, AudioSource>();
 
+        /// <summary>연출이 부탁한 크기. 사용자 배율을 곱하기 **전** 값이다.</summary>
+        public readonly Dictionary<string, float> Requested = new Dictionary<string, float>();
+
         private readonly Dictionary<string, Coroutine> fades = new Dictionary<string, Coroutine>();
         private readonly Dictionary<string, float> targets = new Dictionary<string, float>();
         private AudioSource[] voices;
@@ -164,9 +295,23 @@ public static class Sfx
             }
         }
 
-        /// <summary>효과음 자리를 돌려가며 준다. 한 자리에 겹쳐 내면 pitch 가 서로 밟힌다.</summary>
+        /// <summary>
+        /// 효과음 자리를 준다. 노는 자리를 먼저 찾고, 다 차 있으면 그냥 돌려가며 준다.
+        ///
+        /// 한 자리에 겹쳐 내면 뒤 소리가 앞 소리의 pitch 까지 바꾼다. 3.5초짜리 우주 소리가
+        /// 도는 중에 반짝임이 여럿 나면 우주 소리가 중간에 음이 틀어졌다.
+        /// </summary>
         public AudioSource NextVoice()
         {
+            for (int i = 0; i < voices.Length; i++)
+            {
+                AudioSource candidate = voices[(next + i) % voices.Length];
+                if (candidate.isPlaying) continue;
+
+                next = (next + i + 1) % voices.Length;
+                return candidate;
+            }
+
             AudioSource voice = voices[next];
             next = (next + 1) % voices.Length;
             return voice;
@@ -205,6 +350,7 @@ public static class Sfx
             {
                 source.Stop();
                 Loops.Remove(name);
+                Requested.Remove(name);
                 targets.Remove(name);
                 Destroy(source);
             }

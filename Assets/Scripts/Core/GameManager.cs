@@ -128,8 +128,23 @@ public class GameManager : MonoBehaviour
     /// <summary>100% 일 때 뜨는 "완벽한 한 그릇!" 팻말. 처음 쓸 때 한 번 찾아 둔다.</summary>
     private PerfectSign perfectSign;
 
+    /// <summary>팻말이 다 스러진 뒤 결과창이 뜨기까지 두는 틈(초).</summary>
+    private const float PerfectSignTailSeconds = 0.5f;
+
     /// <summary>지금까지 판 금액의 합. 재료비가 없어져서 매출이 곧 성적표다. (기획 확정)</summary>
     private int totalRevenue;
+
+    /// <summary>
+    /// 오늘 판 금액. 인게임 화면(상단바·주문 화면·정확도 창)에 뜨는 것은 전부 이쪽이다.
+    ///
+    /// 누적(totalRevenue)은 **정산표의 「누적 총 매출」과 최종 성적표에만** 쓴다. 조리하는 동안
+    /// 보여야 하는 것은 오늘 목표까지 얼마나 왔는지지, 지금까지 번 총액이 아니다.
+    /// NextDay 가 RamenCalculator 의 당일 집계를 지우므로 하루가 바뀌면 저절로 0 으로 돌아간다.
+    /// </summary>
+    private int TodayRevenue
+    {
+        get { return EnsureRamenCalculator() ? ramenCalculator.TodayTotalProfit : 0; }
+    }
 
     // 최종 성적표용 누계.
     // RamenCalculator도 정확도를 모으지만 NextDay가 하루마다 지우므로 5일치를 여기서 따로 쌓는다.
@@ -161,6 +176,7 @@ public class GameManager : MonoBehaviour
         {
             dayManager.OnDayStarted += HandleDayStarted;
             dayManager.OnGameCompleted += HandleGameCompleted;
+            dayManager.OnGameRestart += HandleGameRestart;
         }
 
         PrepareResume();
@@ -242,17 +258,299 @@ public class GameManager : MonoBehaviour
 
 #if UNITY_EDITOR
     /// <summary>
-    /// 개발용 건너뛰기. F2 를 누르면 그릇을 한 번에 채우고 제출한다.
+    /// 개발용 건너뛰기 두 가지. 타이틀의 F1 과 같이 에디터에서만 듣는다 — 빌드에는 이 키가 아예 없다.
     ///
-    /// 손님 앞에 놓이는 그릇을 손볼 때마다 재료를 여덟 번 끌어 담아야 하는 것이 번거로워서 둔다.
-    /// 타이틀의 F1 과 같이 에디터에서만 듣는다 — 빌드에는 이 키가 아예 없다.
+    ///   F2  **조리 화면에서** 그릇을 정답으로 채우고 [마무리] 확인창까지 띄운다.
+    ///       확인은 사람이 누른다 — 실제 흐름과 같은 자리로 나와야 연출도 같이 확인된다.
+    ///       튜토리얼 중이면 안내가 시키는 차례를 그대로 따라간다.
+    ///   F3  **주문 화면부터** 손님 하나를 통째로 넘긴다. 확인창도 안 거치고 바로 낸다 —
+    ///       손님 서른 명을 몰아 볼 때 쓰는 것이라 클릭이 하나도 없어야 한다.
+    ///   F4  튜토리얼을 통째로 건너뛰고 본편 1일차 첫 손님을 세운다.
+    ///   F5  오늘 남은 손님을 정답으로 처리하고 곧장 「주문마감」→ 정산표로 간다(목표 달성).
+    ///   F7  같은 자리로 가되 **돈 없이** 흘려보낸다. 임대 딱지 → [다시하기] → 배드엔딩 길을 볼 때.
+    ///   F8  1~4일차를 몰아 넘기고 5일차 주문마감까지. [확인]을 누르면 최종 성적표가 뜬다.
+    ///
+    /// F2 와 F3 는 둘 다 정답 레시피를 담아 정확도 100% 가 나온다.
     /// </summary>
     private void Update()
     {
         Keyboard keyboard = Keyboard.current;
-        if (keyboard == null || !keyboard.f2Key.wasPressedThisFrame) return;
+        if (keyboard == null) return;
 
-        StartCoroutine(FillAndSubmit());
+        if (keyboard.f2Key.wasPressedThisFrame) StartCoroutine(FillAndSubmit());
+        else if (keyboard.f3Key.wasPressedThisFrame) SkipCustomer();
+        else if (keyboard.f4Key.wasPressedThisFrame) SkipTutorial();
+        else if (keyboard.f5Key.wasPressedThisFrame) SkipToClosing();
+        else if (keyboard.f6Key.wasPressedThisFrame) StartCredits();
+        else if (keyboard.f7Key.wasPressedThisFrame) SkipToClosingUnmet();
+        else if (keyboard.f8Key.wasPressedThisFrame) SkipToFinalDay();
+    }
+
+    /// <summary>
+    /// 지금 이 자리에서 크레딧을 연다. 5일을 다 팔거나 타이틀을 거치지 않고 바로 본다.
+    ///
+    /// 돌고 있던 연출을 먼저 끊는다. 안 끊으면 손님 교대나 시식 연출이 크레딧 무대와
+    /// 같이 돌아 두 벌이 겹친다.
+    /// </summary>
+    private void StartCredits()
+    {
+        if (CreditsSequence.Running)
+        {
+            Debug.LogWarning("[F6] 크레딧이 이미 돌고 있습니다.");
+            return;
+        }
+
+        ClearForDevSkip();
+        CreditsSequence.Begin(CreditsSequence.Exit.Title);
+    }
+
+    /// <summary>
+    /// 돌고 있던 연출을 끊고 화면에 떠 있던 것을 걷는다. F4·F5 가 같이 쓴다.
+    ///
+    /// **반드시 코루틴 밖에서 부를 것.** StopAllCoroutines 는 자기를 부른 코루틴까지 멈춘다.
+    /// 코루틴 안에서 부르면 그다음 yield 에서 영영 안 돌아온다.
+    /// </summary>
+    private void ClearForDevSkip()
+    {
+        StopAllCoroutines();
+
+        // 확인창이 열린 채면 timeScale 이 0 으로 눌려 있다. 그냥 두면 게임이 멈춘 채로 남는다.
+        foreach (ConfirmDialogUI dialog in FindObjectsByType<ConfirmDialogUI>(
+                     FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            dialog.ForceClose();
+        }
+
+        // 연출 도중이었으면 검은 바·확대·우주가 그대로 남는다.
+        if (EnsureCutscene()) cutscene.ResetStage();
+
+        if (orderResultUI != null) orderResultUI.Close();
+        if (orderNoteUI != null) orderNoteUI.Hide();
+
+        // 담다 만 재료를 비운다. 폐기분은 채점에 안 들어가므로 점수에 영향이 없다.
+        Bowl bowl = FindFirstObjectByType<Bowl>();
+        if (bowl != null && !bowl.IsEmpty) bowl.Discard();
+    }
+
+    /// <summary>
+    /// 오늘 남은 손님을 정답 한 그릇씩 낸 것으로 치고 곧장 주문마감으로 간다.
+    ///
+    /// 그냥 하루만 끝내면 매출이 0 이라 정산표가 늘 「미달 → 다시하기」로 떠서, 정작 보려던
+    /// [확인] → 다음날 연출을 못 본다. 그래서 남은 손님 몫을 실제 채점 경로로 얹는다.
+    /// </summary>
+    private void SkipToClosing() { SkipToClosing(true, "[F5]"); }
+
+    /// <summary>
+    /// F7 — 목표를 못 채운 채로 마감한다. 남은 손님을 **돈 없이** 흘려보낸다.
+    ///
+    /// 임대 딱지 → [다시하기] → 배드엔딩 길을 보려면 미달로 끝나는 하루가 있어야 한다.
+    /// 이미 목표를 넘긴 뒤라면 미달이 될 수 없다 — 그때는 하루가 열리자마자 눌러야 한다.
+    /// </summary>
+    private void SkipToClosingUnmet() { SkipToClosing(false, "[F7]"); }
+
+    private void SkipToClosing(bool credit, string tag)
+    {
+        TutorialManager tutorial = TutorialManager.Instance;
+        if (tutorial != null && tutorial.IsRunning)
+        {
+            Debug.LogWarning(tag + " 튜토리얼 중에는 쓸 수 없습니다. F4 로 건너뛰세요.");
+            return;
+        }
+
+        if (!EnsureDayManager() || dayManager.IsGameCompleted)
+        {
+            Debug.LogWarning(tag + " 지금은 영업 중이 아닙니다.");
+            return;
+        }
+
+        if (!EnsureOrderManager() || orderManager.CurrentTargetRecipe == null)
+        {
+            Debug.LogWarning(tag + " 지금 받아 둔 주문이 없습니다.");
+            return;
+        }
+
+        ClearForDevSkip();
+        StartCoroutine(SkipToClosingRoutine(credit, tag));
+    }
+
+    private IEnumerator SkipToClosingRoutine(bool credit, string tag)
+    {
+        // 마지막 한 명은 남겨 둔다. 그 몫은 CloseShop 이 OnCustomerServed 로 마무리하면서 끝난다.
+        // 여기서 다 채우면 하루가 먼저 끝나 「주문마감」을 끼울 자리가 없어진다.
+        int guard = 0;
+        while (dayManager.CurrentCustomerCount < dayManager.TargetCustomerCount - 1 && guard++ < 32)
+        {
+            if (credit && !CreditCurrentCustomer()) break;
+
+            currentHour++;
+            dayManager.OnCustomerServed();      // 그 안에서 다음 손님 주문이 만들어진다
+        }
+
+        // 오늘의 마지막 손님 몫.
+        if (credit) CreditCurrentCustomer();
+        currentHour++;
+
+        RefreshDayLabel(dayManager.CurrentDay);
+        RefreshRevenue();
+
+        Debug.Log(tag + (credit ? " 남은 손님을 정답으로 처리하고" : " 남은 손님을 돈 없이 흘려보내고")
+                  + " 주문마감으로 갑니다. 오늘 수익 " + TodayRevenue.ToString("N0")
+                  + "원 / 목표 " + dayManager.TargetProfit.ToString("N0") + "원");
+
+        // 실제 흐름에서는 마지막 그릇을 낸 직후라 주문 화면이 떠 있다. 조리 화면에서 눌렀을 때도
+        // 같은 그림이 되도록 먼저 올린다 — 안 그러면 「주문마감」과 정산표가 조리대 위에 뜬다.
+        if (orderScreenUI != null && !orderScreenUI.IsOpen)
+        {
+            orderScreenUI.OpenEating(dayManager.CurrentDay, currentHour, TodayRevenue);
+            yield return orderScreenUI.WaitForSlide();
+        }
+        if (orderScreenUI != null) orderScreenUI.ShowBubble(false);
+
+        yield return CloseShop();
+    }
+
+    /// <summary>
+    /// 일차를 몰아서 넘기는 중인가. 그동안은 하루 시작 연출(검은 화면·자막·아이리스)을 안 건다.
+    ///
+    /// 안 막으면 넘긴 일차마다 그 코루틴이 하나씩 쌓여, 네 일차를 건너뛰는 데 20초가 넘게 걸리고
+    /// 자막 넷이 줄지어 뜬다.
+    /// </summary>
+    private bool fastForwarding;
+
+    /// <summary>
+    /// F8 — 1~4일차를 정답으로 몰아 넘기고 5일차 주문마감까지 간다.
+    ///
+    /// 5일차 정산표에서 [확인]을 누르면 최종 성적표가 뜬다. 거기까지 가려면 손님 서른 명을
+    /// 지나야 해서 손으로는 확인이 사실상 불가능하다.
+    /// </summary>
+    private void SkipToFinalDay()
+    {
+        TutorialManager tutorial = TutorialManager.Instance;
+        if (tutorial != null && tutorial.IsRunning)
+        {
+            Debug.LogWarning("[F8] 튜토리얼 중에는 쓸 수 없습니다. F4 로 건너뛰세요.");
+            return;
+        }
+
+        if (!EnsureDayManager() || dayManager.IsGameCompleted)
+        {
+            Debug.LogWarning("[F8] 지금은 영업 중이 아닙니다.");
+            return;
+        }
+
+        if (dayManager.CurrentDay >= DayManager.MAX_DAYS)
+        {
+            Debug.LogWarning("[F8] 이미 " + DayManager.MAX_DAYS + "일차입니다. F5 로 마감하세요.");
+            return;
+        }
+
+        ClearForDevSkip();
+        StartCoroutine(SkipToFinalDayRoutine());
+    }
+
+    private IEnumerator SkipToFinalDayRoutine()
+    {
+        fastForwarding = true;
+        try
+        {
+            int guard = 0;
+            while (dayManager.CurrentDay < DayManager.MAX_DAYS && guard++ < DayManager.MAX_DAYS + 2)
+            {
+                // 오늘 손님을 전부 정답으로 낸다. 마지막 한 명에서 DayManager 가 하루를 마감하고
+                // 정산표를 연다 — 연출은 안 거치고 숫자만 쌓인다.
+                int seat = 0;
+                while (dayManager.CurrentCustomerCount < dayManager.TargetCustomerCount && seat++ < 32)
+                {
+                    if (!CreditCurrentCustomer()) break;
+                    dayManager.OnCustomerServed();
+                }
+
+                // 정산표를 닫고 다음 날로. NextDay 가 StartDay 까지 부른다.
+                dayManager.NextDay();
+                yield return null;
+            }
+        }
+        finally { fastForwarding = false; }
+
+        Debug.Log("[F8] " + dayManager.CurrentDay + "일차까지 몰아 넘겼습니다. 이제 주문마감으로 갑니다.");
+
+        currentHour = OpenHour;
+        RefreshDayLabel(dayManager.CurrentDay);
+        RefreshRevenue();
+
+        // 5일차는 F5 와 같은 길로 마감한다.
+        yield return SkipToClosingRoutine(true, "[F8]");
+    }
+
+    /// <summary>
+    /// 지금 손님에게 정답 한 그릇을 낸 것으로 치고 매출·정확도에 얹는다. 화면은 건드리지 않는다.
+    ///
+    /// SubmitRamen 의 채점 부분과 같은 자리를 쓴다 — 따로 계산하면 정산표와 어긋난다.
+    /// </summary>
+    private bool CreditCurrentCustomer()
+    {
+        if (!EnsureOrderManager()) return false;
+
+        Dictionary<IngredientType, int> recipe = orderManager.CurrentTargetRecipe;
+        if (recipe == null || recipe.Count == 0) return false;
+
+        var state = new RamenState(recipe, new Dictionary<IngredientType, int>());
+
+        int price = orderManager.EvaluateRamen(state);
+        totalRevenue += price;
+
+        if (EnsureRamenCalculator())
+        {
+            float accuracy = ramenCalculator.LastAccuracy;
+            accuracySum += accuracy;
+            servedCount++;
+            if (accuracy >= RamenCalculator.PERFECT_ACCURACY) perfectCount++;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// 튜토리얼을 건너뛰고 본편 1일차를 연다.
+    ///
+    /// 안내가 도는 동안(조리 단계)에만 듣는다. 그릇을 낸 뒤로는 시식 컷신이 도는데,
+    /// 그건 GameManager 가 yield return 으로 돌리는 것이라 여기서 멈추면 화면이 중간 상태로 남는다.
+    /// </summary>
+    private void SkipTutorial()
+    {
+        TutorialManager tutorial = TutorialManager.Instance;
+        if (tutorial == null || !tutorial.IsRunning)
+        {
+            Debug.LogWarning("[F4] 지금은 튜토리얼 안내가 돌고 있지 않습니다. 그릇을 낸 뒤라면 그대로 두고 보세요.");
+            return;
+        }
+
+        // 연출을 끊고 창을 걷는다. 코루틴 **밖**이라 바로 아래에서 시작하는 것은 안 죽는다.
+        ClearForDevSkip();
+
+        // 안내·테두리·어두운 판을 걷는다. 저장도 이때부터 시작된다(CanSave).
+        TutorialManager.Instance.Finish();
+
+        if (orderScreenUI != null)
+        {
+            orderScreenUI.ShowBubble(false);
+            orderScreenUI.Close();
+        }
+
+        StartCoroutine(SkipTutorialRoutine());
+    }
+
+    private IEnumerator SkipTutorialRoutine()
+    {
+        Debug.Log("[F4] 튜토리얼을 건너뛰고 1일차를 엽니다.");
+
+        // 아래는 ServeDineAndDash 의 꼬리와 같다 — 손님이 나가고 본편이 열린다.
+        yield return FadeCustomer(0f, 1f, exitSeconds);
+
+        if (EnsureDayManager()) dayManager.StartDay();
+
+        HideCustomerForEntrance();
+        yield return EnterCustomer();
     }
 
     private IEnumerator FillAndSubmit()
@@ -264,56 +562,198 @@ public class GameManager : MonoBehaviour
             yield break;
         }
 
-        // 재료 그림은 재료통이 들고 있다. 그림 없이 넣으면 그릇에 아무것도 안 올라간다.
-        var icons = new Dictionary<IngredientType, Sprite>();
-        foreach (IngredientSlot slot in FindObjectsByType<IngredientSlot>(FindObjectsSortMode.None))
-        {
-            icons[slot.type] = slot.bowlSprite;
-        }
-
         TutorialManager tutorial = TutorialManager.Instance;
-        bool inTutorial = tutorial != null && tutorial.IsRunning;
 
-        if (inTutorial)
+        if (tutorial != null && tutorial.IsRunning)
         {
             // 안내가 시키는 차례를 그대로 따라간다. 다른 것을 넣으면 안내가 그 자리에 멈춰 선다.
             // Tab(주문서)·B(레시피책) 차례는 재료가 아니라서 넘길 수 없다 — 사람이 눌러 준다.
+            var icons = CollectBowlSprites();
             while (tutorial.IsRunning && !tutorial.ReadyToSubmit)
             {
                 if (tutorial.CurrentStep is IngredientType step)
                 {
                     icons.TryGetValue(step, out Sprite icon);
                     bowl.TryAdd(step, icon);
-                    yield return new WaitForSeconds(0.05f);
+                    yield return new WaitForSeconds(AddInterval);
                     continue;
                 }
 
-                Debug.LogWarning("[F2] 재료가 아닌 차례입니다(Tab 이나 B). 그것만 누르고 다시 F2.");
+                // 토글이라 여는 것만으로는 안 넘어간다. 열고 다시 눌러 닫아야 다음 차례가 된다.
+                Debug.LogWarning("[F2] 재료가 아닌 차례입니다(Tab 이나 B). 눌러서 열었다가 다시 눌러 닫고 F2.");
                 yield break;
             }
         }
+        else if (!FillWithAnswer(bowl, "[F2]", out IEnumerator fill))
+        {
+            yield break;
+        }
         else
         {
-            foreach (IngredientType type in DebugRecipe)
-            {
-                icons.TryGetValue(type, out Sprite icon);
-                bowl.TryAdd(type, icon);
-                yield return new WaitForSeconds(0.05f);
-            }
+            yield return fill;
         }
 
-        // 타래와 육수는 붓는 장면이 끝나야 그릇 그림이 자리를 잡는다. 그 전에 제출하면
+        // 타래와 육수는 붓는 장면이 끝나야 그릇 그림이 자리를 잡는다. 그 전에 내면
         // 손님 앞에 붓다 만 그릇이 올라간다.
-        yield return new WaitForSeconds(1.2f);
-        bowl.Submit();
+        yield return new WaitForSeconds(PourSeconds);
+
+        // 여기서 bowl.Submit() 을 바로 부르지 않는다. 지금 게임은 그릇을 끌어다 내는 것이 아니라
+        // 상단바 [마무리] → 확인창 → 그때 Submit 이다. 바로 부르면 확인창을 건너뛰어서,
+        // 그릇 내용만 소리 없이 사라지고 실제 흐름과 달라진다.
+        ConfirmDialogUI confirm = FindSubmitConfirm();
+        if (confirm != null) confirm.Open();
+        else bowl.Submit();
     }
 
-    /// <summary>튜토리얼이 끝난 뒤 F2 가 마는 한 그릇. 정답일 필요는 없다.</summary>
-    private static readonly IngredientType[] DebugRecipe =
+    /// <summary>
+    /// 마무리 확인창. 이름으로 찾는다 — 폐기 확인창과 같은 컴포넌트라 타입만으로는 안 갈린다.
+    /// 닫혀 있을 때도 찾아야 하므로 꺼진 것까지 뒤진다.
+    /// </summary>
+    private ConfirmDialogUI FindSubmitConfirm()
     {
-        IngredientType.ShioTare, IngredientType.Broth, IngredientType.ThickNoodles,
-        IngredientType.Chashu, IngredientType.GreenOnion, IngredientType.Egg, IngredientType.Nori,
-    };
+        foreach (ConfirmDialogUI dialog in FindObjectsByType<ConfirmDialogUI>(
+                     FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (dialog.name == "SubmitConfirm") return dialog;
+        }
+        return null;
+    }
+
+// 아래 넷은 개발용 건너뛰기(F2·F3)만 쓰던 것인데, 크레딧이 무대에서 그릇을 담는 데도 쓴다.
+// 크레딧은 빌드에도 들어가므로 에디터 전용 구역 밖으로 내놓는다. 옮기지 않고 구역만 끊는다 —
+// 코드를 움직이면 다른 세션이 같은 자리를 고치고 있을 때 그 편집이 묻힌다.
+#endif
+
+    /// <summary>재료를 하나 담고 다음 것을 담기까지의 틈.</summary>
+    private const float AddInterval = 0.05f;
+
+    /// <summary>타래·육수가 부어지는 장면이 끝나기를 기다리는 시간.</summary>
+    private const float PourSeconds = 1.2f;
+
+    /// <summary>재료 그림은 재료통이 들고 있다. 그림 없이 넣으면 그릇에 아무것도 안 올라간다.</summary>
+    private Dictionary<IngredientType, Sprite> CollectBowlSprites()
+    {
+        var icons = new Dictionary<IngredientType, Sprite>();
+        foreach (IngredientSlot slot in FindObjectsByType<IngredientSlot>(FindObjectsSortMode.None))
+        {
+            icons[slot.type] = slot.bowlSprite;
+        }
+        return icons;
+    }
+
+#if UNITY_EDITOR
+    /// <summary>
+    /// 지금 손님의 정답 레시피를 그릇에 담는 코루틴을 만든다. F2 와 F3 가 같이 쓴다.
+    ///
+    /// 예전에는 F2 가 고정된 일곱 가지(시오 타래 + 굵은면 …)를 담았다. 그런데 채점이
+    /// 타래가 틀리면 3대 요소 미달로 **0% · 0원**을 주므로, 주문이 쇼유나 돈코츠면
+    /// 그 그릇은 늘 0원이었다. 목표 수익도 정산도 그걸로는 못 본다.
+    /// </summary>
+    private bool FillWithAnswer(Bowl bowl, string tag, out IEnumerator routine)
+    {
+        routine = null;
+
+        OrderManager orders = FindFirstObjectByType<OrderManager>();
+        Dictionary<IngredientType, int> recipe = orders != null ? orders.CurrentTargetRecipe : null;
+        if (recipe == null || recipe.Count == 0)
+        {
+            Debug.LogWarning(tag + " 지금 받아 둔 주문이 없습니다.");
+            return false;
+        }
+
+        // 이미 담긴 것이 있으면 정답에 얹혀 100% 가 안 나온다. 폐기분은 채점에 안 들어가므로
+        // (RamenState 가 받기만 한다) 비우고 시작해도 점수에 영향이 없다.
+        if (!bowl.IsEmpty) bowl.Discard();
+
+        routine = PourRecipe(bowl, recipe);
+        return true;
+    }
+#endif
+
+    private IEnumerator PourRecipe(Bowl bowl, Dictionary<IngredientType, int> recipe)
+    {
+        var icons = CollectBowlSprites();
+
+        // enum 순서가 곧 붓는 순서다(타래 → 육수 → 면 → 토핑 → 조미료).
+        // 딕셔너리 순서를 그대로 믿으면 면 위에 타래를 붓는 장면이 나온다.
+        var order = new List<IngredientType>(recipe.Keys);
+        order.Sort((a, b) => ((int)a).CompareTo((int)b));
+
+        foreach (IngredientType type in order)
+        {
+            icons.TryGetValue(type, out Sprite icon);
+
+            // 「빼 주세요」로 0 이 된 재료가 섞여 있다. 그건 담지 않는 것이 정답이다.
+            for (int n = 0; n < recipe[type]; n++)
+            {
+                bowl.TryAdd(type, icon);
+                yield return new WaitForSeconds(AddInterval);
+            }
+        }
+    }
+
+#if UNITY_EDITOR
+    /// <summary>F3 가 도는 중인가. 연타로 코루틴이 겹치면 그릇이 두 번 채워진다.</summary>
+    private bool skipping;
+
+    /// <summary>대사 넘기기와 그릇 기다리기에 쓰는 최대 프레임. 무한 대기를 막는 안전장치다.</summary>
+    private const int SkipGuardFrames = 180;
+
+    private void SkipCustomer()
+    {
+        if (skipping) return;
+        StartCoroutine(SkipCustomerRoutine());
+    }
+
+    private IEnumerator SkipCustomerRoutine()
+    {
+        skipping = true;
+        try { yield return SkipCustomerBody(); }
+        finally { skipping = false; }
+    }
+
+    private IEnumerator SkipCustomerBody()
+    {
+        // 튜토리얼은 안내가 시키는 차례대로만 재료가 들어가므로 정답을 한 번에 못 붓는다.
+        // Tab·B 차례는 재료가 아니라 넘길 수도 없다. 그쪽은 F2 가 맡는다.
+        TutorialManager tutorial = TutorialManager.Instance;
+        if (tutorial != null && tutorial.IsRunning)
+        {
+            Debug.LogWarning("[F3] 튜토리얼 중에는 쓸 수 없습니다. F2 로 진행하세요.");
+            yield break;
+        }
+
+        // 1. 주문 화면의 대사를 끝까지 민다. 한 프레임에 한 번씩만 누른다 —
+        //    한 프레임에 몰아 누르면 타자기 코루틴이 아직 시작 전이라 줄을 건너뛴다.
+        OrderScreenUI screen = FindFirstObjectByType<OrderScreenUI>();
+        for (int i = 0; i < SkipGuardFrames && screen != null && screen.IsOpen; i++)
+        {
+            screen.PressStart();
+            yield return null;
+        }
+
+        // 2. 조리 화면의 그릇이 설 때까지 기다린다.
+        Bowl bowl = null;
+        for (int i = 0; i < SkipGuardFrames && bowl == null; i++)
+        {
+            bowl = FindFirstObjectByType<Bowl>();
+            if (bowl == null) yield return null;
+        }
+
+        if (bowl == null)
+        {
+            Debug.LogWarning("[F3] 조리 화면에 그릇이 없습니다.");
+            yield break;
+        }
+
+        // 3. 이 손님의 정답을 담는다. F2 와 같은 코드다.
+        if (!FillWithAnswer(bowl, "[F3]", out IEnumerator fill)) yield break;
+        yield return fill;
+
+        // 4. 붓는 장면이 끝나야 그릇 그림이 자리를 잡는다.
+        yield return new WaitForSeconds(PourSeconds);
+        bowl.Submit();
+    }
 #endif
 
     /// <summary>
@@ -393,6 +833,7 @@ public class GameManager : MonoBehaviour
         {
             dayManager.OnDayStarted -= HandleDayStarted;
             dayManager.OnGameCompleted -= HandleGameCompleted;
+            dayManager.OnGameRestart -= HandleGameRestart;
         }
         if (Instance == this) Instance = null;
     }
@@ -404,23 +845,204 @@ public class GameManager : MonoBehaviour
     private void HandleDayStarted(int day)
     {
         currentHour = OpenHour;
+
+        // 어제 넘긴 것이 오늘까지 따라오면 안 된다. 목표도 수익도 하루마다 새로 센다.
+        goalReached = false;
+
         RefreshDayLabel(day);
+        RefreshRevenue();
+
+        // 주문 화면 상단바도 같은 목표를 쓴다. 그쪽은 DayManager 를 모르므로 여기서 넣어 준다.
+        if (orderScreenUI != null && EnsureDayManager()) orderScreenUI.SetGoal(dayManager.TargetProfit);
+
+        // 개발용으로 일차를 몰아 넘기는 중이면 연출을 아예 안 건다. 배드엔딩보다 먼저 본다 —
+        // 여기서 코루틴이 걸리면 넘긴 일차마다 하나씩 쌓인다.
+        if (fastForwarding)
+        {
+            OpenOrderScreen(day);
+            return;
+        }
+
+        // 목표 미달로 되돌아온 길이면 배드엔딩을 먼저 보여 준다. RestartGame 도 1일차를 열기 때문에
+        // 아래 day <= 1 보다 먼저 봐야 한다.
+        if (badEndingPending)
+        {
+            badEndingPending = false;
+            StartCoroutine(PlayBadEnding(day));
+            return;
+        }
+
+        // 1일차는 도입부와 튜토리얼을 막 지나온 참이라 또 어둡게 만들 이유가 없다.
+        if (day <= 1)
+        {
+            OpenOrderScreen(day);
+            return;
+        }
+
+        StartCoroutine(OpenNextDay(day));
+    }
+
+    /// <summary>[다시하기]로 돌아오는 길인가. HandleGameRestart 가 세우고 다음 StartDay 가 쓴다.</summary>
+    private bool badEndingPending;
+
+    /// <summary>
+    /// 배드엔딩. 목표를 못 채워 임대 딱지가 붙고 [다시하기]를 눌렀을 때 온다.
+    ///
+    /// 도입부와 같은 연출을 글만 바꿔 쓴다 — 검은 화면에 줄이 쌓이고 클릭으로 넘긴다.
+    /// 끝나면 첫날 밤으로 돌아가므로 아이리스도 도입부와 같이 연다.
+    /// </summary>
+    private static readonly string[] BadEndingLines =
+    {
+        "손님들이 하나둘 발길을 끊었다.",
+
+        // 한 줄로 두면 560 폭을 넘겨(614) 아무 데서나 접힌다. 쉼표에서 끊어 두 줄로 보이되
+        // 한 덩이라 클릭은 한 번이다.
+        "말을 알아듣지 못하는 가게에,\n오래 머무는 손님은 없다.",
+
+        "불 꺼진 가게 앞에 딱지 한 장이 붙었다.",
+        "…그리고 다시, 첫날 밤.",
+    };
+
+    /// <summary>
+    /// 크레딧에 뜨는 이름. 한 줄이 [역할, 이름] 한 쌍이고, 손님 하나가 지날 때 한 쌍씩 넘어간다.
+    ///
+    /// 한 장이 뜨는 시간은 <see cref="CreditsSequence"/> 가 정한다. 줄을 늘리면 크레딧이
+    /// 그만큼 길어진다 — 노래 길이에 맞춰 나누지 않는다.
+    ///
+    /// <b>역할은 한 줄로 끝나야 한다.</b> 「Programming — Cooking &amp; Presentation」처럼
+    /// 길게 적었더니 왼쪽 칸(440)을 넘겨 세 줄로 접혔고, 그러면 역할 덩어리가 이름을
+    /// 아홉 배쯤 눌러 버려 6:4 가 9:1 로 보인다. 업무 부제는 적지 않는다.
+    /// </summary>
+    public static readonly string[,] CreditLines =
+    {
+        // 이름 칸이 빈 줄은 제목 카드다. 금선도 이름도 안 뜨고 역할 글자만 선다.
+        { "네오위즈 K 게임\n아카데미 8기", "" },
+
+        { "Director",    "권혁진" },
+        { "Programming", "김기백 · 김은서" },
+        { "Art",         "오규원" },
+        { "QA",          "김중현 · 박은석 · 최상우" },
+
+        // 로고 석 장의 머리말. 이 뒤로 네오위즈 · RAPA · MBC아카데미가 한 장씩 올라온다.
+        { "Special Thanks", "" },
+    };
+
+    /// <summary>
+    /// 로고가 다 지나간 뒤 왼쪽 칸에 <b>계속 떠 있는</b> 인사.
+    ///
+    /// 이름은 40초면 다 지나가는데 무대(손님이 먹고 쓰러지고 까마귀가 앉는 것)는 70초까지
+    /// 간다. 그 사이 왼쪽 칸이 30초쯤 비어서, 화면 절반이 그냥 검은 채로 남았다.
+    /// 이 한 줄이 그 자리를 메운다 — 까마귀 아이리스가 오므라들기 직전에 스러진다.
+    /// </summary>
+    public const string CreditThanksLine = "Thanks for Playing";
+
+    /// <summary>크레딧 마지막 한 줄. 이것이 스러지면서 화면이 검어진다.</summary>
+    public const string CreditClosingLine = "오늘 밤도, 불을 밝힙니다.";
+
+    private IEnumerator PlayBadEnding(int day)
+    {
+        ScreenFade fade = ScreenFade.Instance;
+        if (fade != null) yield return fade.FadeOut();
+
+        if (narration != null) yield return narration.Play(BadEndingLines);
+
+        // 「…그리고 다시, 첫날 밤」 뒤에 곧바로 가게가 열리면 하루가 시작된 티가 안 난다.
+        // 게임을 처음 여는 길(OpenShop)과 **같은 순서**로 자막까지 거친다.
+        if (narration != null) yield return narration.FadeOutLines(NarrationFadeSeconds);
+        yield return new WaitForSecondsRealtime(BlackHoldSeconds);
+
+        if (dayTitle != null) yield return dayTitle.Play(DayCaption(day));
+        yield return new WaitForSecondsRealtime(BlackHoldSeconds);
+
+        // 어둠 뒤에서 첫날을 차려 둔다. 손님은 아직 세우지 않는다 — 걸어 들어와야 한다.
         OpenOrderScreen(day);
+        HideCustomerForEntrance();
+
+        yield return RevealAndEnter(fade);
+    }
+
+    /// <summary>
+    /// 검은 화면을 아이리스로 걷고 손님이 걸어 들어오게 한다. 다음날·배드엔딩이 같이 쓴다.
+    ///
+    /// 내레이션 판은 아이리스가 화면을 넘겨받은 **뒤에** 걷는다. 먼저 걷으면 한 프레임이지만
+    /// 가게가 통째로 비친다. 도입부(RevealShop)에서 얻은 순서다.
+    /// </summary>
+    private IEnumerator RevealAndEnter(ScreenFade fade)
+    {
+        // 화면을 걷기 **전에** 말풍선을 내린다.
+        //
+        // 말풍선을 내리는 자리가 EnterCustomer 안이었는데, 그건 아이리스가 다 열린 뒤에 돈다.
+        // 그래서 화면이 열리는 내내 아직 오지도 않은 손님의 대사가 떠 있었다.
+        // 도입부(OpenShop)는 열기 전에 내려서 이 일이 없었다 — 같은 순서로 맞춘다.
+        if (orderScreenUI != null) orderScreenUI.ShowBubble(false);
+
+        if (iris == null)
+        {
+            if (narration != null) narration.Hide();
+            if (fade != null) yield return fade.FadeIn();
+        }
+        else
+        {
+            iris.Close();
+            if (narration != null) narration.Hide();
+            if (fade != null) fade.Clear();
+            yield return iris.Open();
+        }
+
+        yield return EnterCustomer();
+    }
+
+    /// <summary>하루가 바뀔 때 뜨는 글자. 빌더가 꽂아 준다.</summary>
+    [SerializeField] private DayTitleUI dayTitle;
+
+    /// <summary>「튜토리얼을 보시겠습니까?」 물음판. 빌더가 꽂아 준다.</summary>
+    [SerializeField] private TutorialAskUI tutorialAsk;
+
+    /// <summary>
+    /// 검은 화면에 아무것도 없이 머무는 시간(초).
+    ///
+    /// 자막이 뜨기 전과 스러진 뒤에 각각 한 번씩 둔다. 이 틈이 없으면 정산표 → 자막 →
+    /// 가게가 한 동작으로 이어 붙어, 하루가 바뀐 것이 아니라 화면만 깜빡인 것으로 보인다.
+    /// </summary>
+    private const float BlackHoldSeconds = 1f;
+
+    /// <summary>도입부 내레이션 글자가 스러지는 데 걸리는 시간(초).</summary>
+    private const float NarrationFadeSeconds = 0.8f;
+
+    /// <summary>
+    /// 다음 날이 열린다. 문을 열 때(RevealShop)와 같은 박자다 —
+    /// 화면이 통째로 검어지고, 「N일차」 가 떴다 스러지고, 구멍이 넓어지며 가게가 드러난다.
+    ///
+    /// 화면을 덮은 **뒤에** 주문 화면을 차린다. 먼저 차리면 어두워지는 도중에 다음 손님이 비친다.
+    /// </summary>
+    private IEnumerator OpenNextDay(int day)
+    {
+        ScreenFade fade = ScreenFade.Instance;
+
+        if (fade != null) yield return fade.FadeOut();
+
+        // 다 어두워진 뒤 한 박자. 곧바로 자막이 뜨면 정산표에서 이어 붙은 것처럼 보인다.
+        yield return new WaitForSecondsRealtime(BlackHoldSeconds);
+
+        // 아침 소리. 음원이 아직 없으면 Sfx 가 조용히 지나간다.
+        Sfx.Play("sfx_flow_morning", 0.7f);
+
+        if (dayTitle != null) yield return dayTitle.Play(DayCaption(day));
+
+        // 자막이 스러진 뒤에도 한 박자 두고 연다.
+        yield return new WaitForSecondsRealtime(BlackHoldSeconds);
+
+        // 어둠 뒤에서 다음 날을 차려 둔다. 손님은 아직 세우지 않는다 —
+        // 화면이 열리자마자 앉아 있으면 "이미 와 있던 손님" 이 되어 하루가 시작된 티가 안 난다.
+        OpenOrderScreen(day);
+        HideCustomerForEntrance();
+
+        yield return RevealAndEnter(fade);
     }
 
     private void RefreshDayLabel(int day)
     {
         if (dayText != null) dayText.text = day + "일차  " + currentHour + ":00";
-    }
-
-    /// <summary>
-    /// 조리 화면의 ? 버튼이 부른다. 손님 주문 내역을 여닫는다.
-    /// 기본 레시피는 B 키로 여는 레시피 책이 맡는다. 기획서 6.1대로 페널티는 없다.
-    /// </summary>
-    public void ShowOrderInfo()
-    {
-        if (orderNoteUI == null || !EnsureOrderManager()) return;
-        orderNoteUI.Toggle(orderManager.CurrentDialogue);
     }
 
     /// <summary>손님을 맞는 화면을 연다. 조리 화면은 그 아래에서 계속 살아 있다.</summary>
@@ -431,7 +1053,7 @@ public class GameManager : MonoBehaviour
         string dialogue = orderManager.CurrentDialogue;
         if (string.IsNullOrEmpty(dialogue)) return;
 
-        orderScreenUI.Open(day, currentHour, dialogue, totalRevenue);
+        orderScreenUI.Open(day, currentHour, dialogue, TodayRevenue);
 
         // 새 주문이 떴다. 여기서 남겨야 이 손님부터 다시 시작할 수 있다.
         SaveNow();
@@ -452,7 +1074,7 @@ public class GameManager : MonoBehaviour
 
         if (orderScreenUI != null)
         {
-            orderScreenUI.Open(1, currentHour, orderManager.CurrentDialogue, totalRevenue);
+            orderScreenUI.Open(1, currentHour, orderManager.CurrentDialogue, TodayRevenue);
         }
     }
 
@@ -478,8 +1100,35 @@ public class GameManager : MonoBehaviour
         // 다 어두워진 뒤에 시작 화면을 치운다.
         if (titleScreen != null) titleScreen.Close();
 
+        // 완전히 검어진 채로 한 박자 둔다.
+        //
+        // 곧바로 첫 줄이 찍히면 시작 화면을 누른 손과 글이 겹쳐, 화면이 넘어간 것이 아니라
+        // 버튼에 글이 딸려 나온 것처럼 읽힌다. 여기서 한 번 끊어야 이야기가 시작된다.
+        yield return new WaitForSecondsRealtime(blackHoldSeconds);
+
         // 검은 화면에서 도입부를 읽힌다. 여기서는 아직 가게가 차려지기 전이다.
         if (narration != null) yield return narration.Play();
+
+        // 검은 화면을 한 박자 둔다. 곧바로 걷으면 시작 화면과 가게가 이어 붙은 것처럼 보인다.
+        // 내레이션을 읽은 뒤라면 이미 충분히 머물렀으므로 마지막 줄을 넘긴 여운만 준다.
+        yield return new WaitForSecondsRealtime(narration != null ? openingTailSeconds : blackHoldSeconds);
+
+        // 내레이션 글자를 먼저 거둔다. 판은 그대로 둬서 검은 화면이 유지된다 —
+        // 물음판이 마지막 줄 위에 겹쳐 뜨면 두 덩이가 한 화면에 나란히 보인다.
+        if (narration != null) yield return narration.FadeOutLines(NarrationFadeSeconds);
+
+        // 빈 검은 화면을 한 박자 둔다. 여기가 장면이 넘어가는 자리다.
+        yield return new WaitForSecondsRealtime(BlackHoldSeconds);
+
+        // 「튜토리얼을 보시겠습니까?」 — 검은 화면에 이 판만 뜬다.
+        //
+        // **손님을 차리는 것은 답을 받은 뒤다.** 먼저 차려 두면 「아뇨」를 골랐을 때
+        // 이미 만들어진 튜토리얼 주문을 버리고 1일차를 다시 열어야 한다.
+        bool wantTutorial = true;
+        if (tutorialAsk != null) yield return tutorialAsk.Ask(yes => wantTutorial = yes);
+
+        // 「아뇨」면 튜토리얼을 아예 끝난 것으로 표시한다. 그래야 아래에서 1일차로 간다.
+        if (!wantTutorial && TutorialManager.Instance != null) TutorialManager.Instance.Finish();
 
         // 덮여 있는 동안 주문 화면을 차려 둔다. 손님은 아직 안 보이게 지워 놓는다.
         if (TutorialManager.Instance != null && TutorialManager.Instance.IsRunning) OpenTutorialOrder();
@@ -492,9 +1141,12 @@ public class GameManager : MonoBehaviour
 
         if (orderScreenUI != null) orderScreenUI.ShowBubble(false);
 
-        // 검은 화면을 한 박자 둔다. 곧바로 걷으면 시작 화면과 가게가 이어 붙은 것처럼 보인다.
-        // 내레이션을 읽은 뒤라면 이미 충분히 머물렀으므로 마지막 줄을 넘긴 여운만 준다.
-        yield return new WaitForSecondsRealtime(narration != null ? openingTailSeconds : blackHoldSeconds);
+        // 오늘이 며칠이고 목표가 얼마인지. 자막은 내레이션(310)보다 앞 층(315)이라
+        // 검은 화면 위에 그대로 얹힌다. 다음날(OpenNextDay)과 같은 자리·같은 글이다.
+        if (dayTitle != null) yield return dayTitle.Play(DayCaption(EnsureDayManager() ? dayManager.CurrentDay : 1));
+
+        // 자막이 스러진 뒤에도 한 박자. 그다음에 아이리스가 열린다.
+        yield return new WaitForSecondsRealtime(BlackHoldSeconds);
 
         yield return RevealShop(fade);
 
@@ -555,7 +1207,7 @@ public class GameManager : MonoBehaviour
     {
         if (orderScreenUI != null)
         {
-            orderScreenUI.OpenEating(1, currentHour, totalRevenue);
+            orderScreenUI.OpenEating(1, currentHour, TodayRevenue);
             yield return orderScreenUI.WaitForSlide();
 
             // 받자마자 한 마디. 먹기 전이라 컷신보다 앞이다.
@@ -587,7 +1239,7 @@ public class GameManager : MonoBehaviour
         if (orderResultUI != null)
         {
             bool closed = false;
-            orderResultUI.OpenTutorial(totalRevenue, TutorialEndLine, () => closed = true);
+            orderResultUI.OpenTutorial(TodayRevenue, TutorialEndLine, () => closed = true);
             while (!closed) yield return null;
         }
 
@@ -602,7 +1254,49 @@ public class GameManager : MonoBehaviour
         yield return EnterCustomer();
     }
 
+    /// <summary>
+    /// 목표 미달로 [다시하기]를 눌렀을 때 온다. 버린 판의 누계를 지운다.
+    ///
+    /// RamenCalculator 는 DayManager 가 비워 주지만 여기 넷은 아무도 안 건드린다.
+    /// 안 지우면 1일차로 돌아가도 상단바의 「누적 수익」과 최종 성적표가 버린 판을 그대로 안고 간다.
+    /// currentHour 는 HandleDayStarted 가 하루를 열 때마다 되돌리므로 여기서 따로 안 만진다.
+    /// </summary>
+    private void HandleGameRestart()
+    {
+        totalRevenue = 0;
+        servedCount = 0;
+        accuracySum = 0f;
+        perfectCount = 0;
+        RefreshRevenue();
+
+        // 끝난 판의 저장이 남아 있으면 다음에 켰을 때 그 판이 되살아난다.
+        SaveSystem.Delete();
+
+        // 곧 StartDay 가 1일차를 연다. 그때 배드엔딩을 끼워야 한다.
+        badEndingPending = true;
+    }
+
     /// <summary>5일차까지 다 팔면 온다. 하루 정산과 달리 전체 누계를 보여 준다.</summary>
+    /// <summary>
+    /// 닷새를 다 판 뒤의 엔딩 글. 도입부와 같은 연출로 검은 화면에 한 줄씩 쌓인다.
+    ///
+    /// 도입부가 「그리고 오늘 밤…」으로 열어 둔 것을 여기서 닫는다. 「그 말에 꼭 맞는 한 그릇」은
+    /// 도입부 넷째 줄을 그대로 되받은 것이다.
+    /// </summary>
+    private static readonly string[] EndingLines =
+    {
+        "닷새 밤이 지나갔다.",
+
+        // 한 줄로 두면 560 폭을 넘겨(566) 아무 데서나 접힌다. 쉼표에서 끊어 두 줄로 보이되
+        // 한 덩이라 클릭은 한 번이다. 배드엔딩 둘째 줄과 같은 처리다.
+        "누군가는 허기를, 누군가는 할 말을 안고 왔다.",
+
+        "그 말에 꼭 맞는 한 그릇이었는지는",
+        "먹고 간 사람만이 안다.",
+        "오늘도 포렴 너머로 불빛이 새어 나간다.",
+        "누군가 그 앞에 멈춰 설 때까지.",
+    };
+
     private void HandleGameCompleted()
     {
         float average = servedCount > 0 ? accuracySum / servedCount : 0f;
@@ -610,10 +1304,36 @@ public class GameManager : MonoBehaviour
         Debug.Log("[영업 종료] 누적 매출 " + totalRevenue.ToString("N0") + "원 / 평균 정확도 "
                   + average.ToString("F1") + "% / 완벽 " + perfectCount + "건 / 총 " + servedCount + "건");
 
-        if (finalResultUI != null) finalResultUI.Open(totalRevenue, average, perfectCount, servedCount);
-
         // 5일을 다 팔았으면 이어할 것이 없다. 남겨 두면 다음에 켰을 때 끝난 판이 되살아난다.
         SaveSystem.Delete();
+
+        StartCoroutine(PlayEnding(average));
+    }
+
+    /// <summary>
+    /// 엔딩. 검은 화면에 글이 쌓이고, 다 읽으면 최종 성적표가 뜬다.
+    ///
+    /// 성적표를 바로 띄우지 않는다. 닷새를 버틴 끝인데 숫자 석 줄이 툭 올라오면
+    /// 장사가 끝난 것이지 이야기가 끝난 것으로 안 읽힌다.
+    /// </summary>
+    private IEnumerator PlayEnding(float average)
+    {
+        ScreenFade fade = ScreenFade.Instance;
+        if (fade != null) yield return fade.FadeOut();
+
+        yield return new WaitForSecondsRealtime(BlackHoldSeconds);
+
+        if (narration != null)
+        {
+            yield return narration.Play(EndingLines);
+            yield return narration.FadeOutLines(NarrationFadeSeconds);
+        }
+
+        yield return new WaitForSecondsRealtime(BlackHoldSeconds);
+
+        // 검은 판은 성적표가 뜬 뒤에도 남는다. 가게로 돌아갈 일이 없으니 걷을 이유가 없다.
+        if (narration != null) narration.Hide();
+        if (finalResultUI != null) finalResultUI.Open(totalRevenue, average, perfectCount, servedCount);
     }
 
     /// <summary>
@@ -689,7 +1409,7 @@ public class GameManager : MonoBehaviour
         if (orderScreenUI != null)
         {
             int day = EnsureDayManager() ? dayManager.CurrentDay : 1;
-            orderScreenUI.OpenEating(day, currentHour, totalRevenue);
+            orderScreenUI.OpenEating(day, currentHour, TodayRevenue);
 
             // 화면이 다 올라온 다음에 먹는 연출을 시작한다.
             yield return orderScreenUI.WaitForSlide();
@@ -719,14 +1439,21 @@ public class GameManager : MonoBehaviour
         if (accuracy >= RamenCalculator.PERFECT_ACCURACY)
         {
             if (perfectSign == null) perfectSign = FindFirstObjectByType<PerfectSign>();
-            if (perfectSign != null) yield return perfectSign.Play();
+            if (perfectSign != null)
+            {
+                yield return perfectSign.Play();
+
+                // 팻말이 다 스러진 뒤 반 박자 두고 결과창을 올린다.
+                // 붙여 놓으면 팻말이 사라지는 것과 창이 뜨는 것이 한 동작처럼 보여, 둘 다 안 읽힌다.
+                yield return new WaitForSecondsRealtime(PerfectSignTailSeconds);
+            }
         }
 
         // 결과창을 올린다. 손님은 그대로 세워 둔다.
         // 결과창이 손님을 가리므로 여기서 스러뜨리면 나가는 모습을 아무도 못 보고,
         // [확인]을 눌렀을 때는 이미 사라진 뒤라 손님이 순간이동한 것처럼 보인다.
         // 나가는 모습은 결과창이 걷힌 다음에 보여 준다(SwapCustomer).
-        orderResultUI.Open(accuracy, price, totalRevenue);
+        orderResultUI.Open(accuracy, price, TodayRevenue);
 
         // 말풍선만 먼저 치운다. 지금은 결과창에 가려 있어 사라지는 티가 안 난다.
         if (orderScreenUI != null) orderScreenUI.ShowBubble(false);
@@ -934,6 +1661,52 @@ public class GameManager : MonoBehaviour
         look.SetFade(to);
     }
 
+    // ── 크레딧이 쓰는 문 ──────────────────────────────────────────
+    //
+    // 크레딧은 무대를 직접 몬다. 하루 진행·정산·다음 손님(DayManager·AdvanceCustomer)은
+    // 타지 않는다 — 5일이 이미 끝난 자리에서 도는 것이라 진행할 하루가 없다.
+    // 아래 셋은 **여기 있는 것을 그대로 쓰기 위한 문**이고, 본편 흐름은 하나도 안 바뀐다.
+
+    /// <summary>손님 하나가 옆에서 걸어 들어와 자리에 서고 말을 건다.</summary>
+    public IEnumerator CreditsWalkIn()
+    {
+        HideCustomerForEntrance();
+        yield return EnterCustomer();
+    }
+
+    /// <summary>손님이 스러져 나간다.</summary>
+    public IEnumerator CreditsWalkOut()
+    {
+        yield return FadeCustomer(0f, 1f, exitSeconds);
+    }
+
+    /// <summary>
+    /// 그릇에 레시피대로 담는다. 담는 소리가 나라고 실제로 담는다 —
+    /// 조리 화면은 주문 화면에 덮여 있어 보이지는 않는다.
+    /// </summary>
+    public IEnumerator CreditsPour(Dictionary<IngredientType, int> recipe)
+    {
+        Bowl bowl = FindFirstObjectByType<Bowl>();
+        if (bowl == null || recipe == null) yield break;
+
+        if (!bowl.IsEmpty) bowl.Discard();
+        yield return PourRecipe(bowl, recipe);
+        yield return new WaitForSecondsRealtime(PourSeconds);
+    }
+
+    /// <summary>담아 둔 것을 비운다. 다음 손님이 앞 손님 그릇에 얹지 않게.</summary>
+    public void CreditsClearBowl()
+    {
+        Bowl bowl = FindFirstObjectByType<Bowl>();
+        if (bowl != null && !bowl.IsEmpty) bowl.Discard();
+    }
+
+    /// <summary>손님 화면. 크레딧이 무대를 세우는 데 쓴다.</summary>
+    public OrderScreenUI CreditsScreen { get { return orderScreenUI; } }
+
+    /// <summary>시식 연출. 없으면 null.</summary>
+    public EatingCutscene CreditsCutscene { get { return EnsureCutscene() ? cutscene : null; } }
+
     /// <summary>인스펙터가 비어 있으면 씬에서 한 번 찾아 둔다.</summary>
     private bool EnsureFootsteps()
     {
@@ -988,35 +1761,27 @@ public class GameManager : MonoBehaviour
     /// </summary>
     private IEnumerator CloseShop()
     {
-        // 마지막 손님이 나간다. 어두워지다가 지워진다(SwapCustomer 의 첫 박자와 같다).
+        // 마지막 손님과 그 앞의 그릇이 같이 스러진다. 그릇만 남으면 손님이 들고 간 것처럼 보이고,
+        // 그릇만 툭 꺼지면 빈 카운터가 아니라 "그릇이 사라진 카운터" 가 된다.
+        Coroutine bowlAway = orderScreenUI != null
+            ? StartCoroutine(orderScreenUI.FadeServedBowl(exitSeconds))
+            : null;
+
         yield return FadeCustomer(0f, 1f, exitSeconds);
+        if (bowlAway != null) yield return bowlAway;
 
         if (closedSign != null)
         {
             yield return new WaitForSecondsRealtime(closedSignDelay);   // 빈 카운터
             yield return closedSign.Play();               // 주 · 문 · 마 · 감
-
-            // 화면이 검게 물드는 동안 글자는 그 위에 남아 있다가 뒤늦게 스러진다.
-            // 둘을 나란히 돌리고 늦게 끝나는 쪽까지 기다린다.
-            Coroutine black = ScreenFade.Instance != null
-                ? StartCoroutine(ScreenFade.Instance.FadeOut())
-                : null;
-
             yield return closedSign.FadeAway();
-            if (black != null) yield return black;
-        }
-        else if (ScreenFade.Instance != null)
-        {
-            yield return ScreenFade.Instance.FadeOut();
         }
 
-        // 먹는 화면을 띄운 채로 여기까지 왔으므로 닫아야 정산 팝업만 남는다.
-        if (orderScreenUI != null) orderScreenUI.Close();
-
+        // 화면을 검게 덮지 않는다. 주문 화면(빈 포장마차)을 그대로 두고 그 위에 정산표를 얹는다.
+        // 예전에는 여기서 FadeOut → 주문 화면 Close → 팝업 → FadeIn 이었는데, 정산표가
+        // 검은 바탕에 떠서 가게와 끊겼다. 하루를 닫는 자리는 가게에 남아 있는 편이 맞다.
         dayManager.OnCustomerServed();                            // 그 안에서 하루가 마감된다
         SaveNow();                                                // 하루가 끝난 자리도 남긴다
-
-        if (ScreenFade.Instance != null) yield return ScreenFade.Instance.FadeIn();
     }
 
     /// <summary>인스펙터가 비어 있으면 씬에서 한 번 찾아 둔다.</summary>
@@ -1038,9 +1803,51 @@ public class GameManager : MonoBehaviour
         return ramenCalculator != null;
     }
 
+    /// <summary>오늘 목표를 이미 넘겼는가. 넘긴 순간 한 번만 알리려고 들고 있는다.</summary>
+    private bool goalReached;
+
+    /// <summary>목표를 넘겼을 때 수익 글자색. 넘기 전 색은 빌더가 준 것을 그대로 쓴다.</summary>
+    private static readonly Color GoalColor = new Color32(0x2E, 0x7D, 0x32, 0xFF);
+
+    private Color? normalRevenueColor;
+
+    /// <summary>
+    /// 상단바 수익. 오늘 번 돈과 오늘 목표를 같이 싣는다.
+    ///
+    /// 목표를 넘기는 순간에만 색이 바뀌고 띡 소리가 한 번 난다. 그 이상은 만들지 않는다 —
+    /// 조리하는 내내 눈에 들어오는 자리라 뭐가 더 붙으면 손이 그쪽으로 끌린다.
+    /// </summary>
     private void RefreshRevenue()
     {
-        if (revenueText != null) revenueText.text = "누적 수익 : " + totalRevenue.ToString("N0") + "₩";
+        if (revenueText == null) return;
+
+        if (normalRevenueColor == null) normalRevenueColor = revenueText.color;
+
+        int today = TodayRevenue;
+        int goal = EnsureDayManager() ? dayManager.TargetProfit : 0;
+
+        revenueText.text = "금일 수익 : " + today.ToString("N0") + " / " + goal.ToString("N0") + "₩";
+
+        bool reached = goal > 0 && today >= goal;
+        if (reached && !goalReached)
+        {
+            goalReached = true;
+            Sfx.Play("sfx_ui_count", 0.5f);
+        }
+
+        revenueText.color = reached ? GoalColor : normalRevenueColor.Value;
+    }
+
+    /// <summary>
+    /// 하루가 열릴 때 뜨는 자막에 싣는 글. 「N일차」 밑에 「목표 35,000원」.
+    ///
+    /// 목표는 DayManager 가 일차로 정한다(35,000 / 42,000 / 56,000). 여기서 표를 베끼지 않는다 —
+    /// 베껴 두면 그쪽이 바뀌었을 때 자막만 옛 숫자를 말한다.
+    /// </summary>
+    private string DayCaption(int day)
+    {
+        int goal = EnsureDayManager() ? dayManager.TargetProfit : 0;
+        return day + "일차\n목표 " + goal.ToString("N0") + "원";
     }
 
     private static string Describe(Dictionary<IngredientType, int> dict)

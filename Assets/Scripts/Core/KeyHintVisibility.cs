@@ -28,5 +28,10 @@ public class KeyHintVisibility : MonoBehaviour
 
         bool cooking = orderScreen == null || !orderScreen.IsOpen;
         group.alpha = cooking ? 1f : 0f;
+
+        // 아이콘을 눌러도 열리게 되면서 레이캐스트도 같이 끊어야 한다.
+        // 투명도만 0 으로 두면 안 보이는 아이콘이 그 자리에서 클릭을 계속 받아,
+        // 주문 화면에서 손님 얼굴 옆을 눌렀는데 주문서가 튀어나온다.
+        group.blocksRaycasts = cooking;
     }
 }

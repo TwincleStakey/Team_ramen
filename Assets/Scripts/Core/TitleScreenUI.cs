@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
@@ -41,7 +41,11 @@ public class TitleScreenUI : MonoBehaviour
 
     private void Awake()
     {
-        if (startButton != null) startButton.onClick.AddListener(ShowModes);
+        // [게임시작] 은 모드 고르는 줄을 거치지 않고 바로 스토리로 간다.
+        // 무한 모드는 기획이 없어 「준비 중」 쪽지만 뜨는데, 그것 하나 때문에
+        // 시작할 때마다 한 번 더 누르게 하는 것이 손해다. ShowModes 와 모드 줄은 남겨 둔다 —
+        // 무한 모드가 생기면 이 한 줄만 되돌리면 된다.
+        if (startButton != null) startButton.onClick.AddListener(StartStory);
         if (settingsButton != null) settingsButton.onClick.AddListener(ShowSettings);
         if (creditsButton != null) creditsButton.onClick.AddListener(ShowCredits);
         if (quitButton != null) quitButton.onClick.AddListener(Quit);
@@ -79,7 +83,7 @@ public class TitleScreenUI : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (startButton != null) startButton.onClick.RemoveListener(ShowModes);
+        if (startButton != null) startButton.onClick.RemoveListener(StartStory);
         if (settingsButton != null) settingsButton.onClick.RemoveListener(ShowSettings);
         if (creditsButton != null) creditsButton.onClick.RemoveListener(ShowCredits);
         if (quitButton != null) quitButton.onClick.RemoveListener(Quit);
@@ -118,7 +122,10 @@ public class TitleScreenUI : MonoBehaviour
     /// </summary>
     private void StartStory()
     {
+        // 두 버튼 다 잠근다. 이제는 [게임시작] 이 곧장 여기로 들어오므로 그쪽도 막아야
+        // 연타로 BeginGame 이 두 번 돌지 않는다.
         if (storyButton != null) storyButton.interactable = false;
+        if (startButton != null) startButton.interactable = false;
 
         if (GameManager.Instance != null) GameManager.Instance.BeginGame();
         else Debug.LogWarning("[시작 화면] 씬에 GameManager 가 없습니다.");

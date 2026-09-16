@@ -37,6 +37,24 @@ public sealed class DialogueWorkbookDatabase
 
     private readonly List<string> recentPersonas = new List<string>();
 
+    /// <summary>
+    /// 이 클래스를 거치지 않고 나온 손님의 말투를 최근 목록에 얹는다.
+    ///
+    /// 튜토리얼 손님이 그렇다. TutorialManager.BuildScenario 가 시나리오를 직접 만들어서
+    /// RandomPersona 를 안 타는데, 그러면 바로 다음 손님이 같은 말투로 나올 수 있다.
+    /// 실제로 1일차 첫 손님이 튜토리얼 손님과 똑같이 생겨 나왔다.
+    /// </summary>
+    public void NotePersonaUsed(string personaId)
+    {
+        if (string.IsNullOrEmpty(personaId)) return;
+
+        // 같은 것을 두 번 얹으면 기억 여덟 칸 중 둘을 혼자 먹는다.
+        if (recentPersonas.Contains(personaId)) return;
+
+        recentPersonas.Add(personaId);
+        if (recentPersonas.Count > RecentPersonaMemory) recentPersonas.RemoveAt(0);
+    }
+
     public PersonaRow RandomPersona()
     {
         var usable = new List<PersonaRow>();

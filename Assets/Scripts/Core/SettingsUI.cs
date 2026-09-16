@@ -1,65 +1,134 @@
-using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// [설정] 창. 지금은 화면 필터 세기 하나뿐이다.
+/// [설정] 창. 배경음·효과음·화면 필터 세 줄이다.
 ///
-/// 값은 눈금 0~10 으로 끊는다. 왼쪽·오른쪽 버튼으로 한 칸씩 옮기고, 바꾸는 즉시
-/// 뒤쪽 화면에 반영된다 — 창이 시작 화면 위에 떠 있어서 고르는 동안 바로 보인다.
-/// 저장은 ScreenGrade 가 한다(PlayerPrefs). 닫기를 눌러야 저장되는 식이면
-/// 창을 그냥 닫았을 때 방금 고른 값이 사라져 버린다.
+/// **시작 화면과 인게임이 같은 창을 쓴다.** 그래서 시작 화면 밑이 아니라 캔버스 바로 밑에
+/// 따로 서 있고, 정렬 순서로 모든 화면 위에 그려진다(빌더의 <c>SettingsOrder</c>).
+/// 시작 화면에서는 [설정] 버튼이, 인게임에서는 ESC 가 연다.
+///
+/// 값은 눈금 0~10 으로 끊는다. 셋 다 같은 눈금이라 한 위젯(<see cref="SettingsRow"/>)으로
+/// 그린다 — <see cref="Sfx.MaxVolumeStep"/> 과 <see cref="ScreenGrade.MaxStep"/> 이 둘 다 10 이다.
+///
+/// 저장은 값을 쥔 쪽이 한다(Sfx·ScreenGrade 가 각자 PlayerPrefs 에 넣는다).
+/// 닫을 때 저장하는 식이면 창을 그냥 닫았을 때 방금 고른 값이 사라진다.
 /// </summary>
 public class SettingsUI : MonoBehaviour
 {
     // 아래는 RamenLayoutBuilder 가 씬을 만들 때 꽂아 준다.
     [SerializeField] private GameObject root;
-    [SerializeField] private TextMeshProUGUI valueText;
-    [SerializeField] private Button minusButton;
-    [SerializeField] private Button plusButton;
+    [SerializeField] private SettingsRow bgmRow;
+    [SerializeField] private SettingsRow sfxRow;
+    [SerializeField] private SettingsRow filterRow;
     [SerializeField] private Button closeButton;
 
-    /// <summary>눈금 0 일 때 보여 줄 말. 숫자 0 만 있으면 꺼진 것인지 알기 어렵다.</summary>
-    private const string OffLabel = "꺼짐";
+    /// <summary>창이 떠 있는가. 다른 쪽이 「지금 설정 중」인지 물어볼 수 있게 열어 둔다.</summary>
+    public bool IsOpen { get { return root != null && root.activeSelf; } }
+
+    /// <summary>
+    /// 열기 전의 시간 배속. 닫을 때 이 값으로 되돌린다.
+    ///
+    /// 1 로 못 박으면 안 된다 — 확인창처럼 이미 0 으로 내려 둔 것 위에서 설정을 열었다가
+    /// 닫으면, 확인창이 아직 떠 있는데 게임이 다시 흐른다.
+    /// </summary>
+    private float resumeScale = 1f;
 
     private void Awake()
     {
-        if (minusButton != null) minusButton.onClick.AddListener(Decrease);
-        if (plusButton != null) plusButton.onClick.AddListener(Increase);
+        Bind(bgmRow, ChangeBgm);
+        Bind(sfxRow, ChangeSfx);
+        Bind(filterRow, ChangeFilter);
+
         if (closeButton != null) closeButton.onClick.AddListener(Close);
 
+        // 이 스크립트는 root 바깥에 붙어 있어야 한다. 안에 있으면 자기 자신을 꺼 버려
+        // Awake 가 안 돌고 버튼에 손이 안 붙는다(실제로 한 번 그렇게 만들었다).
         if (root != null) root.SetActive(false);
     }
 
     private void OnDestroy()
     {
-        if (minusButton != null) minusButton.onClick.RemoveListener(Decrease);
-        if (plusButton != null) plusButton.onClick.RemoveListener(Increase);
+        Unbind(bgmRow, ChangeBgm);
+        Unbind(sfxRow, ChangeSfx);
+        Unbind(filterRow, ChangeFilter);
+
         if (closeButton != null) closeButton.onClick.RemoveListener(Close);
+    }
+
+    private static void Bind(SettingsRow row, System.Action<int> move)
+    {
+        if (row == null) return;
+
+        if (row.Minus != null) row.Minus.onClick.AddListener(delegate { move(-1); });
+        if (row.Plus != null) row.Plus.onClick.AddListener(delegate { move(1); });
+    }
+
+    private static void Unbind(SettingsRow row, System.Action<int> move)
+    {
+        if (row == null) return;
+
+        if (row.Minus != null) row.Minus.onClick.RemoveAllListeners();
+        if (row.Plus != null) row.Plus.onClick.RemoveAllListeners();
+    }
+
+    /// <summary>
+    /// ESC 로 여닫는다. 시작 화면에서도 인게임에서도 같다.
+    ///
+    /// 멈춰 있는 동안에도 키를 받아야 하므로 Update 에서 본다 — timeScale 이 0 이어도
+    /// Update 는 계속 돈다(FixedUpdate 만 멈춘다).
+    /// </summary>
+    private void Update()
+    {
+        // ⚠️ 옛 Input 클래스(Input.GetKeyDown)를 쓰면 안 된다. 이 프로젝트는 Player Settings 에서
+        // Input System 으로 넘어가 있어서, 저쪽을 읽는 순간 매 프레임 InvalidOperationException 이
+        // 터진다. 예외가 Update 를 끊어 그 뒤 줄이 통째로 안 돌고, 콘솔도 그 예외로 뒤덮인다.
+        var keyboard = UnityEngine.InputSystem.Keyboard.current;
+        if (keyboard == null || !keyboard.escapeKey.wasPressedThisFrame) return;
+
+        if (IsOpen) Close();
+        else Open();
     }
 
     public void Open()
     {
-        if (root != null) root.SetActive(true);
+        if (root == null || root.activeSelf) return;
+
+        // 조리 중에 설정을 보다 손님을 놓치면 억울하다. 창이 떠 있는 동안 시간을 멈춘다.
+        // 창 자체는 실시간으로 도는 것들만 쓰므로(버튼·TMP) 멈춰도 멀쩡하다.
+        resumeScale = Time.timeScale;
+        Time.timeScale = 0f;
+
+        root.SetActive(true);
         Refresh();
     }
 
     public void Close()
     {
-        if (root != null) root.SetActive(false);
+        if (root == null || !root.activeSelf) return;
+
+        root.SetActive(false);
+        Time.timeScale = resumeScale;
     }
 
-    private void Decrease()
+    // 고른 크기를 귀로 바로 확인할 수 있다.
+    //   배경음 — Sfx 가 돌고 있는 루프에 새 배율을 바로 먹인다
+    //   효과음 — 화살표를 누르는 소리(ButtonPress 의 sfx_ui_press)가 이미 새 크기로 난다
+    // 그래서 여기서 확인용 소리를 따로 내지 않는다. 내면 누를 때마다 두 번 겹친다.
+
+    private void ChangeBgm(int delta)
     {
-        Move(-1);
+        Sfx.BgmStep = Sfx.BgmStep + delta;
+        Refresh();
     }
 
-    private void Increase()
+    private void ChangeSfx(int delta)
     {
-        Move(1);
+        Sfx.SfxStep = Sfx.SfxStep + delta;
+        Refresh();
     }
 
-    private void Move(int delta)
+    private void ChangeFilter(int delta)
     {
         ScreenGrade grade = ScreenGrade.Instance;
         if (grade == null) return;
@@ -68,22 +137,13 @@ public class SettingsUI : MonoBehaviour
         Refresh();
     }
 
-    /// <summary>숫자와 버튼 상태를 지금 값에 맞춘다.</summary>
+    /// <summary>세 줄을 지금 값에 맞춘다.</summary>
     private void Refresh()
     {
+        if (bgmRow != null) bgmRow.Show(Sfx.BgmStep);
+        if (sfxRow != null) sfxRow.Show(Sfx.SfxStep);
+
         ScreenGrade grade = ScreenGrade.Instance;
-
-        if (grade == null)
-        {
-            if (valueText != null) valueText.text = "-";
-            return;
-        }
-
-        int step = grade.Step;
-        if (valueText != null) valueText.text = step == 0 ? OffLabel : step.ToString();
-
-        // 끝에 닿으면 눌리지 않게 한다. 눌러도 아무 일이 없으면 고장으로 읽힌다.
-        if (minusButton != null) minusButton.interactable = step > 0;
-        if (plusButton != null) plusButton.interactable = step < ScreenGrade.MaxStep;
+        if (filterRow != null) filterRow.Show(grade != null ? grade.Step : 0);
     }
 }

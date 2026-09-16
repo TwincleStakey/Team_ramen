@@ -24,6 +24,18 @@ public class OrderResultUI : MonoBehaviour
     [SerializeField] private Button confirmButton;
     [SerializeField] private GameManager gameManager;
 
+    /// <summary>대사 왼쪽에 붙는 손님 초상.</summary>
+    [SerializeField] private Image customerFace;
+
+    /// <summary>
+    /// 지금 손님이 누구인지 아는 쪽. 초상은 말투마다 다르니 여기서 받아 온다.
+    ///
+    /// 정확도 창이 스스로 말투를 알 길은 없다 — <see cref="Open"/> 이 받는 것은 점수와 돈뿐이고,
+    /// 말투를 인자로 더 받게 하면 부르는 쪽(GameManager)이 손님 그림까지 알아야 한다.
+    /// 이미 손님을 세우고 있는 쪽에 물어보는 편이 좁게 끝난다.
+    /// </summary>
+    [SerializeField] private CustomerAppearance customer;
+
     /// <summary>결과창이 떠 있는가. 떠 있으면 이미 제출한 뒤라 조리 단축키가 막힌다.</summary>
     public bool IsOpen
     {
@@ -53,10 +65,20 @@ public class OrderResultUI : MonoBehaviour
 
         if (accuracyText != null) accuracyText.text = "정확도 : " + accuracy.ToString("F0") + "%";
         if (rewardText != null) rewardText.text = "+ " + reward.ToString("N0") + "₩";
-        if (revenueText != null) revenueText.text = "누적 수익 : " + totalRevenue.ToString("N0") + "₩";
+        // 콜론을 뺐다. 12 칸으로 작아진 곁다리 줄이라 기호가 하나 더 붙으면 그만큼 성기다.
+        if (revenueText != null) revenueText.text = "금일 수익 " + totalRevenue.ToString("N0") + "₩";
 
         // 말투와 표정에 맞는 한마디. 컷신에서 이미 뽑았으면 같은 말이 온다.
         if (customerLine != null) customerLine.text = ReactionLines.For(accuracy);
+
+        // 누가 한 말인지. 그림이 없는 말투면 판을 아예 감춘다 — 스프라이트를 비운 채
+        // 켜 두면 유니티가 그 자리에 흰 사각형을 그린다.
+        if (customerFace != null)
+        {
+            Sprite face = customer != null ? customer.Face : null;
+            customerFace.sprite = face;
+            customerFace.enabled = face != null;
+        }
 
         // 기획서 7.5 — 90% 이상 웃음 / 70~89% 무표정 / 69% 이하 화남
         if (emoji != null)

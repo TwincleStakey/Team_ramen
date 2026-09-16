@@ -89,6 +89,18 @@ public class ConfirmDialogUI : MonoBehaviour
         Restore();
     }
 
+    /// <summary>
+    /// 밖에서 창을 걷는다. 개발용 건너뛰기가 쓴다.
+    ///
+    /// 그냥 오브젝트만 끄면 안 된다 — 이 창은 열 때 <see cref="Time.timeScale"/> 을 0 으로
+    /// 눌러 두므로, 되돌리지 않고 지나가면 게임이 멈춘 채로 남는다.
+    /// </summary>
+    public void ForceClose()
+    {
+        if (!isOpen) return;
+        Restore();
+    }
+
     /// <summary>창을 닫고 시간을 되돌린다. 눌렀든 말았든 거쳐야 하는 자리다.</summary>
     private void Restore()
     {
