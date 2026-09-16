@@ -256,6 +256,20 @@ public class GameManager : MonoBehaviour
         BeginGame();
     }
 
+    /// <summary>
+    /// 일차를 몰아서 넘기는 중인가. 그동안은 하루 시작 연출(검은 화면·자막·아이리스)을 안 건다.
+    ///
+    /// 안 막으면 넘긴 일차마다 그 코루틴이 하나씩 쌓여, 네 일차를 건너뛰는 데 20초가 넘게 걸리고
+    /// 자막 넷이 줄지어 뜬다.
+    ///
+    /// **개발용 건너뛰기가 세우는 값인데 선언은 `#if UNITY_EDITOR` 바깥에 둔다.** 이걸 보는
+    /// <see cref="HandleDayStarted"/> 는 본편 흐름이라 안 가려져 있어서, 선언만 안쪽에 두면
+    /// 에디터에서는 멀쩡하고 **빌드에서만** CS0103 으로 깨진다. 실제로 2026-09-16 에 그랬다 —
+    /// 콘솔은 조용한데 Build 를 누르면 그때서야 실패했다.
+    /// 값을 세우는 쪽(F8)은 그대로 에디터 전용이라, 빌드에서는 늘 거짓이다.
+    /// </summary>
+    private bool fastForwarding;
+
 #if UNITY_EDITOR
     /// <summary>
     /// 개발용 건너뛰기 두 가지. 타이틀의 F1 과 같이 에디터에서만 듣는다 — 빌드에는 이 키가 아예 없다.
@@ -408,14 +422,6 @@ public class GameManager : MonoBehaviour
 
         yield return CloseShop();
     }
-
-    /// <summary>
-    /// 일차를 몰아서 넘기는 중인가. 그동안은 하루 시작 연출(검은 화면·자막·아이리스)을 안 건다.
-    ///
-    /// 안 막으면 넘긴 일차마다 그 코루틴이 하나씩 쌓여, 네 일차를 건너뛰는 데 20초가 넘게 걸리고
-    /// 자막 넷이 줄지어 뜬다.
-    /// </summary>
-    private bool fastForwarding;
 
     /// <summary>
     /// F8 — 1~4일차를 정답으로 몰아 넘기고 5일차 주문마감까지 간다.
