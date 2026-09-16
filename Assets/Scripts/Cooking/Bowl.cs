@@ -613,6 +613,18 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler
         if (GameManager.Instance != null) GameManager.Instance.SaveNow();
     }
 
+    /// <summary>
+    /// 소리도 연출도 없이 그릇만 비운다. <b>폐기가 아니다</b> — 누적 폐기 기록에도 안 들어간다.
+    ///
+    /// 크레딧이 쓴다. 거기서는 그릇이 주문 화면에 가려 보이지 않고 <b>담는 소리만</b> 쓰는데,
+    /// 그릇을 갈 때마다 <see cref="Discard"/> 를 부르면 버리는 소리가 나고 화면이 한 번
+    /// 거칠어진다. 크레딧은 아무도 아무것도 버리지 않는 자리다.
+    /// </summary>
+    public void ClearQuietly()
+    {
+        ClearBowl();
+    }
+
     // ── 표시와 도우미 ────────────────────────────────────────────
 
     /// <summary>

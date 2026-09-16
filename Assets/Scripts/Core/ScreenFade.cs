@@ -62,6 +62,14 @@ public class ScreenFade : MonoBehaviour
     }
 
     /// <summary>
+    /// 이미 검게 덮여 있는가.
+    ///
+    /// <see cref="FadeOut"/> 은 0 부터 다시 덮으므로, 덮인 채로 들어온 길에서 그냥 부르면
+    /// 화면이 한 번 환해졌다 도로 검어진다. 크레딧이 그 길로 들어와서 이걸 먼저 본다.
+    /// </summary>
+    public bool IsBlack { get { return cover != null && cover.color.a > 0.999f; } }
+
+    /// <summary>
     /// 걷는 연출 없이 판을 바로 치운다.
     ///
     /// 다른 검은 판(아이리스)이 화면을 넘겨받은 뒤에 쓴다. 화면은 이미 그쪽이 덮고 있어서

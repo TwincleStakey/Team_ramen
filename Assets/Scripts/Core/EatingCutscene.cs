@@ -1410,27 +1410,61 @@ public class EatingCutscene : MonoBehaviour
     /// <summary>
     /// 조리 화면 물건(상단바·그릇)을 내렸다 올린다.
     ///
-    /// **주문 화면이 떠 있으면 도로 켜지 않는다.** 조리 상단바는 정렬 183 이라 주문 화면(180)
-    /// 보다 앞이고, 그래서 주문 화면이 열릴 때 OrderScreenUI 가 일부러 내려 둔다.
-    /// 여기서 무조건 켜면 두 화면의 「N일차」 판이 나란히 보인다 — 건너뛰기로 ResetStage 가
-    /// 일찍 돌 때 실제로 그렇게 됐다.
+    /// **주문 화면이 떠 있어도 되돌린다. 단, 주문 화면이 제 손으로 내려 둔 것만 뺀다.**
+    /// 조리 상단바·그릇은 정렬 183 이라 주문 화면(180) 위로 떠오르므로, 주문 화면이 열릴 때
+    /// OrderScreenUI 가 일부러 내려 둔다. 그 둘을 여기서 켜면 두 화면의 「N일차」 판이 나란히
+    /// 보인다 — 건너뛰기로 ResetStage 가 일찍 돌 때 실제로 그렇게 됐다. 그 둘은 주문 화면이
+    /// 내려갈 때 OrderScreenUI.Close 가 켜 주므로 여기서 손대지 않는다.
+    ///
+    /// 2026-09-16 — 예전에는 주문 화면이 떠 있으면 <b>통째로 되돌아 나갔다.</b> 시식 컷신은
+    /// 늘 주문 화면이 떠 있는 동안 도는 것이라, 되돌리는 쪽(Sequence 끝·ResetStage)이 한 번도
+    /// 안 돌았다. 그래서 주문 화면이 안 건드리는 재료통(Slots)·냄비·DragLayer·카운터가 꺼진 채로
+    /// 남아, 첫 손님을 낸 뒤로 재료가 안 보이고 아무것도 집히지 않았다. 그릇이 늘 비어 있으니
+    /// 폐기·마무리 확인창도 안 열렸다(ConfirmDialogUI.Open 은 빈 그릇이면 그냥 빠진다).
     /// </summary>
     private void ShowGameUI(bool show)
     {
-        if (show && orderScreen != null && orderScreen.IsOpen) return;
+        GameObject[] keptDown = show && orderScreen != null && orderScreen.IsOpen
+            ? orderScreen.PropsHiddenWhileOpen
+            : null;
 
-        Show(hiddenDuringCut, show);
-        if (show) Show(hiddenAtZoom, true);
+        Show(hiddenDuringCut, show, keptDown);
+        if (show) Show(hiddenAtZoom, true, keptDown);
     }
 
-    private static void Show(GameObject[] targets, bool show)
+    /// <param name="except">
+    /// 켤 때 건드리지 않고 지나갈 것. 다른 쪽이 껐다 켜기를 쥐고 있는 판이 여기 들어온다.
+    /// </param>
+    private static void Show(GameObject[] targets, bool show, GameObject[] except = null)
     {
         if (targets == null) return;
 
         for (int i = 0; i < targets.Length; i++)
         {
-            if (targets[i] != null) targets[i].SetActive(show);
+            if (targets[i] == null) continue;
+            if (show && KeptDown(targets[i], except)) continue;
+
+            targets[i].SetActive(show);
         }
+    }
+
+    /// <summary>
+    /// 지금 이 판은 켜면 안 되는가. 껐다 켜기를 다른 쪽이 쥐고 있으면 참이다.
+    ///
+    /// 크레딧이 그렇다. 크레딧은 무대를 세울 때 UI 를 한 번 내리고 <b>끝까지 그대로 둔다</b>
+    /// (CreditsSequence.HideStageUi — "되돌리지 않는다"). 그런데 컷신은 손님마다 도니까,
+    /// 여기서 켜면 영업시간·수익 패널이 크레딧 내내 무대 위에 떠 있게 된다.
+    /// 이름으로 본다 — 크레딧도 같은 목록을 이름으로 쥐고 있고(FrameHidden·StageHidden),
+    /// 그쪽이 한 벌만 들고 있어야 미리보기와 실제 화면이 안 갈린다.
+    /// </summary>
+    private static bool KeptDown(GameObject target, GameObject[] except)
+    {
+        if (except != null && System.Array.IndexOf(except, target) >= 0) return true;
+
+        if (!CreditsSequence.Running) return false;
+
+        return System.Array.IndexOf(CreditsSequence.FrameHidden, target.name) >= 0
+            || System.Array.IndexOf(CreditsSequence.StageHidden, target.name) >= 0;
     }
 
     /// <summary>위아래 바를 빼고 남은 창의 한가운데가 화면 어디인가(칸).</summary>

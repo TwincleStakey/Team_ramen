@@ -86,6 +86,22 @@ public class SettingsUI : MonoBehaviour
         var keyboard = UnityEngine.InputSystem.Keyboard.current;
         if (keyboard == null || !keyboard.escapeKey.wasPressedThisFrame) return;
 
+        // ⚠️ 크레딧이 도는 동안에는 안 듣는다.
+        //
+        // 크레딧은 시계를 **실시간(unscaled)**으로 본다. 그래서 설정창이 Time.timeScale 을
+        // 0 으로 눌러도 크레딧은 뒤에서 그대로 굴러가고, 설정창만 그 위에 얹힌 채 남는다.
+        // 멈추지도 않으면서 화면만 가리는 셈이라 어느 쪽으로도 맞는 그림이 아니다.
+        //
+        // 크레딧은 「끝까지 보는 것」이고 중간에 손댈 것이 없다. 닫을 길이 없어 갇히는 것도
+        // 아니다 — 끝나면 저절로 씬을 다시 열어 시작 화면으로 돌아간다.
+        if (CreditsSequence.Running)
+        {
+            // 크레딧이 시작되기 전에 열어 둔 창이 있으면 그것만 닫아 준다.
+            // 열린 채로 두면 timeScale 이 0 에 눌린 채 씬이 다시 열린다.
+            if (IsOpen) Close();
+            return;
+        }
+
         if (IsOpen) Close();
         else Open();
     }

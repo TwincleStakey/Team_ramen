@@ -6,6 +6,9 @@ using UnityEngine;
 /// 두 키는 CookingHotkeys 가 "조리 중일 때만" 받는다. 주문 화면에서도 아이콘이 떠 있으면
 /// 눌러도 아무 일이 없어서, 있는 기능이 고장 난 것처럼 보인다.
 ///
+/// **ESC(설정)에는 안 붙는다.** 설정은 조리 중이 아니어도 열려야 해서 주문 화면에서도 남는다.
+/// 붙이고 말고는 빌더가 정한다(RamenLayoutBuilder.BuildKeyHint 의 hideOnOrderScreen).
+///
 /// 오브젝트를 껐다 켜지 않고 CanvasGroup 의 투명도만 건드린다. 자기가 붙어 있는 오브젝트를
 /// SetActive(false) 로 끄면 Update 가 같이 멈춰서, 다시 켤 기회가 영영 오지 않는다.
 /// (실제로 그렇게 만들었다가 아이콘이 한 번 사라진 뒤로 안 돌아왔다.)

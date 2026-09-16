@@ -47,6 +47,15 @@ public class OrderScreenUI : MonoBehaviour
     [SerializeField] private GameObject[] hiddenWhileOpen;
 
     /// <summary>
+    /// 주문 화면이 떠 있는 동안 내려 둔 조리대 물건. 껐다 켜기를 이쪽이 쥐고 있다는 표다.
+    ///
+    /// 시식 컷신(EatingCutscene.ShowGameUI)이 제 판을 되돌릴 때 이것만 빼고 켠다.
+    /// 컷신이 이 둘까지 켜면 조리 상단바(정렬 183)가 주문 화면(180) 위로 떠올라
+    /// 「N일차」 판이 두 벌 보인다.
+    /// </summary>
+    public GameObject[] PropsHiddenWhileOpen { get { return hiddenWhileOpen; } }
+
+    /// <summary>
     /// 손님 앞에 놓이는 라멘 그릇. 라멘을 낸 뒤에만 보인다 —
     /// 주문받는 동안 놓여 있으면 이미 준 것처럼 보인다.
     /// </summary>

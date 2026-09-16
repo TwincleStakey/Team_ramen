@@ -28,10 +28,10 @@ public class CreditsSequence : MonoBehaviour
     /// <summary>끝나고 어디로 돌아가는가.</summary>
     public enum Exit
     {
-        /// <summary>씬을 다시 불러 처음부터. 5일 완주 성적표에서 들어온 길.</summary>
+        /// <summary>5일 완주에서 들어온 길. 성적표 → [확인] → 엔딩 글 → 암전 → 여기.</summary>
         Reload,
 
-        /// <summary>씬을 다시 불러 시작 화면으로. 타이틀의 [크레딧] 으로 들어온 길.</summary>
+        /// <summary>타이틀의 [크레딧] 으로 들어온 길.</summary>
         Title,
     }
 
@@ -254,6 +254,65 @@ public class CreditsSequence : MonoBehaviour
     /// <summary>엔딩곡 크기.</summary>
     private const float SongVolume = 0.55f;
 
+    // ── 들어가는 자리 ─────────────────────────────────────────────
+    //
+    // 예전에는 Begin 을 부른 그 프레임에 무대가 절반으로 줄고 검은 판이 깔렸다. 가게가
+    // 툭 사라지고 크레딧이 툭 시작해서, 「장면이 넘어갔다」가 아니라 「화면이 바뀌었다」로
+    // 보였다. 이제는 소리와 화면을 같이 잦아들게 한 뒤, **다 검어진 뒤에** 무대를 차린다.
+
+    /// <summary>
+    /// 크레딧에 들어가기 전, 가게 소리가 잦아드는 시간(초).
+    ///
+    /// <see cref="ScreenFade"/> 가 덮는 시간(outSeconds 2.2)과 같은 길이다. 소리가 먼저
+    /// 끊기면 검어지는 동안 화면만 남고, 늦게 끊기면 검은 화면에서 가게 소리가 계속 난다.
+    /// </summary>
+    private const float PreludeFadeSeconds = 2.2f;
+
+    /// <summary>다 검어지고 크레딧이 시작하기까지 검은 채로 두는 사이(초). 이 사이가 「암전」이다.</summary>
+    private const float PreludeHoldSeconds = 1.4f;
+
+    /// <summary>
+    /// 검은 화면에서 크레딧이 배어 나오는 시간(초).
+    ///
+    /// 이 밑에 깔린 것도 대부분 검다(뒷판은 검은색이고 창은 아직 안 열렸다). 그래서 눈에
+    /// 보이는 일은 거의 없고, 판을 넘겨받는 순간 한 프레임이라도 무대가 비치는 것을 막는다.
+    /// </summary>
+    private const float OpeningRevealSeconds = 1.2f;
+
+    /// <summary>
+    /// 크레딧이 끝나고 씬을 다시 열기까지 <b>완전히 검고 조용한 채로</b> 두는 시간(초).
+    ///
+    /// 예전에는 다 검어진 다음 프레임에 씬을 다시 열었다. 가게 소리를 끄는 페이드(0.8초)가
+    /// 시작만 하고 씬 전환에 잘려서, 검어지는 순간 소리가 툭 끊기고 곧바로 타이틀 곡이 났다.
+    /// </summary>
+    private const float ClosingSilenceSeconds = 2.4f;
+
+    // ── 건너뛰기 ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// 「꾹 눌러서 넘기기」 게이지. 시식 연출이 쓰는 <b>그것을 그대로 빌려 쓴다.</b>
+    ///
+    /// 새로 만들지 않는 이유는 모양이 아니라 <b>박자</b> 때문이다. 누르는 시간(1.2초)·손을 뗄 때
+    /// 빠지는 속도·한 프레임 상한이 저쪽에 맞춰져 있는데, 두 벌로 나누면 「우주에서 넘길 때와
+    /// 크레딧에서 넘길 때 손맛이 다르다」가 된다. 왼쪽 마우스도 스페이스도 저쪽이 이미 받는다.
+    /// </summary>
+    private HoldToSkip skipGauge;
+
+    /// <summary>건너뛰기가 들어왔는가. 두 번 들어오지 않게 막는다.</summary>
+    private bool skipping;
+
+    /// <summary>
+    /// 건너뛸 때 화면과 소리가 잦아드는 시간(초).
+    ///
+    /// 제 순서로 끝날 때(2.2초)보다 짧다. 넘기겠다고 누른 사람을 2초 더 붙잡아 두면
+    /// 그 페이드가 곧 「안 넘어가는 것」으로 읽힌다. 그렇다고 툭 끊으면 건너뛴 것이 아니라
+    /// 게임이 튕긴 것으로 보여서, 잦아들기는 하되 짧게 잦아든다.
+    /// </summary>
+    private const float SkipOutSeconds = 1.2f;
+
+    /// <summary>무대 코루틴. 건너뛸 때 <b>이것만</b> 끊는다.</summary>
+    private Coroutine stageRoutine;
+
     // ── 가게 소리 ─────────────────────────────────────────────────
     //
     // 크레딧 내내 곡 밑에 아주 낮게 깔린다. 소리가 아예 없으면 화면은 가게인데
@@ -330,7 +389,10 @@ public class CreditsSequence : MonoBehaviour
     private void Awake()
     {
         Active = this;
-        BuildScreen();
+
+        // ⚠️ 여기서 화면을 만들지 않는다. BuildScreen 은 무대를 절반으로 줄이고 검은 뒷판을
+        // 까는 일이라, Awake 에서 하면 Begin 을 부른 그 프레임에 가게가 통째로 사라진다.
+        // 화면이 다 검어진 뒤에 Run → Prelude 가 부른다.
     }
 
     private void OnDestroy()
@@ -518,14 +580,72 @@ public class CreditsSequence : MonoBehaviour
     /// </summary>
     public const float AutoReadSeconds = 2.6f;
 
+    /// <summary>
+    /// 들어가는 자리. <b>가게를 닫고 나서 크레딧을 연다.</b>
+    ///
+    /// 순서가 전부다 — 가게 소리와 화면이 같이 잦아들고, 다 검어진 채로 한 박자 쉬고,
+    /// 그 어둠 뒤에서 무대를 차린 다음에야 엔딩곡이 걸린다. 하나라도 앞뒤가 바뀌면
+    /// 「가게가 사라지고 크레딧이 시작했다」로 보인다.
+    ///
+    /// 검은 판이 둘인 것은 층이 달라서다. 덮는 동안은 전환 판(<see cref="ScreenFade"/>, 300)이
+    /// 쥐고, 크레딧이 서고 나면 제 판(<see cref="blackout"/>, 290)이 넘겨받는다.
+    /// 넘겨받은 <b>뒤에</b> 전환 판을 치운다 — 순서를 뒤집으면 한 프레임 가게가 비친다.
+    /// </summary>
+    private IEnumerator Prelude()
+    {
+        // 설정창이 열려 있으면 먼저 닫는다. 그 창은 Time.timeScale 을 0 으로 눌러 두는데,
+        // 크레딧은 실시간으로 도니까 닫을 사람 없이 눌린 채로 남는다. 그 상태로 씬이 다시
+        // 열리면 시작 화면이 멈춘 채 뜬다. 창은 시작 화면 밑에 있어 같이 감춰지기만 한다.
+        SettingsUI settings = FindFirstObjectByType<SettingsUI>(FindObjectsInactive.Include);
+        if (settings != null) settings.Close();
+
+        // 소리부터 뺀다. 타이틀에서 들어오면 타이틀 곡, 5일 완주로 들어오면 가게 곡이다.
+        // 어느 쪽인지 따지지 않고 둘 다 끈다 — 안 울고 있는 이름은 Sfx.Stop 이 그냥 넘긴다.
+        float soundOutAt = Time.unscaledTime + PreludeFadeSeconds;
+        Sfx.Stop("bgm_title", PreludeFadeSeconds);
+        Sfx.Stop("bgm_shop", PreludeFadeSeconds);
+        Sfx.Stop("amb_street_night", PreludeFadeSeconds);
+        Sfx.Stop("amb_broth_boil", PreludeFadeSeconds);
+        Sfx.Stop("amb_noodle_pot", PreludeFadeSeconds);
+
+        ScreenFade fade = ScreenFade.Instance;
+
+        // 5일 완주 길은 엔딩 글을 검은 화면에 띄우고 오므로 이미 덮여 있다. 그대로 또 덮으면
+        // ScreenFade 가 0 부터 다시 시작해서 화면이 한 번 환해졌다 도로 검어진다.
+        if (fade != null && !fade.IsBlack) yield return fade.FadeOut();
+        else if (fade != null) fade.HoldBlack();
+
+        // 소리가 다 빠질 때까지 기다린다. 이미 검게 들어온 길에서는 위 페이드가 없어서
+        // 이 기다림이 곧 「브금이 잦아드는 시간」이 된다.
+        while (Time.unscaledTime < soundOutAt) yield return null;
+
+        // 암전. 검은 화면에 아무것도 없는 이 사이가 있어야 앞과 뒤가 다른 장면이 된다.
+        yield return new WaitForSecondsRealtime(PreludeHoldSeconds);
+
+        // 어둠 뒤에서 무대를 차린다.
+        BuildScreen();
+        SetBlack(1f);
+
+        // 한 프레임 — 내 판이 실제로 그려진 뒤에 전환 판을 치운다.
+        yield return null;
+        if (fade != null) fade.Clear();
+    }
+
     private IEnumerator Run()
     {
+        yield return Prelude();
+
         HideStageUi();
+        AttachSkipGauge();
         StartSong();
+
+        // 노래가 걸린 자리에서 검은 판을 걷는다. 밑에 깔린 것도 아직 검어서(뒷판은 검은색,
+        // 창은 FadeStageIn 이 열기 전이라 투명) 눈에는 거의 안 띄고, 넘겨받는 한 프레임을 막는다.
+        StartCoroutine(FadeBlack(1f, 0f, OpeningRevealSeconds));
 
         // 무대와 글자는 따로 돈다. 글자는 시계(노래)만 보고, 무대는 손님 하나를 끝까지 몬다.
         // 한 코루틴에 묶으면 손님이 늦어질 때 글자까지 같이 밀려 음악에서 떨어진다.
-        StartCoroutine(RunStage());
+        stageRoutine = StartCoroutine(RunStage());
 
         int announced = -1;
         int lines = GameManager.CreditLines.GetLength(0);
@@ -534,6 +654,14 @@ public class CreditsSequence : MonoBehaviour
         // 먹고 있는데 씬이 다시 열려 아이리스도 마지막 장면도 안 나온다.
         while (!endingDone)
         {
+            // 게이지는 **매 프레임** 물어봐야 한다. 차오르는 것도 빠지는 것도 도넛을 띄우고
+            // 접는 것도 전부 Poll 안에서 일어난다 — 걸러 부르면 게이지가 얼어붙는다.
+            if (WantsSkip())
+            {
+                yield return SkipOut();
+                break;
+            }
+
             float t = Now;
             SeekTo(t);
 
@@ -552,6 +680,99 @@ public class CreditsSequence : MonoBehaviour
         }
 
         yield return Finish();
+    }
+
+    // ── 건너뛰기 ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// 「꾹 눌러서 넘기기」 게이지를 크레딧 화면으로 옮겨 온다.
+    ///
+    /// 게이지는 원래 <c>Frame</c> 밑에 산다. 그런데 크레딧은 Frame 을 절반으로 줄여 오른쪽 창에
+    /// 앉히고 자르개까지 물린다 — 그대로 두면 도넛도 반으로 줄어 창 안에 갇히고, 「꾹 눌러서
+    /// 넘기기」 글자는 자르개에 잘려 나간다. 캔버스 직속으로 옮기면 앵커(오른쪽 아래)와 크기가
+    /// 그대로 살아나 제자리에 선다.
+    ///
+    /// <see cref="HideStageUi"/> 가 방금 무대에서 걷어 낸 것을 여기서 되살린다. 순서가 중요하다 —
+    /// 먼저 걷고 나서 옮겨야, 창에 딸려 들어간 한 프레임이 안 보인다. 게이지 자신은 다 접힌 채로
+    /// 시작하므로(<see cref="HoldToSkip.Hide"/>) 켜 둔다고 바로 보이지는 않는다.
+    ///
+    /// 되돌리지 않는다 — 크레딧이 끝나면 씬을 다시 연다.
+    /// </summary>
+    private void AttachSkipGauge()
+    {
+        skipGauge = FindFirstObjectByType<HoldToSkip>(FindObjectsInactive.Include);
+        if (skipGauge == null)
+        {
+            Debug.LogWarning("[크레딧] 씬에 HoldToSkip 이 없어 건너뛰기를 못 씁니다. 빌더를 한 번 돌려 주세요.");
+            return;
+        }
+
+        // ⚠️ **자르개를 먼저 떼어 낸다.**
+        //
+        // ShrinkStage 는 Canvas 를 가진 자식마다 자르개를 한 벌씩 붙인다(RectMask2D 가 중첩
+        // Canvas 를 못 넘어서다). 게이지도 제 Canvas 를 얹고 있어서 그 한 벌을 받는다.
+        // 그대로 옮기면 자르개가 따라와 **제 자식을 창 크기(60,18)만큼 잘라 낸다** —
+        // 도넛 오른쪽이 날아가고 「꾹 눌러서 넘기기」는 뒷글자와 아랫단이 잘린다.
+        // 실제로 그렇게 잘려 보였다. 목록에서도 빼야 PinStage 가 매 프레임 다시 먹이지 않는다.
+        RectMask2D mask = skipGauge.GetComponent<RectMask2D>();
+        if (mask != null)
+        {
+            stageInnerMasks.Remove(mask);
+            Destroy(mask);
+        }
+
+        Transform frame = FindFrame();
+        if (frame != null && frame.parent != null) skipGauge.transform.SetParent(frame.parent, false);
+
+        skipGauge.gameObject.SetActive(true);
+        skipGauge.Hide();
+    }
+
+    /// <summary>
+    /// 건너뛰고 싶은가. 게이지를 다 채워야 참이 된다.
+    ///
+    /// 시식 연출과 <b>같은 손맛</b>이다 — 왼쪽 마우스나 스페이스를 1.2초 누르고 있으면 넘어가고,
+    /// 손을 떼면 도로 빠진다. 한 번 누르면 그 자리에서 넘어가게 두지 않는 이유도 저쪽과 같다.
+    /// 손이 미끄러져 한 번 눌린 것으로 크레딧이 통째로 날아가면 다시 볼 길이 타이틀뿐이다.
+    /// </summary>
+    private bool WantsSkip()
+    {
+        if (skipping || skipGauge == null) return false;
+        if (!skipGauge.Poll()) return false;
+
+        skipping = true;
+        Debug.Log("[크레딧] 건너뜁니다.");
+        return true;
+    }
+
+    /// <summary>
+    /// 건너뛰고 나가는 자리. <b>제 순서로 끝날 때와 같은 그림으로 닫는다</b> —
+    /// 화면과 소리가 같이 잦아들고, 그 뒤는 <see cref="Finish"/> 가 이어받는다.
+    ///
+    /// 툭 끊고 씬을 열면 건너뛴 것이 아니라 게임이 튕긴 것으로 보인다.
+    /// </summary>
+    private IEnumerator SkipOut()
+    {
+        // ⚠️ 무대만 끊는다. StopAllCoroutines 는 못 쓴다 — 이 코루틴을 부른 Run 까지 멈춰서
+        // 그다음 Finish 가 영영 안 돌고, 검은 화면에 그대로 갇힌다.
+        if (stageRoutine != null)
+        {
+            StopCoroutine(stageRoutine);
+            stageRoutine = null;
+        }
+
+        if (skipGauge != null) skipGauge.Hide();
+        if (song != null) StartCoroutine(FadeSong(SkipOutSeconds));
+
+        // 지금 얼마나 검은지에서 이어 간다. 0 에서 다시 시작하면, 마지막 장면처럼 이미 검어져
+        // 있던 자리에서 눌렀을 때 화면이 한 번 환해졌다 도로 검어진다.
+        float from = blackout != null ? blackout.color.a : 0f;
+        yield return FadeBlack(from, 1f, SkipOutSeconds);
+
+        // 다 검어진 **뒤에** 아이리스를 치운다. 손님이 쓰러지는 대목에서 눌렀으면 아이리스가
+        // 반쯤 오므린 채로 남아 있는데, 먼저 치우면 그 구멍으로 무대가 비친다.
+        IrisFade iris = FindFirstObjectByType<IrisFade>(FindObjectsInactive.Include);
+        if (iris != null) iris.Hide();
     }
 
     // ── 마지막 장면 ───────────────────────────────────────────────
@@ -766,9 +987,15 @@ public class CreditsSequence : MonoBehaviour
     /// 창 바깥 검은 바탕 위에 그대로 얹혀 네모난 갈색 띠로 보인다(실측 RGB 22,11,8).
     /// 게임 화면을 어둡게 누르는 용도라 크레딧에는 올릴 이유가 없다. 알갱이(ScreenGrain)도 같다.
     /// </remarks>
+    /// <remarks>
+    /// <b>HoldToSkip 은 여기서 걷었다가 곧바로 되살아난다.</b> 크레딧도 「꾹 눌러서 넘기기」를
+    /// 쓰는데, 게이지가 Frame 밑에 있어 창으로 줄면 같이 줄고 잘린다. 그래서 무대에서 한 번
+    /// 걷어 낸 다음 캔버스 직속으로 옮겨 다시 켠다(<see cref="AttachSkipGauge"/>).
+    /// 순서를 뒤집어 옮기고 나서 걷으면 게이지가 꺼진 채로 남아 영영 안 뜬다.
+    /// </remarks>
     public static readonly string[] FrameHidden =
     {
-        "TitleScreen", "KeyHint_Tab", "KeyHint_Book", "HoldToSkip", "DragLayer",
+        "TitleScreen", "KeyHint_Tab", "KeyHint_Book", "KeyHint_Esc", "HoldToSkip", "DragLayer",
         "TutorialPrompt", "TutorialDim",
         "ScreenVignette", "ScreenGrain",
     };
@@ -904,6 +1131,12 @@ public class CreditsSequence : MonoBehaviour
             entering.SetTint(0f, 0f);
             entering.ShowSilhouette(true);
         }
+
+        // ⚠️ 말풍선도 같이 치운다. 손님만 물리고 말풍선을 두면, 창이 열리는 1.4초 동안
+        // **빈 카운터 위에 「여기 너무 맛있다!」만 둥둥 떠 있다.** screen.Open 이 대사를 받아
+        // 말풍선을 켜 두기 때문이고, 그걸 내리는 자리(EnterCustomer)는 창이 다 열린 뒤다.
+        // 손님이 자리에 서고 나서 아래에서 다시 켠다.
+        screen.ShowBubble(false);
 
         // 포장마차가 다 선 뒤에 창을 연다. 이 한 프레임을 기다려야 창이 열리는 순간에
         // 이미 가게가 차려져 있다 — 안 기다리면 나무 조리대가 한 번 비친다.
@@ -1442,11 +1675,17 @@ public class CreditsSequence : MonoBehaviour
 
         // 남은 소리를 전부 닫는다. 씬을 다시 열면 타이틀 BGM 이 처음부터 켜지므로,
         // 여기서 안 끄면 두 곡이 잠깐 겹쳐 난다.
-        Sfx.Stop("amb_broth_boil", 0.8f);
-        Sfx.Stop("amb_street_night", 0.8f);
-        Sfx.Stop("amb_noodle_pot", 0.8f);
+        Sfx.Stop("amb_broth_boil", ClosingSilenceSeconds);
+        Sfx.Stop("amb_street_night", ClosingSilenceSeconds);
+        Sfx.Stop("amb_noodle_pot", ClosingSilenceSeconds);
 
-        yield return null;
+        // 엔딩곡은 끝맺음이 이미 0 까지 내려놓았다(PlayEnding → FadeSong). 그래도 여기서 한 번
+        // 더 끊는다 — 노래가 짧아 먼저 끝났거나, 개발용 건너뛰기로 끝맺음을 지나온 경우가 있다.
+        if (song != null) song.Stop();
+
+        // **완전히 검고 조용해진 자리에 머문다.** 바로 씬을 열면 위 페이드가 통째로 잘려
+        // 소리가 툭 끊기고 곧장 타이틀 곡이 난다. 이 사이가 크레딧의 마지막 박자다.
+        yield return new WaitForSecondsRealtime(ClosingSilenceSeconds);
 
         Debug.Log("[크레딧] 끝. " + (exit == Exit.Title ? "타이틀로 돌아갑니다." : "씬을 다시 엽니다."));
 
@@ -1459,10 +1698,10 @@ public class CreditsSequence : MonoBehaviour
 
     private void StartSong()
     {
-        // 가게 소리는 죽이고 엔딩곡만 남긴다. 발소리·조리 효과음은 그대로 둔다 —
-        // 라멘집이 돌아가는 소리가 곡 위에 얹히는 것이 이 게임다움이다.
-        Sfx.Stop("bgm_title", 1.5f);
-        Sfx.Stop("bgm_shop", 1.5f);
+        // 곡(타이틀·가게)은 이미 Prelude 가 화면과 같이 잦아들게 해서 꺼 두었다.
+        // 여기서 또 끄지 않는다 — 끄는 시각을 두 군데에 적어 두면 한쪽만 고치게 된다.
+        // 발소리·조리 효과음은 그대로 둔다. 라멘집이 돌아가는 소리가 곡 위에 얹히는 것이
+        // 이 게임다움이다.
 
         // 가게 소리는 낮게 깔아 둔다. 엔딩곡만 남기면 화면은 가게인데 소리는 빈 방이 된다.
         // 크기는 주문 화면이 덮였을 때 쓰는 값(Sfx.KitchenAmbienceCovered)보다도 낮게 —

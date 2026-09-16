@@ -143,9 +143,25 @@ public class TitleScreenUI : MonoBehaviour
         else ShowNotice("설정은 아직 준비 중입니다.");
     }
 
+    /// <summary>
+    /// [크레딧] — 그 자리에서 크레딧을 연다.
+    ///
+    /// 여기서 시작 화면을 끄지 않는다. [스토리 모드]와 같은 이유다 — 끄면 검게 덮이기 전에
+    /// 조리 화면이 드러난다. 화면이 다 검어진 뒤에 크레딧이 <c>HideStageUi</c> 로 치운다
+    /// (<see cref="CreditsSequence.FrameHidden"/> 에 TitleScreen 이 들어 있다).
+    ///
+    /// 끝나면 씬을 다시 열고, 시작 화면은 그때 저절로 떠 있다(<see cref="Awake"/>).
+    /// </summary>
     private void ShowCredits()
     {
-        ShowNotice("크레딧은 아직 준비 중입니다.");
+        if (CreditsSequence.Running) return;
+
+        // 들어가는 자리가 3초 남짓이라 그동안 한 번 더 눌릴 수 있다. 두 벌이 열리는 것은
+        // CreditsSequence.Begin 이 막지만, 눌러도 아무 일이 없으면 고장으로 보인다.
+        if (creditsButton != null) creditsButton.interactable = false;
+        if (startButton != null) startButton.interactable = false;
+
+        CreditsSequence.Begin(CreditsSequence.Exit.Title);
     }
 
     private void ShowNotice(string message)

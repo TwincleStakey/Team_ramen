@@ -217,20 +217,35 @@ public static class RamenLayoutBuilder
     private static readonly Vector2 BowlSize = new Vector2(128f * BowlScale, 128f * BowlScale);
 
     /// <summary>
-    /// 그릇 김 한 칸(Tools/make_bowl_steam.py, 8칸 시트).
-    /// 폭은 그릇과 같고, 높이는 그릇 위로 올라가는 만큼이다.
+    /// 그릇 김 한 칸(Tools/make_bowl_steam.py, 8칸 시트)의 <b>원본</b> 크기.
+    /// 시트를 자르는 데 쓰는 값이라 그림을 다시 굽지 않는 한 건드리지 않는다.
     /// </summary>
-    private static readonly Vector2 BowlSteamSize = new Vector2(128f, 96f);
+    private static readonly Vector2 BowlSteamFrame = new Vector2(128f, 96f);
 
     /// <summary>
-    /// 김 판을 그릇 윗변에서 얼마나 더 올릴지.
+    /// 화면에 그리는 김 크기. **그릇과 같은 배율을 먹어야 한다.**
+    ///
+    /// 2026-09-16 까지 원본 크기를 그대로 썼다. 그릇은 <see cref="BowlScale"/> 배로 커져 있는데
+    /// 김만 안 커져서, 그릇 폭 240 짜리 위에 84 짜리 가는 연기가 떴다(그림에서 잰 값 —
+    /// 빈그릇.png 는 128 칸 중 120, 김 한 칸은 128 중 84 를 쓴다). 위 주석에 처음부터
+    /// "폭은 그릇과 같고" 라고 적혀 있었는데 코드가 안 따라간 것이다.
+    /// </summary>
+    private static readonly Vector2 BowlSteamSize = BowlSteamFrame * BowlScale;
+
+    /// <summary>
+    /// 김 판을 그릇 윗변에서 얼마나 더 올릴지. **그릇 배율을 같이 먹는다.**
     ///
     /// 세 자리를 다 찍어 보고 골랐다.
     ///   수면에 맞춤    김이 재료를 덮어 라멘이 뿌예 보인다. 피어오르는 김이 아니라 안개다
     ///   <b>테두리 위</b>  아랫단이 그릇 먼 테두리에 걸치고 나머지가 나무 배경 위로 오른다
     ///   더 위로        그릇과 떨어져 혼자 뜬 연기가 된다
+    ///
+    /// 배율을 안 먹이면 「더 위로」가 된다. 그림에서 재 보면 그릇 테두리는 그릇 한가운데서
+    /// +80 이고, 김 그림 아랫단은 판 한가운데에서 -94 다. 판을 128+38 에 두면 아랫단이 +72 —
+    /// 테두리보다 8 아래라 걸터앉는다. 배율을 뺀 예전 값(판 128x96 을 128+19 에)에서는
+    /// 아랫단이 +100 이라 테두리 위로 20 이 떠서, 그릇과 떨어진 연기로 보였다.
     /// </summary>
-    private const float BowlSteamRise = 19f;
+    private const float BowlSteamRise = 19f * BowlScale;
 
     /// <summary>김이 넘어가는 속도. 손님 그릇(6)보다 느리게 둬서 더 은은하다.</summary>
     private const float BowlSteamFps = 5f;
@@ -1275,7 +1290,14 @@ public static class RamenLayoutBuilder
     /// 문제는 **가장자리에 붙박인 것들**이다 — 세기 0.5 에서 재 보면 상단바 오른쪽과
     /// 키 힌트가 0.00(완전히 검정)이 된다.
     ///
-    /// GraphicRaycaster 는 안 붙인다. 뿌리 캔버스의 것이 아래 캔버스까지 다 훑는다.
+    /// **GraphicRaycaster 를 같이 단다.** Canvas 를 붙이는 순간 그 아래 Graphic 들이 뿌리 캔버스가
+    /// 아니라 이 캔버스에 등록되고, GraphicRaycaster 는 제가 붙은 캔버스 것만 훑는다. 그래서
+    /// 여기서 빠뜨리면 그 안의 버튼에 클릭이 <b>아예</b> 안 닿는다 — 눌림도 호버 테두리도 안 뜬다.
+    ///
+    /// 2026-09-16 에 상단바(TopBar)가 그랬다. 비네트 위로 올리면서 Canvas 만 달았더니
+    /// 폐기(휴지통)·마무리 버튼이 통째로 죽었다. 배선도 `raycastTarget` 도 멀쩡한데 눌리지만
+    /// 않아서 원인이 안 보였다. LiftCanvas·LiftPopup 은 처음부터 같이 달고 있다 — 같은 실수를
+    /// 거기서 이미 한 번 하고 적어 둔 것이었는데 이쪽만 새로 팠다.
     /// </summary>
     private static void LiftEdgeUi(Transform canvas)
     {
@@ -1296,6 +1318,10 @@ public static class RamenLayoutBuilder
 
             own.overrideSorting = true;
             own.sortingOrder = EdgeUiOrder;
+
+            // 캔버스를 달았으면 레이캐스터도 달아야 한다. 위 주석 참고.
+            if (found.GetComponent<GraphicRaycaster>() == null)
+                Undo.AddComponent<GraphicRaycaster>(found.gameObject);
         }
     }
 
@@ -3202,7 +3228,13 @@ public static class RamenLayoutBuilder
         TMP_FontAsset tmpFont = EnsureTmpFont();
 
         // 왼쪽부터 ESC · B · Tab.
-        Image esc = BuildKeyHint(canvas, "KeyHint_Esc", "Icon_Gear.png", "ESC", TopLeft, KeyHintEscPos, tmpFont);
+        //
+        // ESC 만 주문 화면에서도 남는다(hideOnOrderScreen: false). 설정은 조리 중이 아니어도
+        // 열려야 하는데 — 손님 대사를 읽다가 소리를 줄이고 싶은 자리가 그렇다 — Tab·B 와 같이
+        // 감춰 두면 그때 열 길이 키보드밖에 없다. 층은 LiftEdgeUi 가 183 으로 올려 주므로
+        // 주문 화면(180) 위에 그대로 뜬다. 주문 화면의 DayTimePanel 은 x 255 부터라 안 겹친다.
+        Image esc = BuildKeyHint(canvas, "KeyHint_Esc", "Icon_Gear.png", "ESC", TopLeft, KeyHintEscPos,
+                                 tmpFont, hideOnOrderScreen: false);
         Image book = BuildKeyHint(canvas, "KeyHint_Book", "Icon_Book.png", "B", TopLeft, KeyHintBookPos, tmpFont);
         Image tab = BuildKeyHint(canvas, "KeyHint_Tab", "Icon_Bill.png", "Tab", TopLeft, KeyHintTabPos, tmpFont);
 
@@ -3289,8 +3321,13 @@ public static class RamenLayoutBuilder
         UnityEventTools.AddPersistentListener(button.onClick, action);
     }
 
+    /// <param name="hideOnOrderScreen">
+    /// 주문 화면에서 감출지. Tab·B 는 거기서 키가 안 먹으니 감추고,
+    /// ESC(설정)는 어느 화면에서나 열려야 하므로 그대로 둔다.
+    /// </param>
     private static Image BuildKeyHint(Transform canvas, string name, string iconFile, string key,
-                                      Vector2 anchor, Vector2 pos, TMP_FontAsset tmpFont)
+                                      Vector2 anchor, Vector2 pos, TMP_FontAsset tmpFont,
+                                      bool hideOnOrderScreen = true)
     {
         Image icon = CreateImage(name, canvas, anchor, pos, KeyHintIconSize,
                                  Color.white, LoadSprite(GeneratedDir + iconFile));
@@ -3298,8 +3335,11 @@ public static class RamenLayoutBuilder
         icon.raycastTarget = false;
 
         // 주문 화면에서는 감춘다. 거기서는 두 키가 안 먹는다.
-        Undo.AddComponent<CanvasGroup>(icon.gameObject);
-        Undo.AddComponent<KeyHintVisibility>(icon.gameObject);
+        if (hideOnOrderScreen)
+        {
+            Undo.AddComponent<CanvasGroup>(icon.gameObject);
+            Undo.AddComponent<KeyHintVisibility>(icon.gameObject);
+        }
 
         // 본문(12)이 쓸 수 있는 가장 작은 크기다. 사이 값은 획이 반칸에 걸려 흐려진다.
         Vector2 labelPos = new Vector2(0f, KeyHintLabelY);
@@ -5806,9 +5846,10 @@ public static class RamenLayoutBuilder
         steam.raycastTarget = false;
         steam.enabled = false;                 // 육수가 들어와야 켜진다(Bowl.ShowSteam)
 
+        // 자르는 것은 **원본 한 칸**이다. 그리는 크기(BowlSteamSize)를 넣으면 시트가 엉뚱하게 잘린다.
         var steamLoop = Undo.AddComponent<SpriteLoop>(steam.gameObject);
         steamLoop.frames = LoadSpriteSheet(CookDir + "그릇김.png",
-                                           (int)BowlSteamSize.x, (int)BowlSteamSize.y);
+                                           (int)BowlSteamFrame.x, (int)BowlSteamFrame.y);
         steamLoop.fps = BowlSteamFps;
         if (steamLoop.frames.Length > 0) steam.sprite = steamLoop.frames[0];
 
