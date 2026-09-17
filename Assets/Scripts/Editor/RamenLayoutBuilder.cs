@@ -7178,6 +7178,51 @@ public static class RamenLayoutBuilder
         // 안 보이는 자리 둘. 그림 안에서 바구니가 좌우로 나뉘어 있는 만큼만 잡는다.
         AddNoodleBasket(pot.transform, IngredientType.ThinNoodles, -60f);
         AddNoodleBasket(pot.transform, IngredientType.ThickNoodles, 60f);
+
+        // 앞면에 다는 이름 팻말. 바구니(클릭 자리)보다 나중에 만들어 그 위에 그린다.
+        AddNoodleSign(pot.transform, "얇은면", -NoodleSignX);
+        AddNoodleSign(pot.transform, "굵은면", NoodleSignX);
+    }
+
+    // ── 면 팻말 ──────────────────────────────────────────────────
+    //
+    // 바구니 둘이 생김새가 거의 같아서, 눌러 보기 전에는 어느 쪽이 얇은면인지 알 수 없었다.
+    // 튀김기 **앞면 은색 띠**에 작은 명패를 달고 이름을 쓴다.
+    //
+    // 자리는 그림(조리/면통.png 첫 칸)에서 재서 옮겨 적은 값이다. 통이 128칸 그림을 256으로
+    // 놓은 것이라 칸 하나가 지역좌표 2다.
+    //   앞면 띠   그림 y 84~98  ->  지역 y -40 ~ -68   (한가운데 -54)
+    //   바구니    그림 x 43·85  ->  지역 x -41 · +43   (좌우 대칭으로 42 를 쓴다)
+    // **통 그림을 바꾸면 이 값도 다시 재야 한다.**
+
+    /// <summary>팻말이 바구니 한가운데에 맞춰 서는 자리.</summary>
+    private const float NoodleSignX = 42f;
+
+    /// <summary>앞면 띠(28칸)의 한가운데. 22칸짜리 판이 위아래로 3칸씩 남기고 앉는다.</summary>
+    private const float NoodleSignY = -54f;
+
+    /// <summary>판 크기. Tools/make_noodle_signs.py 가 구운 그대로 쓴다 — 늘리면 깎은 귀퉁이가 비뚤어진다.</summary>
+    private static readonly Vector2 NoodleSignSize = new Vector2(68f, 22f);
+
+    /// <summary>
+    /// 면 바구니 앞에 다는 이름 팻말.
+    ///
+    /// 클릭을 받지 않는다. 팻말이 바구니 클릭 자리 위에 겹쳐 있어서, 받으면 팻말을 누른
+    /// 사람만 면을 못 집는다. 눌러도 그대로 아래 바구니로 간다.
+    /// </summary>
+    private static void AddNoodleSign(Transform pot, string label, float x)
+    {
+        TMP_FontAsset tmpFont = EnsureTmpFont();
+
+        Image plate = CreateImage("NoodleSign_" + label, pot, Center, new Vector2(x, NoodleSignY),
+                                  NoodleSignSize, Color.white,
+                                  LoadSprite(GeneratedDir + "면팻말.png"));
+        plate.raycastTarget = false;
+
+        var text = CreateTmpText("Label", plate.transform, Center, new Vector2(0f, 1f),
+                                 new Vector2(NoodleSignSize.x - 8f, 16f), label, TextBody, tmpFont);
+        text.color = DarkPanelInkColor;
+        text.raycastTarget = false;
     }
 
     private static void AddNoodleBasket(Transform pot, IngredientType type, float x)
