@@ -112,6 +112,20 @@ public class OrderManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 하루가 열렸다고 생성기에 알린다. 오늘 몫의 난이도를 그때 새로 담는다.
+    /// DayManager 가 첫 손님 주문을 만들기 전에 부른다 — 그 뒤에 부르면 첫 손님만 배분에서 샌다.
+    /// </summary>
+    public void BeginDay(int day)
+    {
+        if (dialogueScenarioGenerator == null)
+        {
+            dialogueScenarioGenerator = FindFirstObjectByType<DialogueScenarioGenerator>();
+        }
+
+        if (dialogueScenarioGenerator != null) dialogueScenarioGenerator.BeginDay(day);
+    }
+
     // 새로운 손님의 주문 시나리오를 생성하고 대사를 UI에 출력합니다.
     // <returns>생성된 손님 주문 (CustomerOrder)</returns>
     public CustomerOrder CreateOrder()

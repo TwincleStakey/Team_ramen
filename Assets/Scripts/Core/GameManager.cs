@@ -20,6 +20,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] private DayManager dayManager;
     [SerializeField] private TextMeshProUGUI revenueText;
     [SerializeField] private TextMeshProUGUI dayText;
+    [SerializeField] private DayClockIcon dayClock;
     [SerializeField] private RamenCalculator ramenCalculator;
     [SerializeField] private FinalResultUI finalResultUI;
     [SerializeField] private OrderScreenUI orderScreenUI;
@@ -866,7 +867,9 @@ public class GameManager : MonoBehaviour
         RefreshRevenue();
 
         // 주문 화면 상단바도 같은 목표를 쓴다. 그쪽은 DayManager 를 모르므로 여기서 넣어 준다.
-        if (orderScreenUI != null && EnsureDayManager()) orderScreenUI.SetGoal(dayManager.TargetProfit);
+        // 시계 조각을 나누는 손님 수와 개점 시각도 같이 준다.
+        if (orderScreenUI != null && EnsureDayManager())
+            orderScreenUI.SetGoal(dayManager.TargetProfit, OpenHour, dayManager.TargetCustomerCount);
 
         // 개발용으로 일차를 몰아 넘기는 중이면 연출을 아예 안 건다. 배드엔딩보다 먼저 본다 —
         // 여기서 코루틴이 걸리면 넘긴 일차마다 하나씩 쌓인다.
@@ -1056,6 +1059,10 @@ public class GameManager : MonoBehaviour
     private void RefreshDayLabel(int day)
     {
         if (dayText != null) dayText.text = day + "일차  " + currentHour + ":00";
+
+        // 시계 조각. 손님 한 명에 한 시간이라 지나간 손님 수 = 지금 시각 - 개점 시각이다.
+        if (dayClock != null && EnsureDayManager())
+            dayClock.Set(currentHour - OpenHour, dayManager.GetTargetCustomerCount(day));
     }
 
     /// <summary>손님을 맞는 화면을 연다. 조리 화면은 그 아래에서 계속 살아 있다.</summary>

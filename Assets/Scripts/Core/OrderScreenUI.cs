@@ -16,6 +16,7 @@ public class OrderScreenUI : MonoBehaviour
     // 아래는 RamenLayoutBuilder가 씬을 만들 때 꽂아 준다.
     [SerializeField] private GameObject screenRoot;
     [SerializeField] private TextMeshProUGUI dayTimeText;
+    [SerializeField] private DayClockIcon dayClock;
     [SerializeField] private TextMeshProUGUI revenueText;
     [SerializeField] private TextMeshProUGUI dialogueText;
 
@@ -158,9 +159,15 @@ public class OrderScreenUI : MonoBehaviour
     /// </summary>
     private int goalProfit;
 
-    public void SetGoal(int goal)
+    /// <summary>개점 시각과 오늘 손님 수. 시계 아이콘이 조각을 나누는 데 쓴다(손님 한 명 = 한 시간).</summary>
+    private int openHour;
+    private int customerTarget;
+
+    public void SetGoal(int goal, int openHourOfDay, int customers)
     {
         goalProfit = goal;
+        openHour = openHourOfDay;
+        customerTarget = customers;
         WriteBar();
     }
 
@@ -176,6 +183,7 @@ public class OrderScreenUI : MonoBehaviour
     private void WriteBar()
     {
         if (dayTimeText != null) dayTimeText.text = barDay + "일차  " + barHour + ":00";
+        if (dayClock != null) dayClock.Set(barHour - openHour, customerTarget);
         if (revenueText != null)
             revenueText.text = "금일 수익 : " + barRevenue.ToString("N0") + " / " + goalProfit.ToString("N0") + "₩";
     }

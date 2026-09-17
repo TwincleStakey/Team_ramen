@@ -20,6 +20,36 @@ public class DialogueScenarioGenerator : MonoBehaviour
     private readonly RecipeGenerator recipeGenerator = new RecipeGenerator();
     private DialogueWorkbookDatabase database;
 
+    /// <summary>
+    /// 일차별 난이도 배분. 칸 수가 그 날 손님 수(DayManager 5·5·6·6·8)와 같아야 한다.
+    ///
+    /// 손님마다 따로 뽑지 않고 하루치를 한 가방에 담아 섞는다. 매번 무작위로 뽑으면
+    /// "다섯 중 셋은 난이도 1" 같은 배분이 지켜지지 않아, 첫날에 난이도 3만 다섯이 나올 수도 있다.
+    /// </summary>
+    private static readonly int[][] DayDifficulties =
+    {
+        new[] { 1, 1, 1, 1, 1 },          // 1일차 — 5명
+        new[] { 1, 1, 1, 2, 2 },          // 2일차 — 5명
+        new[] { 1, 1, 2, 2, 2, 3 },       // 3일차 — 6명
+        new[] { 1, 2, 2, 2, 3, 3 },       // 4일차 — 6명
+        new[] { 1, 2, 2, 3, 3, 3, 3, 3 }  // 5일차 — 8명
+    };
+
+    /// <summary>
+    /// 난이도별 요청 개수(면 교체도 한 개로 센다).
+    ///
+    /// 난이도는 원래 "얼마나 에두르게 말하느냐"만 정했다. 그것만으로는 첫날 손님도 재료 넷을
+    /// 시킬 수 있어서 일차가 올라가도 체감이 그대로였다.
+    ///
+    /// 위 끝 4 는 <see cref="RecipeGenerator.MAX_TOPPING_COUNT"/> 와 맞물려 있다.
+    /// 한쪽만 올리면 100% 가 나올 수 없는 주문이 생긴다.
+    /// </summary>
+    private static readonly int[] ChangeMin = { 1, 2, 3 };
+    private static readonly int[] ChangeMax = { 2, 3, 4 };
+
+    /// <summary>오늘 남은 난이도. <see cref="BeginDay"/> 가 채우고 손님마다 한 개씩 꺼낸다.</summary>
+    private readonly List<int> difficultyBag = new List<int>();
+
     private void Awake()
     {
         if (dialogueDatabaseJson == null)
@@ -51,6 +81,42 @@ public class DialogueScenarioGenerator : MonoBehaviour
         if (database != null) database.NotePersonaUsed(personaId);
     }
 
+    /// <summary>
+    /// 오늘 몫의 난이도를 가방에 새로 담는다. <b>그 날 첫 손님 주문을 만들기 전에</b> 불러야 한다
+    /// (DayManager.StartDay 가 손님 수를 0 으로 되돌리는 자리에서 부른다).
+    ///
+    /// 하루가 바뀌는 것을 여기서 스스로 알아채게 하지 않았다. 목표 미달로 1일차를 다시 시작하면
+    /// 일차가 그대로 1 이라, 날이 바뀐 줄 모르고 앞판에서 쓰다 남은 가방을 이어 쓰게 된다.
+    /// </summary>
+    public void BeginDay(int day)
+    {
+        difficultyBag.Clear();
+
+        if (day < 1 || day > DayDifficulties.Length) return;
+
+        difficultyBag.AddRange(DayDifficulties[day - 1]);
+        Shuffle(difficultyBag);
+    }
+
+    /// <summary>
+    /// 이번 손님의 난이도. 가방에서 한 개 꺼낸다.
+    ///
+    /// 가방이 비어 있으면(표에 없는 날, 또는 표보다 손님이 많은 날) 예전처럼 무작위로 돈다.
+    /// 배분이 어긋나는 것이 주문이 아예 안 만들어지는 것보다 낫다.
+    /// </summary>
+    private int NextDifficulty()
+    {
+        // 인스펙터에서 난이도를 고정해 둔 경우(디버그 테스터)에는 가방을 쓰지 않는다.
+        if (!randomDifficulty) return fixedDifficulty;
+
+        if (difficultyBag.Count == 0) return UnityEngine.Random.Range(1, 4);
+
+        int last = difficultyBag.Count - 1;
+        int value = difficultyBag[last];
+        difficultyBag.RemoveAt(last);
+        return value;
+    }
+
     public DialogueScenario GenerateScenario(int currentDay)
     {
         if (database == null) Awake();
@@ -59,7 +125,7 @@ public class DialogueScenarioGenerator : MonoBehaviour
         PersonaRow persona = database.RandomPersona();
         scenario.personaId = persona.personaId;
         scenario.personaName = persona.name;
-        scenario.difficulty = randomDifficulty ? UnityEngine.Random.Range(1, 4) : fixedDifficulty;
+        scenario.difficulty = NextDifficulty();
 
         scenario.order = new CustomerOrder { ramenType = GetRandomRamen(currentDay) };
         scenario.baseRecipe = GetBaseRecipe(scenario.order.ramenType);
@@ -70,17 +136,22 @@ public class DialogueScenarioGenerator : MonoBehaviour
         string rawHint = hint == null ? string.Empty : hint.template;
         HashSet<IngredientType> conflicts = database.GetConflicts(rawHint);
 
-        GenerateChanges(scenario, conflicts);
+        GenerateChanges(scenario, conflicts, currentDay);
         scenario.targetRecipe = recipeGenerator.GenerateTargetRecipe(scenario.order);
         BuildDialogue(scenario, persona, rawHint);
         return scenario;
     }
 
-    private void GenerateChanges(DialogueScenario scenario, HashSet<IngredientType> conflicts)
+    private void GenerateChanges(DialogueScenario scenario, HashSet<IngredientType> conflicts, int currentDay)
     {
         RamenRow ramenData = database.GetRamen(scenario.order.ramenType);
         List<IngredientType> candidates = ParseIngredients(ramenData.addable);
         candidates.RemoveAll(x => conflicts.Contains(x));
+
+        // 아직 안 들어온 재료는 후보에서 뺀다. 조리 화면에서 통이 잠겨 있어서,
+        // 넣으라고 시키면 만들 수 없는 주문이 된다. 표는 IngredientUnlock 한 곳에 있다.
+        candidates.RemoveAll(x => IngredientUnlock.IsLocked(x, currentDay));
+
         Shuffle(candidates);
 
         // 기본 면 및 교체 대상 면 식별 (돈코츠: 기본 ThickNoodles ➔ ThinNoodles 교체, 시오/쇼유: 기본 ThinNoodles ➔ ThickNoodles 교체)
@@ -90,9 +161,12 @@ public class DialogueScenarioGenerator : MonoBehaviour
         // 40% 확률로 면 교체 요청 발생
         bool swapNoodle = UnityEngine.Random.value < 0.4f;
 
-        // 변경할 총 개수 (최대 4개)
+        // 변경할 총 개수. 난이도가 폭을 정하고(난1 1~2 · 난2 2~3 · 난3 3~4), 남은 후보가
+        // 그보다 적으면 거기에 맞춘다. 첫날처럼 잠긴 재료가 많은 날은 후보가 먼저 바닥난다.
         int maxChanges = Mathf.Min(MAX_REQUEST_COUNT, candidates.Count + (swapNoodle ? 1 : 0));
-        int totalChanges = UnityEngine.Random.Range(1, maxChanges + 1);
+        int tier = Mathf.Clamp(scenario.difficulty - 1, 0, ChangeMin.Length - 1);
+        int totalChanges = Mathf.Clamp(UnityEngine.Random.Range(ChangeMin[tier], ChangeMax[tier] + 1),
+                                       1, maxChanges);
 
         int toppingSlots = swapNoodle ? (totalChanges - 1) : totalChanges;
 
@@ -288,11 +362,14 @@ public class DialogueScenarioGenerator : MonoBehaviour
         return sb.ToString();
     }
 
+    /// <summary>
+    /// 그 날 손님이 시킬 수 있는 라멘. 해금 표는 <see cref="IngredientUnlock"/> 한 곳에만 둔다 —
+    /// 조리 화면의 재료통도 같은 표를 보고 잠근다.
+    /// </summary>
     private static RamenType GetRandomRamen(int currentDay)
     {
-        // currentDay에 따른 해금 조건이 생기면 이 배열만 필터링하면 된다.
-        RamenType[] available = { RamenType.Shio, RamenType.Shoyu, RamenType.Tonkotsu };
-        return available[UnityEngine.Random.Range(0, available.Length)];
+        int unlocked = IngredientUnlock.UnlockedRamenCount(currentDay);
+        return IngredientUnlock.RamenOrder[UnityEngine.Random.Range(0, unlocked)];
     }
 
     private static List<IngredientType> ParseIngredients(string[] names)

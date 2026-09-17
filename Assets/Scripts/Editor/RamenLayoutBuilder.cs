@@ -201,6 +201,15 @@ public static class RamenLayoutBuilder
     // 가장자리가 반칸에 걸리므로 짝수인 84로 맞췄다.
     private static readonly Vector2 NoodleBinSize = new Vector2(84f, 84f);
 
+    /// <summary>
+    /// 아직 안 들어온 재료통에 얹는 자물쇠 크기(Tools/make_lock_icon.py, 48x48).
+    /// 그림 크기 그대로 쓴다 — 늘리면 정수배가 아니어서 획이 뭉개진다.
+    ///
+    /// 24 로 구웠더니 김(진한 초록)·목이(진한 갈색)처럼 어두운 통 위에서 묻혔다.
+    /// 48 이면 재료통(120x88) 높이의 절반을 넘어 한눈에 읽힌다.
+    /// </summary>
+    private const float LockIconSize = 48f;
+
     // 그릇만 예외로 2배다. 여기가 화면의 주인공이고, 1배로 두면 재료통과 같은 크기라
     // 라멘을 만드는 화면인지 알 수 없다. 좌표계를 1:1로 바꾸기 전에도 그릇만 6배(나머지 3배)였다.
     // 2배는 정수배라 픽셀이 깨지지 않는다. 3배(384)는 화면 세로 360을 넘는다.
@@ -618,6 +627,7 @@ public static class RamenLayoutBuilder
         public Image Discard;      // 그릇이 생긴 뒤 onClick을 붙인다
         public Image Submit;       // 마무리 버튼. 마찬가지로 나중에 붙인다
         public TextMeshProUGUI DayText;       // GameManager가 일차를 써 넣는다
+        public DayClockIcon DayClock;         // GameManager가 지나간 손님 수만큼 조각을 채운다
         public TextMeshProUGUI RevenueText;   // GameManager가 누적 매출을 써 넣는다
     }
 
@@ -687,6 +697,7 @@ public static class RamenLayoutBuilder
     {
         public GameObject Root;
         public TextMeshProUGUI DayTime;
+        public DayClockIcon DayClock;
         public TextMeshProUGUI Revenue;
         public TextMeshProUGUI Dialogue;
         public RectTransform DialogueViewport;
@@ -1000,6 +1011,13 @@ public static class RamenLayoutBuilder
 
         // 주문을 만들어 줄 B의 컴포넌트들을 씬에 올리고 GameManager와 잇는다.
         OrderSystemRefs orderSystem = EnsureOrderSystem(popup, finalPopup, orderScreen, recipeBook, orderResult, orderNote);
+
+        // 재료통 자물쇠. 통·토스트·DayManager 가 다 생긴 지금에야 이을 수 있다.
+        WireSlotLocks(canvas, bowl.toast, orderSystem != null ? orderSystem.Day : null);
+
+        // 자물쇠가 풀리는 연출과 그 팝업.
+        BuildUnlockPopup(canvas, orderSystem != null ? orderSystem.Day : null);
+
         // 키 안내 아이콘. 조리 화면 위에 늘 떠 있다.
         BuildKeyHints(canvas);
 
@@ -1536,7 +1554,9 @@ public static class RamenLayoutBuilder
         // 키 안내 둘(아이콘+글자, 오른끝 130)을 피해 오른쪽으로 물러나 있다.
         Image day = CreateImage("DayPanel", bar, TopLeft, new Vector2(255f, -24f),
                                 new Vector2(200f, PanelBarHeight), Color.white, TimeBarSprite(), PanelScale);
-        AttachPanelIcon(day, TimeIconSprite(), new Vector2(40f, 36f));
+        // 시계 아이콘. 손님이 갈 때마다 GameManager 가 DayClockIcon 으로 조각을 채운다.
+        Image dayIcon = AttachPanelIcon(day, TimeIconSprite(), new Vector2(40f, 36f));
+        var dayClock = dayIcon != null ? Undo.AddComponent<DayClockIcon>(dayIcon.gameObject) : null;
         var dayText = CreateTmpText("Label", day.transform, Center, Vector2.zero,
                                     new Vector2(174f, 38f), "1일차", TextHead, tmpFont);
 
@@ -1582,7 +1602,7 @@ public static class RamenLayoutBuilder
 
         // 손님 대사 줄. 주문 화면(B)이 아직 없어서 조리 화면 위에 글자로만 띄운다.
         return new TopBarRefs { Root = bar, Discard = discard, Submit = submit,
-                                DayText = dayText, RevenueText = revenueText };
+                                DayText = dayText, DayClock = dayClock, RevenueText = revenueText };
     }
 
     /// <summary>
@@ -2142,11 +2162,24 @@ public static class RamenLayoutBuilder
         return LoadSlicedSprite(path, border);
     }
 
-    /// <summary>시계 아이콘만. 그림 좌표로 x9~18, y17~25. x8 칸은 막대의 왼쪽 테두리라 뺀다.</summary>
+    /// <summary>
+    /// 시계 아이콘의 기본 그림(0명 지남, 전부 노랑). 20x18 을 코드로 구워 Generated 에 둔다.
+    ///
+    /// 예전에는 Time.png 의 달(10x9)을 오려 썼다. 손님이 갈 때마다 검정 조각이 차오르는 시계로
+    /// 바꾸면서, 10x9 로는 8조각이 안 갈려 두 배 해상도로 새로 그린다. 실제 칠하기는
+    /// <see cref="DayClockIcon.Paint"/> 가 하고 Play 중에는 그 컴포넌트가 다시 칠한다.
+    /// </summary>
     private static Sprite TimeIconSprite()
     {
-        // 테두리가 갈색이라 돈 아이콘(검정)과 나란히 서면 한쪽만 바랜 것처럼 보인다. 검정으로 맞춘다.
-        return LoadCleanedIcon(UiDir + "Time.png", "TimeIcon", new RectInt(9, 38, 10, 9), true);
+        int w = DayClockIcon.Width, h = DayClockIcon.Height;
+        var px32 = new Color32[w * h];
+        DayClockIcon.Paint(px32, w, h, 0f);
+
+        var px = new Color[px32.Length];
+        for (int i = 0; i < px.Length; i++) px[i] = px32[i];
+
+        string path = SaveGenerated("ClockIcon", EncodePng(px, w, h));
+        return path == null ? null : LoadSprite(path);
     }
 
     private static Sprite MoneyBarSprite()
@@ -2155,10 +2188,52 @@ public static class RamenLayoutBuilder
                          new RectInt(17, 16, 40, 20), new Vector4(6f, 6f, 6f, 6f));
     }
 
-    /// <summary>원 표시 배지만. 그림 좌표로 x8~16, y25~31. x7 칸은 막대의 왼쪽 테두리라 뺀다.</summary>
+    /// <summary>
+    /// 원 표시 배지만. 그림 좌표로 x8~16, y25~31. x7 칸은 막대의 왼쪽 테두리라 뺀다.
+    ///
+    /// 원본은 9x7 인데 두 배(18x14)로 키운 뒤 바깥 검정을 한 겹 깎아 저장한다(ThinOutline2x).
+    /// 판에는 36x28 로 얹으므로 화면에서는 2배 — 시계 아이콘(20x18 을 2배)과 같은 배율이라
+    /// 검정 테두리 두께가 둘이 같아진다. 예전엔 9x7 을 4배로 띄워 돈 쪽만 테두리가 두 배였다.
+    /// </summary>
     private static Sprite MoneyIconSprite()
     {
         return LoadCleanedIcon(UiDir + "Money_UI2.png", "MoneyIcon", new RectInt(8, 32, 9, 7));
+    }
+
+    /// <summary>
+    /// 그림을 두 배로 키우고, 바깥(투명)에 닿은 검정을 한 겹 지운다.
+    /// 모양은 그대로인데 테두리만 원본 1칸 → 두 배 그림에서 1칸이 된다.
+    /// 획 사이의 검정은 투명에 닿지 않으므로 그대로 두 겹이다.
+    /// </summary>
+    private static Color[] ThinOutline2x(Color[] src, int w, int h)
+    {
+        int w2 = w * 2, h2 = h * 2;
+        var big = new Color[w2 * h2];
+        for (int y = 0; y < h2; y++)
+            for (int x = 0; x < w2; x++)
+                big[y * w2 + x] = src[(y / 2) * w + (x / 2)];
+
+        var outPx = (Color[])big.Clone();
+        for (int y = 0; y < h2; y++)
+        {
+            for (int x = 0; x < w2; x++)
+            {
+                Color c = big[y * w2 + x];
+                bool black = c.a > 0.1f && c.r < 0.45f && c.g < 0.45f && c.b < 0.45f;
+                if (!black) continue;
+
+                bool touchesOutside = IsClear(big, w2, h2, x + 1, y) || IsClear(big, w2, h2, x - 1, y)
+                                   || IsClear(big, w2, h2, x, y + 1) || IsClear(big, w2, h2, x, y - 1);
+                if (touchesOutside) outPx[y * w2 + x] = new Color(0f, 0f, 0f, 0f);
+            }
+        }
+        return outPx;
+    }
+
+    private static bool IsClear(Color[] px, int w, int h, int x, int y)
+    {
+        if (x < 0 || y < 0 || x >= w || y >= h) return true;
+        return px[y * w + x].a <= 0.1f;
     }
 
     /// <summary>
@@ -2232,7 +2307,10 @@ public static class RamenLayoutBuilder
             }
         }
 
-        var cut = new Texture2D(area.width, area.height, TextureFormat.RGBA32, false);
+        // 시계 아이콘과 테두리 두께를 맞추려고 두 배로 키우고 바깥 검정을 한 겹 깎는다.
+        pixels = ThinOutline2x(pixels, area.width, area.height);
+
+        var cut = new Texture2D(area.width * 2, area.height * 2, TextureFormat.RGBA32, false);
         cut.SetPixels(pixels);
         cut.Apply();
 
@@ -2252,9 +2330,9 @@ public static class RamenLayoutBuilder
     /// 판 왼쪽 바깥에 아이콘을 붙인다. 판 위에 겹쳐 놓으면 흰 막대가 아이콘 뒤로 삐져나온다.
     /// 이음매가 벌어지지 않도록 살짝만 물린다.
     /// </summary>
-    private static void AttachPanelIcon(Image panel, Sprite icon, Vector2 size)
+    private static Image AttachPanelIcon(Image panel, Sprite icon, Vector2 size)
     {
-        if (icon == null) return;
+        if (icon == null) return null;
 
         // 아이콘 가운데를 판의 왼쪽 외곽선에 얹는다. 반은 판 안으로, 반은 밖으로 걸친다.
         // 예전에는 아이콘을 판 왼쪽 바깥에 세워 3칸만 물렸다. 판마다 아이콘 너비가 달라
@@ -2266,6 +2344,7 @@ public static class RamenLayoutBuilder
         Image image = CreateImage("Icon", panel.transform, Center, new Vector2(x, 0f), size, Color.white, icon);
         image.preserveAspect = true;
         image.raycastTarget = false;
+        return image;
     }
 
     /// <summary>
@@ -4394,6 +4473,120 @@ public static class RamenLayoutBuilder
     }
 
     /// <summary>
+    /// 아직 안 들어온 재료통에 얹는 자물쇠. 통이 어두워지는 것은 <see cref="SlotLock"/> 이 한다.
+    ///
+    /// 자물쇠는 통의 자식이라 통 색과 따로 논다(uGUI 는 색을 자식에게 물려주지 않는다).
+    /// 통만 어두워지고 자물쇠는 밝게 남아 눈에 들어온다.
+    ///
+    /// 토스트는 여기서 못 꽂는다. 통보다 나중에 만들어져서(BuildIngredientToast) 아직 없다.
+    /// 다 만든 뒤에 <see cref="WireSlotLocks"/> 가 한꺼번에 꽂는다.
+    /// </summary>
+    private static void BuildSlotLock(Image bin, SlotHover hover, SlotDef def)
+    {
+        Image padlock = CreateImage("Lock", bin.transform, Center, Vector2.zero,
+                                    new Vector2(LockIconSize, LockIconSize), Color.white,
+                                    LoadSprite(GeneratedDir + "자물쇠.png"));
+        padlock.preserveAspect = true;
+        padlock.raycastTarget = false;
+        padlock.enabled = false;          // 잠긴 날에만 SlotLock 이 켠다
+
+        var slotLock = Undo.AddComponent<SlotLock>(bin.gameObject);
+        SetPrivateInt(slotLock, "type", (int)def.Type);
+        SetPrivateReference(slotLock, "bin", bin);
+        SetPrivateReference(slotLock, "padlock", padlock);
+        SetPrivateReference(slotLock, "hover", hover);
+    }
+
+    /// <summary>
+    /// 해금 연출이 쓰는 것들. 하루의 첫 조리 화면에서 자물쇠가 풀릴 때 뜬다.
+    ///
+    /// 어두운 판은 결이 Grand 일 때만 켜진다. 늘 만들어 두고 연출이 알아서 여닫는다 —
+    /// 결을 바꿀 때마다 빌더를 다시 돌려야 하면 고르기가 번거롭다.
+    /// </summary>
+    private static void BuildUnlockPopup(Transform canvas, DayManager dayManager)
+    {
+        TMP_FontAsset tmpFont = EnsureTmpFont();
+
+        Transform root = CreateGroup("UnlockPopup", canvas);
+        LiftPopup(root.gameObject);
+
+        // 연출이 도는 동안 조리대를 못 만지게 막는 투명 판. 안 보이지만 클릭은 다 삼킨다.
+        // 연출이 끝나면 root 가 통째로 꺼지므로 따로 걷을 것이 없다.
+        Image blocker = CreateImage("Blocker", root, Center, Vector2.zero, ScreenCover,
+                                    new Color(0f, 0f, 0f, 0f));
+        blocker.raycastTarget = true;
+
+        // 판은 튜토리얼 안내판과 같은 그림이다. 새 모양을 만들면 「알려 주는 창」이 두 가지가 된다.
+        // 색은 그림이 쥔다(반투명이라 알파까지 그림에 있다). 여기서 곱하면 두 번 어두워진다.
+        Image panel = CreateImage("Panel", root, Center, Vector2.zero, new Vector2(420f, 64f),
+                                  Color.white, TutorialPanelSprite());
+        panel.type = Image.Type.Sliced;
+        panel.pixelsPerUnitMultiplier = 1f;
+        panel.raycastTarget = false;
+
+        // 판 전체를 한꺼번에 흐리게 하려고 씌운다. 글자마다 색을 만지면 손댈 곳이 는다.
+        var group = Undo.AddComponent<CanvasGroup>(panel.gameObject);
+        group.blocksRaycasts = false;
+        group.interactable = false;
+
+        var title = CreateTmpText("TitleText", panel.transform, Center, new Vector2(0f, 18f),
+                                  new Vector2(404f, 16f), "새 재료가 들어왔습니다", TextBody, tmpFont);
+        title.color = DarkPanelInkColor;
+        title.raycastTarget = false;
+
+        var names = CreateTmpText("NamesText", panel.transform, Center, new Vector2(0f, -12f),
+                                  new Vector2(404f, 28f), "김 · 계란", TextTitle, tmpFont);
+        names.color = DarkPanelInkColor;
+        names.raycastTarget = false;
+
+        root.gameObject.SetActive(false);
+
+        // 연출을 도는 쪽은 root 바깥에 있어야 한다. 안에 있으면 스스로를 꺼 버린다.
+        DayManager manager = dayManager != null ? dayManager : Object.FindFirstObjectByType<DayManager>();
+        if (manager == null) return;
+
+        var sequence = manager.GetComponent<UnlockSequence>();
+        if (sequence == null) sequence = Undo.AddComponent<UnlockSequence>(manager.gameObject);
+
+        SetPrivateReference(sequence, "root", root.gameObject);
+        SetPrivateReference(sequence, "panel", panel.rectTransform);
+        SetPrivateReference(sequence, "title", title);
+        SetPrivateReference(sequence, "names", names);
+        SetPrivateReference(sequence, "openSprite", LoadSprite(GeneratedDir + "자물쇠_열림.png"));
+        SetPrivateReference(sequence, "glowSprite", LoadSprite(GeneratedDir + "AuraGlow.png"));
+        SetPrivateReference(sequence, "sparkleSprite", LoadSprite(GeneratedDir + "Sparkle.png"));
+
+        // 연출을 돌리는 쪽은 자물쇠를 칠하는 쪽이다. 하루가 열릴 때 오늘 열 통을 골라 쥐고 있다가
+        // 조리 화면이 뜨면 여기에 넘긴다.
+        var locks = manager.GetComponent<IngredientLocks>();
+        if (locks != null) SetPrivateReference(locks, "sequence", sequence);
+    }
+
+    /// <summary>
+    /// 자물쇠들에 안내 토스트를 꽂고, 일차가 바뀔 때 다시 칠할 쪽을 세운다.
+    /// 통·토스트·DayManager 가 모두 생긴 뒤에 부른다.
+    /// </summary>
+    private static void WireSlotLocks(Transform canvas, IngredientToast toast, DayManager dayManager)
+    {
+        foreach (SlotLock slotLock in canvas.GetComponentsInChildren<SlotLock>(true))
+        {
+            SetPrivateReference(slotLock, "toast", toast);
+        }
+
+        // 일차 신호를 받는 쪽. 재료통이 아니라 늘 살아 있는 오브젝트에 붙어야 한다 —
+        // 통은 튜토리얼이나 팝업 때문에 꺼질 수 있고, 꺼져 있으면 신호를 못 받는다.
+        DayManager manager = dayManager != null ? dayManager : Object.FindFirstObjectByType<DayManager>();
+        if (manager == null) return;
+
+        var locks = manager.GetComponent<IngredientLocks>();
+        if (locks == null) locks = Undo.AddComponent<IngredientLocks>(manager.gameObject);
+        SetPrivateReference(locks, "dayManager", manager);
+
+        // 주문 화면이 닫히는 때가 곧 조리가 시작되는 때다. 해금 연출은 그때 돈다.
+        SetPrivateReference(locks, "orderScreen", manager.GetComponent<OrderScreenUI>());
+    }
+
+    /// <summary>
     /// 통 그림의 실루엣 <b>바깥</b>에 테두리를 두른다. 튜토리얼에서 "지금 이걸 집으세요" 표시로 쓴다.
     ///
     /// 예전에는 안쪽으로 둘렀다. 그림 크기가 원본과 같아 상자를 그대로 써도 되기 때문인데,
@@ -4468,6 +4661,38 @@ public static class RamenLayoutBuilder
         return border == Vector4.zero
             ? LoadSprite(path)
             : LoadSlicedSprite(path, border + Vector4.one * thickness);
+    }
+
+    /// <summary>
+    /// 통 그림을 <b>하얗게 채운 실루엣</b>. 마우스를 올렸을 때 통 위에 겹쳐 밝히는 데 쓴다.
+    ///
+    /// 통 그림 자체를 흰색으로 물들여 겹쳐 봤더니 아무 일도 안 일어났다 — 흰색 곱하기는
+    /// 색을 안 바꾸므로 같은 그림이 한 번 더 그려질 뿐이다. 밝히려면 모양만 같고 속은
+    /// 하얀 그림이 따로 있어야 한다.
+    ///
+    /// 알파는 원본 그대로 가져간다. 가장자리가 반투명한 그림도 그 부드러움이 남는다.
+    /// </summary>
+    private static Sprite SilhouetteSprite(string sourcePath, string name, Rect crop)
+    {
+        Texture2D texture = ReadableTexture(sourcePath);
+        if (texture == null) return null;
+
+        int x0 = crop.width > 0f ? Mathf.RoundToInt(crop.x) : 0;
+        int y0 = crop.width > 0f ? Mathf.RoundToInt(crop.y) : 0;
+        int w = crop.width > 0f ? Mathf.RoundToInt(crop.width) : texture.width;
+        int h = crop.width > 0f ? Mathf.RoundToInt(crop.height) : texture.height;
+
+        if (w <= 0 || h <= 0) return null;
+
+        Color[] src = texture.GetPixels(x0, y0, w, h);
+        var made = new Color[src.Length];
+        for (int i = 0; i < src.Length; i++)
+        {
+            made[i] = new Color(1f, 1f, 1f, src[i].a);
+        }
+
+        string path = SaveGenerated("Fill_" + name, EncodePng(made, w, h));
+        return path == null ? null : LoadSprite(path);
     }
 
     /// <summary>
@@ -5072,7 +5297,8 @@ public static class RamenLayoutBuilder
         // 다른 글로 떠 있으면 다른 게임의 UI 처럼 보인다. 크기·자리·글까지 그쪽을 따른다.
         Image dayPanel = CreateImage("DayTimePanel", root, TopLeft, new Vector2(255f, -24f),
                                      new Vector2(200f, PanelBarHeight), Color.white, TimeBarSprite(), PanelScale);
-        AttachPanelIcon(dayPanel, TimeIconSprite(), new Vector2(40f, 36f));
+        Image dayIcon = AttachPanelIcon(dayPanel, TimeIconSprite(), new Vector2(40f, 36f));
+        var dayClock = dayIcon != null ? Undo.AddComponent<DayClockIcon>(dayIcon.gameObject) : null;
         var dayTime = CreateTmpText("DayTimeText", dayPanel.transform, Center, Vector2.zero,
                                     new Vector2(174f, 38f), "1일차  17:00", TextHead, tmpFont);
 
@@ -5201,6 +5427,7 @@ public static class RamenLayoutBuilder
         {
             Root = root.gameObject,
             DayTime = dayTime,
+            DayClock = dayClock,
             Revenue = revenue,
             Dialogue = dialogue,
             DialogueViewport = viewport,
@@ -5587,6 +5814,8 @@ public static class RamenLayoutBuilder
 
     private static void BuildSlots(Transform parent, Font font, SlotNameplate nameplate)
     {
+        TMP_FontAsset slotFont = EnsureTmpFont();
+
         foreach (SlotDef def in Slots)
         {
             // 돌리는 통은 시트로 잘라 온다. LoadSprite 를 먼저 부르면 임포터가 Single 로 바뀌어
@@ -5664,12 +5893,56 @@ public static class RamenLayoutBuilder
                 hover.hoverSize = new Vector2(def.HoverCropRect.width, def.HoverCropRect.height);
             }
 
-            // 이름표를 늘 띄우기로 해서 호버 팻말은 꽂지 않는다. 둘 다 켜면 같은 이름이
-            // 두 군데 뜬다. 팻말로 되돌리려면 이 줄을 살리고 CreateSlotLabel 호출을 지운다.
-            // hover.nameplate = nameplate;
+            // 마우스를 올렸을 때 덧씌우는 흰 막. 통과 같은 상자에 겹쳐 두고 호버 때만 켜진다.
+            //
+            // 통 그림을 그대로 쓰면 안 된다. 흰색으로 물들여 봐야 흰색 곱하기는 색을 안 바꿔서
+            // 같은 그림이 한 번 더 그려질 뿐이다(실제로 그렇게 만들었다가 아무 변화가 없었다).
+            // 모양만 같고 속이 하얀 실루엣을 따로 구워 쓴다.
+            Rect fillCrop = def.CropRect;
+            if (def.LoopCell > 0)
+            {
+                Texture2D sheet = ReadableTexture(def.BinPath);
+                fillCrop = sheet != null
+                    ? new Rect(0f, sheet.height - def.LoopCell, def.LoopCell, def.LoopCell)
+                    : default;
+            }
+
+            Image glow = CreateImage("HoverGlow", bin.transform, Center, Vector2.zero, def.Size,
+                                     Color.white,
+                                     SilhouetteSprite(def.BinPath, def.Type + (def.IdSuffix ?? ""), fillCrop));
+            glow.preserveAspect = bin.preserveAspect;
+            glow.raycastTarget = false;
+            glow.enabled = false;
+
+            // 통이 커지거나 그림이 바뀌어도 막이 따라가도록 상자에 붙여 둔다.
+            glow.rectTransform.anchorMin = Vector2.zero;
+            glow.rectTransform.anchorMax = Vector2.one;
+            glow.rectTransform.offsetMin = Vector2.zero;
+            glow.rectTransform.offsetMax = Vector2.zero;
+
+            hover.highlight = glow;
+
+            // 이름은 통 안에 쓴다. 흰 막 위에 얹으므로 막보다 나중에 만든다.
+            //
+            // 글자 상자를 통보다 넓게 잡는다. 시치미 통은 64칸인데 「고추가루」는 24짜리 글자로
+            // 96칸이라, 통 폭에 맞추면 두 줄로 접혀 통을 다 덮는다. 넘치더라도 한 줄로 두고
+            // 가운데를 통에 맞추는 편이 읽힌다.
+            var slotName = CreateTmpText("HoverName", bin.transform, Center, Vector2.zero,
+                                         new Vector2(Mathf.Max(def.Size.x, 140f), 30f),
+                                         def.Label, TextTitle, slotFont);
+            slotName.color = ResultInkColor;
+            slotName.raycastTarget = false;
+            slotName.textWrappingMode = TextWrappingModes.NoWrap;
+            slotName.enabled = false;
+
+            hover.nameLabel = slotName;
 
             // 이름판은 뺐다. 통 그림만으로 무엇인지 읽히는지 먼저 보기로 했다.
             // 되살리려면 이 줄을 살린다:  CreateSlotLabel(bin.transform, def, font);
+
+            // 아직 안 들어온 재료통에는 자물쇠를 얹는다. 1일차에 잠기는 통에만 붙이면 된다 —
+            // 첫날부터 열려 있는 통은 영영 안 잠긴다. 어느 날 열리는지는 IngredientUnlock 이 정한다.
+            if (IngredientUnlock.IsLocked(def.Type, 1)) BuildSlotLock(bin, hover, def);
 
             // 돌아가는 통(육수 냄비)은 알파 판정을 쓰지 않는다.
             //
@@ -6394,6 +6667,7 @@ public static class RamenLayoutBuilder
         {
             SetPrivateReference(orderScreenUI, "screenRoot", orderScreen.Root);
             SetPrivateReference(orderScreenUI, "dayTimeText", orderScreen.DayTime);
+            SetPrivateReference(orderScreenUI, "dayClock", orderScreen.DayClock);
             SetPrivateReference(orderScreenUI, "revenueText", orderScreen.Revenue);
             SetPrivateReference(orderScreenUI, "dialogueText", orderScreen.Dialogue);
             SetPrivateReference(orderScreenUI, "dialogueViewport", orderScreen.DialogueViewport);
@@ -6509,6 +6783,7 @@ public static class RamenLayoutBuilder
         SetPrivateReference(gameManager, "dayManager", orderSystem.Day);
         SetPrivateReference(gameManager, "revenueText", topBar.RevenueText);
         SetPrivateReference(gameManager, "dayText", topBar.DayText);
+        SetPrivateReference(gameManager, "dayClock", topBar.DayClock);
         SetPrivateReference(gameManager, "ramenCalculator", Object.FindFirstObjectByType<RamenCalculator>());
         SetPrivateReference(gameManager, "finalResultUI", Object.FindFirstObjectByType<FinalResultUI>());
         SetPrivateReference(gameManager, "orderScreenUI", Object.FindFirstObjectByType<OrderScreenUI>());

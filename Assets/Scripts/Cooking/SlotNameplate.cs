@@ -22,14 +22,25 @@ public class SlotNameplate : MonoBehaviour
 
     private void Awake()
     {
-        rect = GetComponent<RectTransform>();
-        frame = rect.parent as RectTransform;
+        EnsureRects();
         Hide();
+    }
+
+    /// <summary>
+    /// 좌표 기준을 잡아 둔다. Awake 에만 두지 않는 까닭은 <see cref="Show"/> 가 먼저 불릴 수
+    /// 있어서다 — 그러면 frame 이 비어 있어 팻말이 소리 없이 안 뜬다.
+    /// </summary>
+    private void EnsureRects()
+    {
+        if (rect == null) rect = GetComponent<RectTransform>();
+        if (frame == null && rect != null) frame = rect.parent as RectTransform;
     }
 
     /// <summary>통 아래에 팻말을 띄운다. 판 밖으로 나갈 자리면 통 위로 넘긴다.</summary>
     public void Show(string text, RectTransform slot)
     {
+        EnsureRects();
+
         if (label == null || slot == null || frame == null) return;
 
         label.text = text;

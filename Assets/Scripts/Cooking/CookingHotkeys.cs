@@ -34,6 +34,10 @@ public class CookingHotkeys : MonoBehaviour
         Keyboard keyboard = Keyboard.current;
         if (keyboard == null) return;
 
+        // 해금 연출이 도는 동안에는 아무것도 열리지 않는다. 마우스는 연출이 깔아 둔 투명 판이
+        // 막지만 키는 장치에서 바로 읽으므로 여기서 막아야 한다.
+        if (UnlockSequence.IsPlaying) return;
+
         // 조리 중이 아니게 된 순간(제출했거나 다음 손님이 왔거나) 열려 있던 것을 닫는다.
         // 키를 누른 채로 제출하면 뗄 기회가 없어 그대로 남는다.
         if (!IsCooking)

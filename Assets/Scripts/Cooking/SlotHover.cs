@@ -40,6 +40,25 @@ public class SlotHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public SlotNameplate nameplate;
 
     /// <summary>
+    /// 마우스를 올렸을 때 통 위에 덧씌우는 흰 막. 통과 같은 그림을 흰색 반투명으로 겹친다.
+    ///
+    /// 네모난 판을 덮지 않는다. 재료통은 가장자리가 투명한 그림이라 네모를 씌우면
+    /// 통이 아니라 통을 감싼 상자가 밝아진다. 같은 그림을 겹쳐야 재료 모양 그대로 빛난다.
+    /// </summary>
+    public Image highlight;
+
+    /// <summary>
+    /// 그 막의 진하기.
+    ///
+    /// 0.35 로 두었더니 위에 얹은 이름이 재료 무늬에 묻혀 안 읽혔다. 이름을 통 안에 쓰기로 한
+    /// 이상 막은 글자가 앉을 바탕이기도 해서, 재료가 비쳐 보이는 선에서 가장 밝게 잡았다.
+    /// </summary>
+    public float highlightAlpha = 0.62f;
+
+    /// <summary>통 한가운데에 뜨는 재료 이름. 빌더가 통마다 하나씩 달아 준다.</summary>
+    public TMPro.TextMeshProUGUI nameLabel;
+
+    /// <summary>
     /// 마우스 판정에서 "그림이 있다"로 칠 알파. 0 이면 상자 전체가 판정이다.
     ///
     /// 상자는 네모라, 그림이 상자보다 좁은 통은 빈 자리를 눌러도 집혔다. 시치미가 제일
@@ -98,7 +117,8 @@ public class SlotHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // 젓가락은 재료통 위에서만 뜬다. 나머지 자리에서는 시스템 화살표를 쓴다.
         if (CookingCursor.Instance != null) CookingCursor.Instance.EnterSlot(gameObject);
 
-        // 이름표를 다 걷어낸 대신, 가리키는 통 하나에만 이름이 뜬다.
+        // 이름은 통 밖 팻말이 아니라 통 안에 뜬다. 팻말은 통 아래위로 비어 있는 자리를
+        // 찾아다녀야 해서 열세 통이 깔린 화면에서는 늘 어딘가와 부딪혔다.
         if (nameplate != null) nameplate.Show(label, (RectTransform)transform);
 
         // 테두리 그림이 있으면 그걸로 갈아 끼운다. 늘리면 픽셀이 반칸에 걸려 뭉개진다.
@@ -115,7 +135,27 @@ public class SlotHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             image.color = baseColor * hoverBrightness;
         }
+
+        // 흰 막은 그림을 갈아 끼운 **뒤에** 씌운다. 그래야 테두리 그림으로 바뀐 통도
+        // 바뀐 모양 그대로 빛난다.
+        hovering = true;
+        SyncHighlight();
     }
+
+    /// <summary>흰 막과 이름을 켜고 끈다. 그림은 빌더가 구워 꽂아 둔 실루엣 한 장이다.</summary>
+    private void SyncHighlight()
+    {
+        if (highlight != null)
+        {
+            highlight.enabled = hovering;
+            highlight.color = new Color(1f, 1f, 1f, highlightAlpha);
+        }
+
+        if (nameLabel != null) nameLabel.enabled = hovering;
+    }
+
+    /// <summary>지금 이 통을 가리키고 있는가.</summary>
+    private bool hovering;
 
     public void OnPointerExit(PointerEventData eventData)
     {
@@ -125,6 +165,10 @@ public class SlotHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     private void ResetLook()
     {
+        hovering = false;
+        if (highlight != null) highlight.enabled = false;
+        if (nameLabel != null) nameLabel.enabled = false;
+
         transform.localScale = baseScale;
         if (image != null)
         {

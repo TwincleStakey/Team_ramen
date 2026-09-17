@@ -111,6 +111,8 @@ public class DayManager : MonoBehaviour
 
         if (orderManager != null)
         {
+            // 오늘 몫의 난이도를 새로 담는다. 첫 손님 주문을 만들기 전이어야 한다.
+            orderManager.BeginDay(currentDay);
             orderManager.CreateOrder();
         }
         else

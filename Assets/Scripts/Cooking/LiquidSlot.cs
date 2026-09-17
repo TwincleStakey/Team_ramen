@@ -47,6 +47,9 @@ public class LiquidSlot : MonoBehaviour, IPointerEnterHandler, IPointerDownHandl
         // 튜토리얼 중에는 안내한 재료 말고는 아예 집히지 않는다(기획서 v1.2 9장).
         if (!TutorialManager.CanPick(type)) return;
 
+        // 아직 안 들어온 타래도 집히지 않는다. 안내는 자물쇠 쪽이 띄운다.
+        if (Locked()) return;
+
         if (CookingCursor.Instance == null)
         {
             Debug.LogWarning("[LiquidSlot] 씬에 커서가 없습니다. Tools > Ramen > Build Cooking Layout을 다시 실행해 주세요.");
@@ -64,6 +67,7 @@ public class LiquidSlot : MonoBehaviour, IPointerEnterHandler, IPointerDownHandl
         // OnPointerDown 에서 막아도 여기로 다시 들어온다. 눌림이 거부되면 picking 이 false 로
         // 남아 있어서 아래 검사를 그냥 지나친다. 두 곳 다 막아야 한다.
         if (!TutorialManager.CanPick(type)) return;
+        if (Locked()) return;
 
         if (picking || CookingCursor.Instance == null) return;
 
@@ -71,6 +75,19 @@ public class LiquidSlot : MonoBehaviour, IPointerEnterHandler, IPointerDownHandl
         picking = true;
         CookingCursor.Instance.PickUp(type);
     }
+
+    /// <summary>
+    /// 이 통이 아직 안 열렸는가. 잠겼으면 안내까지 띄우고 참을 돌려준다.
+    /// 자물쇠가 안 붙은 통(육수처럼 첫날부터 쓰는 것)은 늘 거짓이다.
+    /// </summary>
+    private bool Locked()
+    {
+        if (slotLock == null) slotLock = GetComponent<SlotLock>();
+
+        return slotLock != null && slotLock.RejectIfLocked();
+    }
+
+    private SlotLock slotLock;
 
     /// <summary>커서가 스스로 마우스를 따라다닌다. 여기서 할 일은 없다.</summary>
     public void OnDrag(PointerEventData eventData)

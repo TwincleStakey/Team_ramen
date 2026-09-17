@@ -81,8 +81,24 @@ public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
         // 튜토리얼 중에는 안내한 재료 말고는 아예 집히지 않는다(기획서 v1.2 9장).
         if (!TutorialManager.CanPick(type)) return;
 
+        // 아직 안 들어온 재료도 집히지 않는다. 안내는 자물쇠 쪽이 띄운다.
+        if (Locked()) return;
+
         CreateGhost(eventData.position);
     }
+
+    /// <summary>
+    /// 이 통이 아직 안 열렸는가. 잠겼으면 안내까지 띄우고 참을 돌려준다.
+    /// 자물쇠가 안 붙은 통(면·육수처럼 첫날부터 쓰는 것)은 늘 거짓이다.
+    /// </summary>
+    private bool Locked()
+    {
+        if (slotLock == null) slotLock = GetComponent<SlotLock>();
+
+        return slotLock != null && slotLock.RejectIfLocked();
+    }
+
+    private SlotLock slotLock;
 
     public void OnPointerUp(PointerEventData eventData)
     {
@@ -95,6 +111,7 @@ public class IngredientSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
         // OnPointerDown 에서 막아도 여기로 다시 들어온다. 그쪽에서 거부하면 ghost 가 null 로
         // 남아 있어서 아래 줄이 그대로 만들어 버린다. 두 곳 다 막아야 한다.
         if (!TutorialManager.CanPick(type)) return;
+        if (Locked()) return;
 
         // 누를 때 이미 만들어 뒀다. 눌림을 놓친 경우에만 여기서 만든다.
         if (ghost == null) CreateGhost(eventData.position);
