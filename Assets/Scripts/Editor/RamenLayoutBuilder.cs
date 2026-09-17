@@ -688,8 +688,14 @@ public static class RamenLayoutBuilder
         /// <summary>왼쪽에서 나오는 판.</summary>
         public RectTransform Panel;
 
-        /// <summary>마우스를 올렸을 때 판 전체를 흐리게 하는 데 쓴다.</summary>
+        /// <summary>판에 씌운 CanvasGroup. 이제 흐려지지 않고 알파를 1 로 굳히는 데만 쓴다.</summary>
         public CanvasGroup Fade;
+
+        /// <summary>마우스를 올린 재료 위에 뜨는 이름. 글자와 검은 복제본이 한 묶음이다.</summary>
+        public RectTransform HoverName;
+
+        /// <summary>그 묶음 안의 흰 글자.</summary>
+        public TextMeshProUGUI HoverLabel;
     }
 
     /// <summary>주문 화면에서 OrderScreenUI에 꽂아 줘야 하는 것들.</summary>
@@ -1989,8 +1995,8 @@ public static class RamenLayoutBuilder
         Transform root = CreateGroup("OrderNote", canvas);
         LiftOverlay(root.gameObject);
 
-        // 자리는 OrderNoteUI 가 정한다. 여기서는 화면 왼쪽 바깥(숨은 자리)에 둔다.
-        OrderNoteRefs refs = BuildNotePaper(root, new Vector2(-440f, 0f));
+        // 자리는 OrderNoteUI 가 정한다. 여기서는 화면 오른쪽 바깥(숨은 자리)에 둔다.
+        OrderNoteRefs refs = BuildNotePaper(root, new Vector2(580f, 0f));
         refs.Root = root.gameObject;
 
         root.gameObject.SetActive(false);
@@ -4933,22 +4939,36 @@ public static class RamenLayoutBuilder
         Image panel = CreateImage("Panel", root, Center, new Vector2(0f, -530f), new Vector2(300f, 490f),
                                   Color.white, LoadPhotoSprite(UiDir + "레시피북.png"));
 
-        // 마우스를 올리면 판이 흐려진다. 낱장마다 색을 만지지 않고 판에 CanvasGroup 을 하나 씌운다.
+        // **책이 덮은 자리는 클릭을 막는다.** 예전에는 마우스를 올리면 판이 0.4 로 흐려져
+        // 뒤의 타래 3통과 육수 냄비가 비쳐 보였고, 그래서 클릭도 통과시켰다. 지금은 늘 진해서
+        // 뒤가 안 보이는데, 안 보이는 것을 모르고 집으면 엉뚱한 타래가 들어간다.
+        // 판이 클릭을 삼키게 두면 책을 닫아야 조리를 잇게 된다.
         //
-        // blocksRaycasts 를 꺼 둔다. 책은 왼쪽 타래 3통과 육수 냄비를 덮고 있는데, 이걸 켜면
-        // 그 안에 있는 것이 전부 클릭을 가로채 뒤를 못 만지게 된다. 닫기 버튼이 없어 잃을 것도 없다.
-        // 책 너머로 재료통을 집을 수 있어야 한다. CanvasGroup 만으로는 모자라서
-        // 그림 자체의 raycastTarget 도 끈다 — 주문서 종이가 하는 것과 같다.
-        panel.raycastTarget = false;
+        // 책 밖(오른쪽 재료통)은 그대로 집힌다. 판이 덮은 자리만 막는 것이다.
+        panel.raycastTarget = true;
 
         var bookFade = Undo.AddComponent<CanvasGroup>(panel.gameObject);
-        bookFade.blocksRaycasts = false;
+        bookFade.blocksRaycasts = true;
         bookFade.interactable = false;
 
         // 제목·메뉴 이름·밑줄·재료 글상자는 없다. 전부 그림에 그려져 있다.
         // RecipeBookUI 는 빈 배열을 받아 채울 것이 없으면 그냥 지나간다.
         var menuNameTexts = new TextMeshProUGUI[0];
         var menuValueTexts = new TextMeshProUGUI[0];
+
+        // 마우스를 올린 재료의 이름. 글자 한 벌을 만들어 두고 RecipeBookUI 가 자리를 옮긴다.
+        //
+        // **묶음 안에 넣어 옮긴다.** AttachPixelOutline 은 검은 복제본을 형제로 만들고 자리를
+        // 한 번만 잡아 준다. 글자만 옮기면 복제본은 제자리에 남아 외곽선이 따로 논다.
+        // 묶음째 옮기면 아홉 장이 같이 간다.
+        Transform nameGroup = CreateGroup("HoverName", panel.transform);
+        var nameLabel = CreateTmpText("Label", nameGroup, Center, Vector2.zero,
+                                      new Vector2(120f, 20f), "재료", TextBody, tmpFont);
+        nameLabel.color = Color.white;
+        nameLabel.raycastTarget = false;
+        AttachPixelOutline(nameLabel, nameGroup, Vector2.zero, tmpFont);
+
+        nameGroup.gameObject.SetActive(false);
 
         // 닫기 버튼은 두지 않는다. B 키를 떼면 저절로 접히므로 누를 일이 없고,
         // 종이 위에 얹힌 초록 판이 낙서 그림과 따로 놀았다.
@@ -4963,7 +4983,9 @@ public static class RamenLayoutBuilder
             MenuValueTexts = menuValueTexts,
             Close = null,
             Panel = panel.rectTransform,
-            Fade = bookFade
+            Fade = bookFade,
+            HoverName = nameGroup as RectTransform,
+            HoverLabel = nameLabel
         };
     }
 
@@ -6724,8 +6746,12 @@ public static class RamenLayoutBuilder
             // 미끄러지는 것은 판 하나다. root 는 껐다 켜기만 한다.
             SetPrivateReference(book, "panel", recipeBook.Panel);
 
-            // 마우스를 올리면 흐려진다. 주문서와 같은 방식이다.
+            // 흐려지지 않는다. 알파를 1 로 굳혀 두는 데만 쓴다.
             SetPrivateReference(book, "fade", recipeBook.Fade);
+
+            // 마우스를 올린 재료 이름.
+            SetPrivateReference(book, "hoverName", recipeBook.HoverName);
+            SetPrivateReference(book, "hoverLabel", recipeBook.HoverLabel);
         }
 
         // 손님별 결과창.

@@ -30,19 +30,23 @@ public class RecipeBookUI : MonoBehaviour
     /// <summary>아래에서 올라오는 판. 이것만 움직이고 root는 껐다 켜기만 한다.</summary>
     [SerializeField] private RectTransform panel;
 
-    /// <summary>판 전체를 한꺼번에 흐리게 하는 데 쓴다. 빌더가 판에 붙여 준다.</summary>
+    /// <summary>
+    /// 판에 씌운 CanvasGroup. 빌더가 붙여 준다.
+    ///
+    /// 예전에는 마우스를 올리면 0.4 로 흐려져 뒤의 재료통이 비쳐 보였다. 지금은 <b>늘 진하다</b> —
+    /// 책은 펼쳐 놓고 읽는 것이지 비쳐 보며 조리하는 것이 아니다. 대신 책이 덮은 자리는
+    /// 클릭도 막는다(빌더에서 raycastTarget·blocksRaycasts 를 켠다). 안 보이는데 눌리면
+    /// 책 뒤의 타래를 모르고 집게 된다.
+    ///
+    /// 여기서 알파를 다시 1 로 세우는 까닭은 씬에 옛 값(0.4)이 저장돼 있을 수 있어서다.
+    /// </summary>
     [SerializeField] private CanvasGroup fade;
 
-    /// <summary>
-    /// 마우스가 판 위에 있을 때의 진하기. 뒤에 있는 재료가 비쳐 보이는 정도.
-    ///
-    /// 책은 이제 토글이라 켜 둔 채로 조리할 수 있는데, 왼쪽 타래 3통과 육수 냄비를 통째로 덮는다.
-    /// 주문서와 같은 방식으로 비켜 준다. 값도 주문서에 맞춘다 — 둘이 다르면 손이 헷갈린다.
-    /// </summary>
-    [SerializeField, Range(0.1f, 1f)] private float hoverAlpha = 0.4f;
+    /// <summary>재료 이름이 뜨는 글자. 흰 글자에 검은 외곽선(PixelTextOutline)이 둘려 있다.</summary>
+    [SerializeField] private RectTransform hoverName;
 
-    /// <summary>흐려지고 돌아오는 데 걸리는 시간.</summary>
-    [SerializeField] private float fadeSeconds = 0.1f;
+    /// <summary>그 글자 본체. 이름을 여기에 쓴다.</summary>
+    [SerializeField] private TextMeshProUGUI hoverLabel;
 
     /// <summary>다 나왔을 때 판 왼쪽에 남기는 여백.</summary>
     private const float ShownMargin = 8f;
@@ -79,6 +83,63 @@ public class RecipeBookUI : MonoBehaviour
         { IngredientType.Egg, "계란" }, { IngredientType.WoodEar, "목이버섯" },
         { IngredientType.BeanSprout, "숙주" }, { IngredientType.FlavorOil, "향미유" },
         { IngredientType.ChiliPowder, "고춧가루" }
+    };
+
+    /// <summary>수첩 그림에 그려진 재료 한 칸. 자리는 판(300x490) 기준, 가운데가 원점이다.</summary>
+    private struct Cell
+    {
+        public readonly IngredientType Type;
+        public readonly Vector2 Center;
+
+        public Cell(IngredientType type, float x, float y)
+        {
+            Type = type;
+            Center = new Vector2(x, y);
+        }
+    }
+
+    // 재료 그림이 놓인 격자. **그림에서 재서 옮겨 적은 값이다** — 눈대중이 아니다.
+    // 원본 레시피북.png(900x1470)에서 재료 덩어리의 가운데를 찾아 1/3 로 줄였다
+    // (판이 300x490 이라 정확히 1/3 이다).
+    //
+    // 가로 넉 줄이 x -88 · -35 · 23 · 80 이고, 세로는 시오 두 줄 · 쇼유 두 줄 · 돈코츠 세 줄이다.
+    // **그림을 다시 그리면 이 표도 같이 틀어진다.** 재료 자리를 옮겼으면 여기도 다시 잰다.
+    private const float CellHalfX = 25f;   // 칸 사이가 53 이라 25 면 옆 칸을 안 문다
+    private const float CellHalfY = 18f;   // 줄 사이가 39
+
+    private static readonly Cell[] Cells =
+    {
+        // 시오 — 소금타래 · 육수 · 얇은면 · 차슈 / 멘마 둘 · 파 · 향미유
+        new Cell(IngredientType.ShioTare,      -88f, 119f),
+        new Cell(IngredientType.Broth,         -35f, 119f),
+        new Cell(IngredientType.ThinNoodles,    23f, 119f),
+        new Cell(IngredientType.Chashu,         80f, 119f),
+        new Cell(IngredientType.Menma,         -88f,  80f),
+        new Cell(IngredientType.Menma,         -35f,  80f),
+        new Cell(IngredientType.GreenOnion,     23f,  80f),
+        new Cell(IngredientType.FlavorOil,      80f,  80f),
+
+        // 쇼유 — 간장타래 · 육수 · 얇은면 · 차슈 / 차슈 · 멘마 · 파 · 향미유
+        new Cell(IngredientType.ShoyuTare,     -88f,   0f),
+        new Cell(IngredientType.Broth,         -35f,   0f),
+        new Cell(IngredientType.ThinNoodles,    23f,   0f),
+        new Cell(IngredientType.Chashu,         80f,   0f),
+        new Cell(IngredientType.Chashu,        -88f, -40f),
+        new Cell(IngredientType.Menma,         -35f, -40f),
+        new Cell(IngredientType.GreenOnion,     23f, -40f),
+        new Cell(IngredientType.FlavorOil,      80f, -40f),
+
+        // 돈코츠 — 베이스 · 육수 · 굵은면 · 차슈 / 계란 · 김 · 숙주 · 목이 / 파 · 향미유
+        new Cell(IngredientType.TonkotsuBase,  -88f, -119f),
+        new Cell(IngredientType.Broth,         -35f, -119f),
+        new Cell(IngredientType.ThickNoodles,   23f, -119f),
+        new Cell(IngredientType.Chashu,         80f, -119f),
+        new Cell(IngredientType.Egg,           -88f, -159f),
+        new Cell(IngredientType.Nori,          -35f, -159f),
+        new Cell(IngredientType.BeanSprout,     23f, -159f),
+        new Cell(IngredientType.WoodEar,        80f, -159f),
+        new Cell(IngredientType.GreenOnion,    -88f, -198f),
+        new Cell(IngredientType.FlavorOil,     -35f, -198f),
     };
 
     private static readonly RamenType[] Menus = { RamenType.Shio, RamenType.Shoyu, RamenType.Tonkotsu };
@@ -133,34 +194,69 @@ public class RecipeBookUI : MonoBehaviour
     {
         if (root != null) root.SetActive(true);
 
-        // 흐려진 채로 닫혔다가 다시 나오면 흐린 상태로 시작한다. 나올 때는 늘 진하게.
+        // 책은 늘 진하다. 씬에 흐리던 시절 값(0.4)이 남아 있어도 여기서 되돌린다.
         if (fade != null) fade.alpha = 1f;
+
+        // 지난번에 띄워 둔 이름이 남아 있으면 지운다.
+        if (hoverName != null) hoverName.gameObject.SetActive(false);
 
         Slide(shownPosition, false);
     }
 
     /// <summary>
-    /// 마우스가 판 위에 오면 흐려진다. 책이 왼쪽 타래·육수를 덮고 있어도 뒤가 비쳐 보여야 한다.
+    /// 마우스가 어느 재료 그림 위에 있는지 보고 이름을 띄운다.
     ///
-    /// 레이캐스트를 쓰지 않는다. 판에 raycastTarget 을 켜는 순간 판이 클릭을 가로채
-    /// 뒤에 있는 재료통을 못 만지게 된다. 그래서 상자 안에 들었는지만 좌표로 본다.
-    /// 캔버스가 Screen Space - Camera 라 그리는 카메라를 같이 넘긴다 — null 을 넘기면
+    /// 레이캐스트로 잡지 않는다. 재료는 낱개 오브젝트가 아니라 <b>수첩 그림 한 장에 그려져</b>
+    /// 있어서 맞을 것이 없다. 대신 그림에서 재 둔 격자(<see cref="Cells"/>)에 마우스 자리를
+    /// 견준다 — 보이지 않는 칸 스물여섯을 만들어 얹는 것보다 가볍고, 그림이 바뀌면 표 한 곳만 고친다.
+    ///
+    /// 캔버스가 Screen Space - Camera 라 그리는 카메라를 같이 넘긴다. null 을 넘기면
     /// 판이 화면 어디에 있는지 잘못 계산한다. (OrderNoteUI 와 같은 방식이다.)
     /// </summary>
     private void Update()
     {
-        if (fade == null || root == null || !root.activeSelf) return;
+        if (root == null || !root.activeSelf || panel == null || hoverName == null) return;
 
-        bool over = panel != null && Mouse.current != null
-                    && RectTransformUtility.RectangleContainsScreenPoint(
-                           panel, Mouse.current.position.ReadValue(), CanvasPoint.CameraFor(panel));
+        if (Mouse.current == null)
+        {
+            ShowName(null, Vector2.zero);
+            return;
+        }
 
-        float target = over ? hoverAlpha : 1f;
+        Vector2 local;
+        bool inside = RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            panel, Mouse.current.position.ReadValue(), CanvasPoint.CameraFor(panel), out local);
 
-        // 팝업이 떠서 게임이 멈춰 있어도 책은 반응해야 한다.
-        fade.alpha = fadeSeconds <= 0f
-            ? target
-            : Mathf.MoveTowards(fade.alpha, target, Time.unscaledDeltaTime / fadeSeconds);
+        if (!inside)
+        {
+            ShowName(null, Vector2.zero);
+            return;
+        }
+
+        for (int i = 0; i < Cells.Length; i++)
+        {
+            Vector2 at = Cells[i].Center;
+            if (Mathf.Abs(local.x - at.x) > CellHalfX) continue;
+            if (Mathf.Abs(local.y - at.y) > CellHalfY) continue;
+
+            ShowName(OrderManager.GetKoreanIngredientName(Cells[i].Type), at);
+            return;
+        }
+
+        ShowName(null, Vector2.zero);
+    }
+
+    /// <summary>이름을 그 재료 위에 띄운다. <paramref name="text"/> 가 비면 감춘다.</summary>
+    private void ShowName(string text, Vector2 at)
+    {
+        bool on = !string.IsNullOrEmpty(text);
+        if (hoverName.gameObject.activeSelf != on) hoverName.gameObject.SetActive(on);
+        if (!on) return;
+
+        if (hoverLabel != null && hoverLabel.text != text) hoverLabel.text = text;
+
+        // 반 칸에 놓이면 픽셀 글자가 흐려진다. 정수로 끊는다.
+        hoverName.anchoredPosition = new Vector2(Mathf.Round(at.x), Mathf.Round(at.y));
     }
 
     /// <summary>다시 누르면 왼쪽으로 들어간다. 다 들어간 뒤에 끈다.</summary>

@@ -44,17 +44,23 @@ public class OrderNoteUI : MonoBehaviour
     [SerializeField] private float fadeSeconds = 0.1f;
 
     /// <summary>
-    /// 다 내려왔을 때 종이 위에 남기는 여백. 상단바(높이 36, 화면 위에서 6칸 아래)를 피한다.
+    /// 다 나왔을 때 종이 위에 남기는 여백. 상단바(높이 36, 화면 위에서 6칸 아래)를 피한다.
     ///
     /// 직렬화하지 않는다. [SerializeField] 로 두면 씬에 한 벌이 따로 저장되어, 여기를 고쳐도
     /// 화면은 옛 값 그대로다. 왼쪽에서 나오던 시절의 8 이 그렇게 남아 있었다.
     /// </summary>
-    private const float ShownMargin = 50f;
+    private const float TopMargin = 50f;
 
-    /// <summary>다 나왔을 때 종이가 설 자리. 종이 높이에서 계산한다.</summary>
+    /// <summary>
+    /// 종이와 화면 오른쪽 끝 사이. 레시피북이 왼쪽에 두는 여백과 같은 값이다 —
+    /// 둘이 다르면 좌우가 대칭으로 안 보인다.
+    /// </summary>
+    private const float SideMargin = 8f;
+
+    /// <summary>다 나왔을 때 종이가 설 자리. 종이 크기에서 계산한다.</summary>
     private Vector2 shownPosition;
 
-    /// <summary>숨었을 때 자리. 화면 위 바깥이라 종이가 안 보인다.</summary>
+    /// <summary>숨었을 때 자리. 화면 오른쪽 바깥이라 종이가 안 보인다.</summary>
     private Vector2 hiddenPosition;
 
     /// <summary>미끄러지는 데 걸리는 시간.</summary>
@@ -91,14 +97,18 @@ public class OrderNoteUI : MonoBehaviour
 
         // 종이가 놓인 판. 캔버스와 같은 크기고 가운데가 원점이다.
         var area = panel.parent as RectTransform;
-        float half = area != null ? area.rect.height * 0.5f : 270f;
-        float paperHalf = panel.sizeDelta.y * 0.5f;
+        float halfWidth = area != null ? area.rect.width * 0.5f : 480f;
+        float halfHeight = area != null ? area.rect.height * 0.5f : 270f;
+        float paperHalfX = panel.sizeDelta.x * 0.5f;
+        float paperHalfY = panel.sizeDelta.y * 0.5f;
 
-        // 가로는 가운데. 세로는 상단바 밑에 머리를 붙이고 길이만큼 아래로 자란다.
-        shownPosition = new Vector2(0f, Mathf.Round(half - ShownMargin - paperHalf));
+        // 세로는 상단바 밑에 머리를 붙이고 길이만큼 아래로 자란다. 가로는 오른쪽 끝에 붙인다.
+        float y = Mathf.Round(halfHeight - TopMargin - paperHalfY);
 
-        // 숨을 때는 아래끝까지 화면 위로 나가야 한다. 조금 더 밀어 여유를 둔다.
-        hiddenPosition = new Vector2(0f, Mathf.Round(half + paperHalf + 8f));
+        shownPosition = new Vector2(Mathf.Round(halfWidth - SideMargin - paperHalfX), y);
+
+        // 숨을 때는 왼쪽 끝까지 화면 오른쪽 밖으로 나가야 한다. 조금 더 밀어 여유를 둔다.
+        hiddenPosition = new Vector2(Mathf.Round(halfWidth + paperHalfX + 8f), y);
     }
 
     public void Show(string dialogue)
