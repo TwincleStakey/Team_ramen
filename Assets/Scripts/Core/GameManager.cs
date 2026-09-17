@@ -271,9 +271,9 @@ public class GameManager : MonoBehaviour
     /// </summary>
     private bool fastForwarding;
 
-#if UNITY_EDITOR
     /// <summary>
-    /// 개발용 건너뛰기 두 가지. 타이틀의 F1 과 같이 에디터에서만 듣는다 — 빌드에는 이 키가 아예 없다.
+    /// 개발용 건너뛰기. <b>평소에는 잠겨 있고 Ctrl+Shift+D 로 열어야 듣는다</b>(<see cref="DevKeys"/>).
+    /// 빌드에도 들어간다 — 빌드를 받은 사람이 5일차나 크레딧을 확인할 길이 있어야 한다.
     ///
     ///   F2  **조리 화면에서** 그릇을 정답으로 채우고 [마무리] 확인창까지 띄운다.
     ///       확인은 사람이 누른다 — 실제 흐름과 같은 자리로 나와야 연출도 같이 확인된다.
@@ -291,6 +291,9 @@ public class GameManager : MonoBehaviour
     {
         Keyboard keyboard = Keyboard.current;
         if (keyboard == null) return;
+
+        DevKeys.Poll(keyboard);
+        if (!DevKeys.Enabled) return;
 
         if (keyboard.f2Key.wasPressedThisFrame) StartCoroutine(FillAndSubmit());
         else if (keyboard.f3Key.wasPressedThisFrame) SkipCustomer();
@@ -626,11 +629,6 @@ public class GameManager : MonoBehaviour
         return null;
     }
 
-// 아래 넷은 개발용 건너뛰기(F2·F3)만 쓰던 것인데, 크레딧이 무대에서 그릇을 담는 데도 쓴다.
-// 크레딧은 빌드에도 들어가므로 에디터 전용 구역 밖으로 내놓는다. 옮기지 않고 구역만 끊는다 —
-// 코드를 움직이면 다른 세션이 같은 자리를 고치고 있을 때 그 편집이 묻힌다.
-#endif
-
     /// <summary>재료를 하나 담고 다음 것을 담기까지의 틈.</summary>
     private const float AddInterval = 0.05f;
 
@@ -648,7 +646,6 @@ public class GameManager : MonoBehaviour
         return icons;
     }
 
-#if UNITY_EDITOR
     /// <summary>
     /// 지금 손님의 정답 레시피를 그릇에 담는 코루틴을 만든다. F2 와 F3 가 같이 쓴다.
     ///
@@ -675,7 +672,6 @@ public class GameManager : MonoBehaviour
         routine = PourRecipe(bowl, recipe);
         return true;
     }
-#endif
 
     private IEnumerator PourRecipe(Bowl bowl, Dictionary<IngredientType, int> recipe)
     {
@@ -699,7 +695,6 @@ public class GameManager : MonoBehaviour
         }
     }
 
-#if UNITY_EDITOR
     /// <summary>F3 가 도는 중인가. 연타로 코루틴이 겹치면 그릇이 두 번 채워진다.</summary>
     private bool skipping;
 
@@ -761,7 +756,6 @@ public class GameManager : MonoBehaviour
         yield return new WaitForSeconds(PourSeconds);
         bowl.Submit();
     }
-#endif
 
     /// <summary>
     /// 실제로 게임을 연다. 시작 화면의 [게임시작]이 부른다.

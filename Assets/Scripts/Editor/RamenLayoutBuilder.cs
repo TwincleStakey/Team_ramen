@@ -1021,6 +1021,9 @@ public static class RamenLayoutBuilder
         // 키 안내 아이콘. 조리 화면 위에 늘 떠 있다.
         BuildKeyHints(canvas);
 
+        // 개발 키가 열려 있다는 표시. 잠겨 있으면 안 보인다.
+        BuildDevKeyBadge(canvas);
+
         // 「꾹 눌러서 넘기기」 게이지. 시식 연출이 스스로 켰다 끈다.
         BuildHoldToSkip(canvas);
 
@@ -4495,6 +4498,32 @@ public static class RamenLayoutBuilder
         SetPrivateReference(slotLock, "bin", bin);
         SetPrivateReference(slotLock, "padlock", padlock);
         SetPrivateReference(slotLock, "hover", hover);
+    }
+
+    /// <summary>
+    /// 개발 키가 열려 있다는 표시. 화면 왼쪽 아래 구석에 작게 둔다.
+    ///
+    /// 조리대와 겹치지 않는 자리를 골랐다 — 왼쪽 아래는 육수 냄비 밑 여백이라 늘 비어 있다.
+    /// 글자만 껐다 켜므로 오브젝트는 계속 살아 있어야 한다(꺼 두면 신호를 못 받는다).
+    /// </summary>
+    private static void BuildDevKeyBadge(Transform canvas)
+    {
+        TMP_FontAsset tmpFont = EnsureTmpFont();
+
+        var label = CreateTmpText("DevKeyBadge", canvas, BottomLeft, new Vector2(8f, 6f),
+                                  new Vector2(260f, 16f), "개발 키 ON  ·  Ctrl+Shift+D 로 잠금",
+                                  TextSmall, tmpFont);
+        label.alignment = TextAlignmentOptions.BottomLeft;
+        label.rectTransform.pivot = BottomLeft;
+        label.rectTransform.anchoredPosition = new Vector2(8f, 6f);
+        label.color = new Color(1f, 0.85f, 0.3f, 0.85f);
+        label.raycastTarget = false;
+        label.enabled = false;
+
+        LiftOverlay(label.gameObject);
+
+        var badge = Undo.AddComponent<DevKeyBadge>(label.gameObject);
+        SetPrivateReference(badge, "label", label);
     }
 
     /// <summary>

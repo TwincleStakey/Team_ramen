@@ -68,17 +68,21 @@ public class TitleScreenUI : MonoBehaviour
     /// <summary>
     /// 개발용 건너뛰기. F1 을 누르면 [게임시작] 을 누른 것과 같다.
     ///
-    /// 에디터에서 화면 하나를 고칠 때마다 타이틀을 눌러 지나가야 하는 것이 번거로워서 둔다.
-    /// 에디터에서만 듣는다 — 빌드에서는 이 키가 아예 없다.
+    /// 화면 하나를 고칠 때마다 타이틀을 눌러 지나가야 하는 것이 번거로워서 둔다.
+    /// <b>평소에는 잠겨 있고 Ctrl+Shift+D 로 열어야 듣는다</b>(<see cref="DevKeys"/>).
+    ///
+    /// 자물쇠를 여는 조합키도 여기서 본다. 타이틀에서는 GameManager 가 아직 Update 를 돌리지
+    /// 않을 수 있어서, 타이틀에 선 채로도 열 수 있어야 한다. 같은 프레임에 두 곳이 봐도
+    /// 한 번만 먹는다(DevKeys.Poll).
     /// </summary>
     private void Update()
     {
-#if UNITY_EDITOR
-        if (!IsOpen) return;
-
         var keyboard = UnityEngine.InputSystem.Keyboard.current;
+        DevKeys.Poll(keyboard);
+
+        if (!IsOpen || !DevKeys.Enabled) return;
+
         if (keyboard != null && keyboard.f1Key.wasPressedThisFrame) StartStory();
-#endif
     }
 
     private void OnDestroy()
