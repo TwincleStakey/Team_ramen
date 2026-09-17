@@ -1,4 +1,31 @@
+using System.Collections.Generic;
 using UnityEngine;
+
+/// <summary>
+/// 이번 그릇이 주문과 어긋난 방향. **재료 이름은 남기지 않는다** — 손님이 "멘마가 없네요"
+/// 라고 짚어 주면 정답을 알려 주는 꼴이라, 주문서와 그릇을 견주어 보는 일이 사라진다.
+///
+/// <see cref="Swapped"/> 가 따로 있는 까닭: 주문이 김 2인데 파 2를 넣으면 빠진 쪽 2 ·
+/// 많은 쪽 2 로 정확히 같아진다. 둘이 비슷하게 나오는 그릇은 "적다/많다"가 아니라
+/// **다른 것을 넣은** 그릇이고, 실제로 제일 흔한 실수다.
+/// </summary>
+public enum ReactionMiss
+{
+    /// <summary>토핑·조미료가 주문과 똑같다.</summary>
+    None,
+
+    /// <summary>빠진 쪽이 세다.</summary>
+    Missing,
+
+    /// <summary>많이 들어간 쪽이 세다.</summary>
+    Excess,
+
+    /// <summary>빠진 것과 많은 것이 비슷하다.</summary>
+    Swapped,
+
+    /// <summary>3대 요소(타래·육수·면)가 어긋났다. 방향을 따질 그릇이 아니다.</summary>
+    Wrong
+}
 
 /// <summary>
 /// 손님이 라멘을 다 먹고 내놓는 한마디. `Resources/ReactionLines.json` 에서 읽는다.
@@ -46,6 +73,104 @@ public static class ReactionLines
     public static void Clear()
     {
         picked = null;
+        miss = ReactionMiss.None;
+    }
+
+    /// <summary>이번 그릇이 어긋난 방향. 제출할 때 <see cref="NoteBowl"/> 가 적어 둔다.</summary>
+    private static ReactionMiss miss;
+
+    // 그 말투에 방향 칸이 없을 때 쓰는 말. 재료 이름은 넣지 않는다.
+    private const string DefaultMissing = "뭔가 좀 빠진 것 같은데요…";
+    private const string DefaultExcess = "뭐가 좀 많이 들어간 것 같은데요…";
+    private const string DefaultSwapped = "제가 시킨 거랑 좀 다른 것 같은데요…";
+
+    /// <summary>
+    /// 제출한 그릇이 주문과 어떻게 어긋났는지 적어 둔다. 결과창이 <see cref="Feedback"/> 로 읽는다.
+    ///
+    /// 그릇은 제출 직후에 비워지므로(Bowl.Submit) 여기서 세어 두지 않으면 볼 수 없다.
+    /// 3대 요소는 빼고 센다 — 그쪽이 틀리면 방향이 아니라 아예 다른 음식이라
+    /// <paramref name="coreFailed"/> 로 따로 받는다.
+    /// </summary>
+    public static void NoteBowl(Dictionary<IngredientType, int> target,
+                                Dictionary<IngredientType, int> submitted, bool coreFailed)
+    {
+        if (coreFailed)
+        {
+            miss = ReactionMiss.Wrong;
+            return;
+        }
+
+        int missing = 0;
+        int excess = 0;
+
+        // enum 을 그대로 훑는다. 토핑 목록을 따로 적어 두면 재료가 늘 때 여기만 옛것으로 남는다.
+        foreach (IngredientType type in System.Enum.GetValues(typeof(IngredientType)))
+        {
+            if (IsCore(type)) continue;
+
+            int want = target != null && target.TryGetValue(type, out int w) ? w : 0;
+            int got = submitted != null && submitted.TryGetValue(type, out int g) ? g : 0;
+
+            if (got < want) missing += want - got;
+            else excess += got - want;
+        }
+
+        miss = Judge(missing, excess);
+    }
+
+    /// <summary>
+    /// 빠진 수와 넘친 수로 방향을 고른다.
+    ///
+    /// 한쪽이 다른 쪽의 두 배가 안 되면 "다른 것을 넣었다"로 읽는다. 기울어진 그릇
+    /// (빠짐 3 · 넘침 1)까지 뭉뚱그리지 않으려고 두 배를 눈금으로 뒀다.
+    /// </summary>
+    private static ReactionMiss Judge(int missing, int excess)
+    {
+        if (missing == 0 && excess == 0) return ReactionMiss.None;
+        if (excess == 0) return ReactionMiss.Missing;
+        if (missing == 0) return ReactionMiss.Excess;
+
+        if (missing >= excess * 2) return ReactionMiss.Missing;
+        if (excess >= missing * 2) return ReactionMiss.Excess;
+
+        return ReactionMiss.Swapped;
+    }
+
+    /// <summary>3대 요소(타래·육수·면)인가. 이쪽은 방향을 세지 않는다.</summary>
+    private static bool IsCore(IngredientType type)
+    {
+        return type == IngredientType.ShioTare
+            || type == IngredientType.ShoyuTare
+            || type == IngredientType.TonkotsuBase
+            || type == IngredientType.Broth
+            || type == IngredientType.ThickNoodles
+            || type == IngredientType.ThinNoodles;
+    }
+
+    /// <summary>
+    /// 결과창에 뜨는 한마디. 정확도 구간이 아니라 **어긋난 방향**으로 고른다.
+    /// 그릇과 주문서를 나란히 놓고 보는 자리라, 어느 쪽으로 틀렸는지가 소감보다 쓸모 있다.
+    ///
+    /// 딱 맞은 그릇과 3대 요소가 어긋난 그릇은 방향이 없다. 그때는 예전처럼
+    /// 정확도 구간 대사(<see cref="For"/>)로 돌아간다 — 100% 는 칭찬, 탈락은 "이거 제 라멘 아닌데요".
+    /// </summary>
+    public static string Feedback(float accuracy)
+    {
+        if (miss == ReactionMiss.None || miss == ReactionMiss.Wrong) return For(accuracy);
+
+        Load();
+        ReactionLineRow row = Row(CurrentPersonaId());
+
+        string[] pool = row == null ? null
+                      : miss == ReactionMiss.Missing ? row.missing
+                      : miss == ReactionMiss.Excess ? row.excess
+                      : row.swapped;
+
+        if (pool != null && pool.Length > 0) return pool[Random.Range(0, pool.Length)];
+
+        return miss == ReactionMiss.Missing ? DefaultMissing
+             : miss == ReactionMiss.Excess ? DefaultExcess
+             : DefaultSwapped;
     }
 
     /// <summary>
@@ -168,6 +293,11 @@ public class ReactionLineRow
     public string[] good;
     public string[] normal;
     public string[] bad;
+
+    // 결과창 한마디. 정확도가 아니라 어긋난 방향으로 고른다(ReactionLines.Feedback).
+    public string[] missing;   // 빠진 쪽이 세다
+    public string[] excess;    // 많이 들어간 쪽이 세다
+    public string[] swapped;   // 빠진 것과 많은 것이 비슷하다 — 다른 걸 넣었다
     // 컷신 말풍선에만 띄우는 긴 소감. 비우면 위의 짧은 말이 나온다.
     public string[] perfect;     // PERFECT_ACCURACY 이상
     public string[] goodLong;    // 90 이상

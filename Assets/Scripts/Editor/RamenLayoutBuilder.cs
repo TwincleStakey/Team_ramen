@@ -457,6 +457,37 @@ public static class RamenLayoutBuilder
     /// </summary>
     private const float NoteChromeHeight = 61f + 12f;
 
+    // ── 결과창 세 판 ──────────────────────────────────────────────
+    //
+    // 왼쪽부터 **내가 만든 그릇 · 주문서 · 정확도 판**이 나란히 선다.
+    // 점수만 띄우면 무엇을 틀렸는지 알 길이 없어서, 낸 그릇과 받은 주문을 같이 펼쳐 둔다.
+    //
+    //   256  +16+  184  +32+  300  = 788   (화면 960, 양옆 86칸씩 남는다)
+    //   그릇       주문서       정확도
+
+    private const float ResultPanelWidth = 300f;
+    private const float ResultPanelHeight = 330f;
+
+    /// <summary>
+    /// 결과창에 얹는 그릇. 조리대 그릇(BowlSize)과 **같은 크기**다.
+    /// 기획 그림의 220 으로 줄이면 0.86배라 획이 반픽셀에 걸려 가장자리에 회색이 낀다.
+    /// </summary>
+    private const float ResultBowlSize = 128f * BowlScale;
+
+    /// <summary>그릇과 주문서 사이. 주문서와 정확도 판 사이는 더 벌린다 — 왼쪽 둘은
+    /// "내가 낸 것과 받은 주문"으로 한 묶음이고, 점수판은 그 결과라 한 칸 떨어져야 한다.</summary>
+    private const float ResultBowlGap = 16f;
+    private const float ResultNoteGap = 32f;
+
+    /// <summary>세 판을 늘어놓은 전체 폭. 가운데 정렬이라 자리는 여기서 나온다.</summary>
+    private const float ResultRowWidth =
+        ResultBowlSize + ResultBowlGap + NoteWidth + ResultNoteGap + ResultPanelWidth;
+
+    private const float ResultBowlX = -ResultRowWidth * 0.5f + ResultBowlSize * 0.5f;
+    private const float ResultNoteX =
+        -ResultRowWidth * 0.5f + ResultBowlSize + ResultBowlGap + NoteWidth * 0.5f;
+    private const float ResultPanelX = ResultRowWidth * 0.5f - ResultPanelWidth * 0.5f;
+
     /// <summary>
     /// 말풍선 꼬리를 원본 실루엣의 몇 배로 키울지. 정수배만 쓴다.
     ///
@@ -596,6 +627,12 @@ public static class RamenLayoutBuilder
         /// <summary>대사 왼쪽 손님 초상. 그림은 실행 중에 손님마다 갈린다.</summary>
         public Image CustomerFace;
         public Button Confirm;
+
+        /// <summary>판 왼쪽, 내가 만든 그릇. 그림은 제출하는 순간에 복제해 온다.</summary>
+        public Image ServedBowl;
+
+        /// <summary>판 가운데, 붙박이 주문서. Tab 으로 여는 것과 종이만 같다.</summary>
+        public OrderNoteRefs Note;
     }
 
     /// <summary>주문 내역(Tab)에서 OrderNoteUI에 꽂아 줘야 하는 것들.</summary>
@@ -1649,7 +1686,10 @@ public static class RamenLayoutBuilder
         //   누적          -70 ~  -59
         //   확인 버튼    -153 ~  -78
         //   판 아래끝 -165
-        Image panel = CreateImage("Panel", root, Center, Vector2.zero, new Vector2(300f, 330f),
+        //
+        // 판은 가운데가 아니라 **오른쪽**에 선다. 왼쪽 두 자리는 내가 만든 그릇과 주문서 몫이다.
+        Image panel = CreateImage("Panel", root, Center, new Vector2(ResultPanelX, 0f),
+                                  new Vector2(ResultPanelWidth, ResultPanelHeight),
                                   Color.white, LoadSprite(GeneratedDir + "주문결과판.png"));
 
         // 정확도 명패. **숫자는 안 굽는다** — 매번 바뀐다. 판만 굽고 TMP 가 그 위에 쓴다.
@@ -1704,11 +1744,33 @@ public static class RamenLayoutBuilder
         confirm.targetGraphic = confirmImage;
         StyleButton(confirm);
 
+        // ── 왼쪽 두 자리: 내가 만든 그릇과 받은 주문서 ──────────────
+        //
+        // 점수만 띄우면 무엇을 틀렸는지 알 길이 없다. 낸 그릇을 그대로 옮겨 놓고 주문서를
+        // 옆에 세워, 손님 한마디가 가리키는 쪽("뭔가 빠진 것 같다")을 직접 견주어 보게 한다.
+        //
+        // 그릇 그림은 여기서 넣지 않는다. 제출하는 순간의 조리대 그릇을 통째로 복제해 온다
+        // (OrderResultUI.CaptureBowl). 그래서 처음에는 꺼 둔다.
+        Image servedBowl = CreateImage("ServedBowl", root, Center, new Vector2(ResultBowlX, 0f),
+                                       new Vector2(ResultBowlSize, ResultBowlSize), Color.white);
+        servedBowl.preserveAspect = true;
+        servedBowl.raycastTarget = false;
+        servedBowl.enabled = false;
+
+        // 주문서는 Tab 으로 여는 것과 같은 종이다. 다만 미끄러지지도 흐려지지도 않는다.
+        //
+        // 종이 길이는 주문마다 다르다(ResultOrderNote 가 매번 다시 잡는다). 피벗이 가운데라
+        // 길어지든 짧아지든 위아래로 똑같이 자라, 그릇·판과 **세로 가운데**가 늘 맞는다.
+        // 위끝을 판에 맞춰 두었더니 짧은 주문에서 종이만 위로 쏠려 아래가 휑했다.
+        OrderNoteRefs note = BuildNotePaper(root, new Vector2(ResultNoteX, 0f));
+
         root.gameObject.SetActive(false);
 
         return new OrderResultRefs
         {
             Root = root.gameObject,
+            ServedBowl = servedBowl,
+            Note = note,
             Accuracy = accuracy,
             Reward = reward,
             Revenue = revenue,
@@ -1875,10 +1937,24 @@ public static class RamenLayoutBuilder
     /// </summary>
     private static OrderNoteRefs BuildOrderNote(Transform canvas)
     {
-        TMP_FontAsset tmpFont = EnsureTmpFont();
-
         Transform root = CreateGroup("OrderNote", canvas);
         LiftOverlay(root.gameObject);
+
+        // 자리는 OrderNoteUI 가 정한다. 여기서는 화면 왼쪽 바깥(숨은 자리)에 둔다.
+        OrderNoteRefs refs = BuildNotePaper(root, new Vector2(-440f, 0f));
+        refs.Root = root.gameObject;
+
+        root.gameObject.SetActive(false);
+        return refs;
+    }
+
+    /// <summary>
+    /// 영수증 종이 한 장. Tab 으로 여는 주문 내역과 결과창에 붙박이로 서는 주문서가 같이 쓴다.
+    /// 여닫는 방식과 서는 자리는 부르는 쪽이 정한다.
+    /// </summary>
+    private static OrderNoteRefs BuildNotePaper(Transform parent, Vector2 position)
+    {
+        TMP_FontAsset tmpFont = EnsureTmpFont();
 
         // 종이.
         //
@@ -1886,10 +1962,9 @@ public static class RamenLayoutBuilder
         // 전부 6픽셀이 되어, 9-슬라이스로 1픽셀을 지키는 말풍선·상단바와 굵기가 따로 놀았다.
         // 지금은 종이도 9-슬라이스라 아무리 늘려도 테두리가 1픽셀이다.
         //
-        // 높이는 여기서 정하지 않는다. 대사 길이에 따라 OrderNoteUI 가 매번 다시 잡는다.
+        // 높이는 여기서 정하지 않는다. 대사 길이에 따라 종이를 쥔 쪽이 매번 다시 잡는다.
         // 여기 넣는 값은 씬에서 눈으로 볼 때 쓰는 임시값이다.
-        // 자리도 OrderNoteUI 가 정한다. 여기서는 화면 왼쪽 바깥(숨은 자리)에 둔다.
-        Image sheet = CreateImage("Paper", root, Center, new Vector2(-440f, 0f),
+        Image sheet = CreateImage("Paper", parent, Center, position,
                                   new Vector2(NoteWidth, NoteChromeHeight + 130f),
                                   Color.white, NotePaperSprite());
         sheet.type = Image.Type.Sliced;
@@ -1972,11 +2047,8 @@ public static class RamenLayoutBuilder
         torn.rectTransform.pivot = TopLeft;
         torn.rectTransform.anchoredPosition = Vector2.zero;
 
-        root.gameObject.SetActive(false);
-
         return new OrderNoteRefs
         {
-            Root = root.gameObject,
             Dialogue = dialogue,
             Paper = sheet.rectTransform,
             Fade = noteFade,
@@ -6221,6 +6293,7 @@ public static class RamenLayoutBuilder
                                 typeof(DialogueBlip),
                                 typeof(RecipeBookUI),
                                 typeof(OrderNoteUI),
+                                typeof(ResultOrderNote),
                                 typeof(CookingHotkeys),
                                 typeof(OrderResultUI),
                                 typeof(OrderManager));
@@ -6323,6 +6396,24 @@ public static class RamenLayoutBuilder
             SetPrivateReference(result, "emoji", orderResult.Emoji);
             SetPrivateReference(result, "customerFace", orderResult.CustomerFace);
             SetPrivateReference(result, "confirmButton", orderResult.Confirm);
+            SetPrivateReference(result, "servedBowl", orderResult.ServedBowl);
+
+            // 결과창 옆에 붙박이로 서는 주문서. 종이는 Tab 주문서와 같은 것을 쓰지만
+            // 미끄러지지도 흐려지지도 않아서 다루는 쪽이 따로 있다.
+            var resultNote = go.GetComponent<ResultOrderNote>();
+            SetPrivateReference(result, "note", resultNote);
+
+            if (orderResult.Note != null)
+            {
+                SetPrivateReference(resultNote, "paper", orderResult.Note.Paper);
+                SetPrivateReference(resultNote, "dialogueText", orderResult.Note.Dialogue);
+                SetPrivateReference(resultNote, "dayLabel", orderResult.Note.DayLabel);
+                SetPrivateReference(resultNote, "customerLabel", orderResult.Note.CustomerLabel);
+                SetPrivateReference(resultNote, "dayManager", dayManager);
+                SetPrivateReference(resultNote, "orderManager", manager);
+                SetPrivateFloat(resultNote, "chromeHeight", NoteChromeHeight);
+                SetPrivateFloat(resultNote, "textWidth", NoteTextWidth);
+            }
 
             // 초상은 말투마다 다르다. 지금 손님이 누구인지는 손님을 세우는 쪽만 안다.
             if (orderScreen != null) SetPrivateReference(result, "customer", orderScreen.Look);

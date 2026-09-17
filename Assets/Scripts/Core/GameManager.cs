@@ -1353,6 +1353,10 @@ public class GameManager : MonoBehaviour
         // 그래서 폐기분 로그는 Bowl이 제출 직전에 직접 남긴다.
         Debug.Log("[제출] 그릇: " + Describe(ramenState.selectedIngredients));
 
+        // 결과창에 얹을 그릇 사진. **여기서 찍어야 한다** — Bowl.Submit 은 이 함수가 돌아가자마자
+        // ClearBowl 로 안을 비운다. 한 프레임만 늦어도 빈 그릇이 찍힌다.
+        if (orderResultUI != null) orderResultUI.CaptureBowl();
+
         if (!EnsureOrderManager())
         {
             Debug.LogWarning("[GameManager] 씬에 OrderManager가 없어 채점을 건너뜁니다.");
@@ -1371,6 +1375,11 @@ public class GameManager : MonoBehaviour
             StartCoroutine(ServeDineAndDash());
             return;
         }
+
+        // 손님 한마디는 정확도 구간이 아니라 **어긋난 방향**으로 고른다(ReactionLines.Feedback).
+        // 채점보다 먼저 세어 둔다 — 여기 넘기는 딕셔너리는 그릇이 쥐고 있던 것이라, 제출이
+        // 끝나면 비워진다.
+        NoteBowlDirection(ramenState);
 
         int price = orderManager.EvaluateRamen(ramenState);
         totalRevenue += price;
@@ -1391,6 +1400,27 @@ public class GameManager : MonoBehaviour
         // 손님이 먹는 장면을 먼저 보여 주고, 그다음에 결과창을 올린다.
         float shown = EnsureRamenCalculator() ? ramenCalculator.LastAccuracy : 0f;
         StartCoroutine(ServeCustomer(shown, price));
+    }
+
+    /// <summary>
+    /// 제출한 그릇이 주문과 어느 쪽으로 어긋났는지 ReactionLines 에 적어 둔다.
+    ///
+    /// 3대 요소(타래·육수·면)가 어긋났는지는 채점하는 쪽(B의 RamenCalculator)에 물어본다.
+    /// 같은 판정을 여기서 한 벌 더 쓰면 채점과 대사가 따로 놀 수 있다.
+    /// </summary>
+    private void NoteBowlDirection(RamenState ramenState)
+    {
+        Dictionary<IngredientType, int> target = orderManager.CurrentTargetRecipe;
+        CustomerOrder order = orderManager.CurrentOrder;
+
+        bool coreFailed = true;
+        if (order != null && EnsureRamenCalculator())
+        {
+            coreFailed = !ramenCalculator.ValidateCoreIngredients(
+                order.ramenType, target, ramenState.selectedIngredients, out _);
+        }
+
+        ReactionLines.NoteBowl(target, ramenState.selectedIngredients, coreFailed);
     }
 
     /// <summary>
