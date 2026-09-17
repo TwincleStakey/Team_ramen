@@ -702,7 +702,8 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler
 
     private IEnumerator RippleRoutine(Sprite[] frames)
     {
-        float perFrame = 1f / Mathf.Max(0.1f, rippleFps);
+        // 연출 배속이 켜져 있으면 그만큼 빨리 넘어간다(CookTempo).
+        float perFrame = 1f / Mathf.Max(0.1f, CookTempo.Fps(rippleFps));
         int end = Mathf.Min(RippleLastFrame, frames.Length - 1);
         Sfx.Play("sfx_cook_ripple", 0.3f, 1f, 0.05f);
 
@@ -729,7 +730,8 @@ public class Bowl : MonoBehaviour, IDropHandler, IPointerClickHandler
     private IEnumerator PourRoutine(Sprite[] frames, int first, int last, float fps)
     {
         // fps가 0이나 음수면 아예 안 넘어가므로 최소값을 둔다.
-        float perFrame = 1f / Mathf.Max(0.1f, fps);
+        // 연출 배속이 켜져 있으면 그만큼 빨리 넘어간다(CookTempo).
+        float perFrame = 1f / Mathf.Max(0.1f, CookTempo.Fps(fps));
         int end = Mathf.Min(last, frames.Length - 1);
 
         for (int i = first; i <= end; i++)

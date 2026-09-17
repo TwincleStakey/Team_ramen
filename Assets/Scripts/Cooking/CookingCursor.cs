@@ -483,7 +483,7 @@ public class CookingCursor : MonoBehaviour
         image.sprite = EmptyLadle(type);
         Sfx.Play("sfx_cook_scoop", 0.6f, 1f, 0.05f);
 
-        for (float t = 0f; t < DipDownSeconds; t += Time.unscaledDeltaTime)
+        for (float t = 0f; t < DipDownSeconds; t += CookTempo.Delta)
         {
             dip = Mathf.Lerp(0f, DipDepth, t / DipDownSeconds);
             yield return null;
@@ -494,7 +494,7 @@ public class CookingCursor : MonoBehaviour
         image.sprite = FullLadle(type);
         IsHolding = true;
 
-        for (float t = 0f; t < DipUpSeconds; t += Time.unscaledDeltaTime)
+        for (float t = 0f; t < DipUpSeconds; t += CookTempo.Delta)
         {
             dip = Mathf.Lerp(DipDepth, 0f, t / DipUpSeconds);
             yield return null;
@@ -551,7 +551,7 @@ public class CookingCursor : MonoBehaviour
         for (int step = BottleUprightStep + 1; step <= BottlePourStep; step++)
         {
             image.sprite = BottleSprite(step);
-            yield return new WaitForSecondsRealtime(BottleTiltStepSeconds);
+            yield return CookTempo.Wait(BottleTiltStepSeconds);
         }
 
         // 탈탈 턴다. 붓는 자세와 터는 끝 자세를 오가며 "툭" 을 ShakeCount 번 찍는다.
@@ -559,19 +559,19 @@ public class CookingCursor : MonoBehaviour
         {
             Sfx.Play("sfx_cook_shaker", 0.5f, 1f, 0.08f);
             image.sprite = BottleSprite(BottleShakeStep);
-            yield return new WaitForSecondsRealtime(ShakeStepSeconds);
+            yield return CookTempo.Wait(ShakeStepSeconds);
 
             image.sprite = BottleSprite(BottlePourStep);
-            yield return new WaitForSecondsRealtime(ShakeStepSeconds);
+            yield return CookTempo.Wait(ShakeStepSeconds);
         }
 
-        yield return new WaitForSecondsRealtime(PourHoldSeconds);
+        yield return CookTempo.Wait(PourHoldSeconds);
 
         // 세운 자세로 되돌린다. 내려올 때와 같은 간격이라 한쪽만 빨라 보이지 않는다.
         for (int step = BottlePourStep - 1; step >= BottleUprightStep; step--)
         {
             image.sprite = BottleSprite(step);
-            yield return new WaitForSecondsRealtime(BottleTiltStepSeconds);
+            yield return CookTempo.Wait(BottleTiltStepSeconds);
         }
 
         motion = null;
@@ -622,7 +622,7 @@ public class CookingCursor : MonoBehaviour
         Sprite[] sheet = LadleSheet(Held);
         int last = sheet != null ? sheet.Length - 1 : 0;
 
-        for (float t = 0f; t < LadlePourSeconds; t += Time.unscaledDeltaTime)
+        for (float t = 0f; t < LadlePourSeconds; t += CookTempo.Delta)
         {
             int step = Mathf.Clamp(Mathf.FloorToInt(t / LadlePourSeconds * (last + 1)), 0, last);
             image.sprite = Frame(sheet, step);
@@ -682,7 +682,7 @@ public class CookingCursor : MonoBehaviour
         Sprite[] sheet = PourSheet(Held);
         int last = sheet != null ? sheet.Length - 1 : 0;
 
-        for (float t = 0f; t < NoodlePourSeconds; t += Time.unscaledDeltaTime)
+        for (float t = 0f; t < NoodlePourSeconds; t += CookTempo.Delta)
         {
             int step = Mathf.Clamp(Mathf.FloorToInt(t / NoodlePourSeconds * (last + 1)), 0, last);
             image.sprite = Frame(sheet, step);

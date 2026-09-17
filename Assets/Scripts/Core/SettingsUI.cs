@@ -23,6 +23,25 @@ public class SettingsUI : MonoBehaviour
     [SerializeField] private SettingsRow filterRow;
     [SerializeField] private Button closeButton;
 
+    /// <summary>
+    /// 메인 화면으로 나가는 문. <b>인게임에서만 뜬다</b> — 시작 화면에서 열었을 때는 감춘다.
+    /// 이미 시작 화면인데 「시작 화면으로 나가기」가 있으면 아무 데도 안 가는 버튼이 된다.
+    /// </summary>
+    [SerializeField] private Button exitButton;
+
+    /// <summary>「나가시겠습니까?」 를 묻는 작은 창. 설정창 안에 들어 있다.</summary>
+    [SerializeField] private GameObject exitConfirm;
+    [SerializeField] private Button exitYesButton;
+    [SerializeField] private Button exitNoButton;
+
+    /// <summary>
+    /// 시작 화면. 문을 띄울지 말지 판단하는 데만 읽는다.
+    ///
+    /// 시작 화면이 떠 있으면 그쪽에서 연 설정이고, 아니면 인게임에서 ESC 로 연 것이다.
+    /// 창 하나를 둘이 나눠 쓰기 때문에 여는 쪽을 따로 기억해 두는 것보다 이쪽이 틀릴 일이 적다.
+    /// </summary>
+    [SerializeField] private TitleScreenUI titleScreen;
+
     /// <summary>창이 떠 있는가. 다른 쪽이 「지금 설정 중」인지 물어볼 수 있게 열어 둔다.</summary>
     public bool IsOpen { get { return root != null && root.activeSelf; } }
 
@@ -42,6 +61,10 @@ public class SettingsUI : MonoBehaviour
 
         if (closeButton != null) closeButton.onClick.AddListener(Close);
 
+        if (exitButton != null) exitButton.onClick.AddListener(AskExit);
+        if (exitYesButton != null) exitYesButton.onClick.AddListener(ExitToTitle);
+        if (exitNoButton != null) exitNoButton.onClick.AddListener(CancelExit);
+
         // 이 스크립트는 root 바깥에 붙어 있어야 한다. 안에 있으면 자기 자신을 꺼 버려
         // Awake 가 안 돌고 버튼에 손이 안 붙는다(실제로 한 번 그렇게 만들었다).
         if (root != null) root.SetActive(false);
@@ -54,6 +77,10 @@ public class SettingsUI : MonoBehaviour
         Unbind(filterRow, ChangeFilter);
 
         if (closeButton != null) closeButton.onClick.RemoveListener(Close);
+
+        if (exitButton != null) exitButton.onClick.RemoveListener(AskExit);
+        if (exitYesButton != null) exitYesButton.onClick.RemoveListener(ExitToTitle);
+        if (exitNoButton != null) exitNoButton.onClick.RemoveListener(CancelExit);
     }
 
     private static void Bind(SettingsRow row, System.Action<int> move)
@@ -116,6 +143,17 @@ public class SettingsUI : MonoBehaviour
         Time.timeScale = 0f;
 
         root.SetActive(true);
+
+        // 나가는 문은 인게임에서만. 시작 화면에서 연 설정에는 갈 곳이 없다.
+        if (exitButton != null)
+        {
+            bool inGame = titleScreen == null || !titleScreen.IsOpen;
+            exitButton.gameObject.SetActive(inGame);
+        }
+
+        // 지난번에 묻다 만 창이 남아 있으면 지운다.
+        if (exitConfirm != null) exitConfirm.SetActive(false);
+
         Refresh();
     }
 
@@ -123,8 +161,39 @@ public class SettingsUI : MonoBehaviour
     {
         if (root == null || !root.activeSelf) return;
 
+        if (exitConfirm != null) exitConfirm.SetActive(false);
+
         root.SetActive(false);
         Time.timeScale = resumeScale;
+    }
+
+    /// <summary>
+    /// 문을 눌렀다. 바로 안 나가고 한 번 묻는다.
+    ///
+    /// 저장이 꺼져 있어(GameManager.saveEnabled) 나가면 그 판은 되돌릴 길이 없다.
+    /// 게다가 이 문은 [닫기] 바로 옆이라 잘못 누르기 쉽다.
+    /// </summary>
+    private void AskExit()
+    {
+        if (exitConfirm != null) exitConfirm.SetActive(true);
+    }
+
+    private void CancelExit()
+    {
+        if (exitConfirm != null) exitConfirm.SetActive(false);
+    }
+
+    /// <summary>
+    /// 시작 화면으로 돌아간다. 씬을 다시 여는 것이 곧 시작 화면이다
+    /// (TitleScreenUI 가 씬이 열릴 때 스스로 뜬다). 크레딧이 끝나고 돌아가는 길과 같다.
+    /// </summary>
+    private void ExitToTitle()
+    {
+        // **배속을 먼저 되돌린다.** 설정창이 0 으로 눌러 둔 채로 씬을 열면 새 판이 멈춘 채 뜬다.
+        Time.timeScale = 1f;
+
+        UnityEngine.SceneManagement.SceneManager.LoadScene(
+            UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
     }
 
     // 고른 크기를 귀로 바로 확인할 수 있다.

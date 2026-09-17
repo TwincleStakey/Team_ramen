@@ -3359,6 +3359,21 @@ public static class RamenLayoutBuilder
     private static readonly Vector2 KeyHintTabPos = new Vector2(108f, -22f);
 
     /// <summary>
+    /// 연출 배속(F) 아이콘이 서는 자리. 위 셋과 달리 화면 가운데 기준이다.
+    /// 오른쪽 위 빈 주머니(x 210~288, y 134~228)의 한가운데다 — 위 주석 참고.
+    /// </summary>
+    private static readonly Vector2 KeyHintFastPos = new Vector2(249f, 180f);
+
+    /// <summary>
+    /// 배속 아이콘 한 변. 상단바 줄의 셋(32)보다 크다 — 혼자 떨어져 서서 작으면 먼지처럼 보인다.
+    /// 그림도 48 로 구워 두었다(Tools/make_fast_icon.py). 32 를 늘려 쓰면 1.5배라 획이 깨진다.
+    ///
+    /// 위아래로 글자가 하나씩 붙어 실제로 차지하는 세로는 48 + 위 19 + 아래 19 = 86 이다.
+    /// 빈 주머니가 94 라 사방에 4칸씩 남는다.
+    /// </summary>
+    private const float KeyHintFastSide = 48f;
+
+    /// <summary>
     /// 키 안내가 서는 층.
     ///
     /// 레시피북(OverlayPanelOrder 150)보다 **앞**이어야 한다. 글자를 아이콘 아래에 두면
@@ -3398,6 +3413,31 @@ public static class RamenLayoutBuilder
         Image book = BuildKeyHint(canvas, "KeyHint_Book", "Icon_Book.png", "B", TopLeft, KeyHintBookPos, tmpFont);
         Image tab = BuildKeyHint(canvas, "KeyHint_Tab", "Icon_Bill.png", "Tab", TopLeft, KeyHintTabPos, tmpFont);
 
+        // 연출 배속(F). 위 셋과 달리 상단바 왼쪽 줄에 못 낀다 — Tab 오른끝(-356)과 일차 판
+        // 왼끝(-325) 사이가 31칸뿐이라 32칸 아이콘이 안 들어가고, 일차 판을 밀면 마무리까지
+        // 줄줄이 밀린다. 그래서 오른쪽 위 빈 주머니에 따로 세운다.
+        //
+        // 자리를 재서 잡았다(Frame 기준). 그릇 오른끝 128 · 튜토리얼 안내판 오른끝 210 ·
+        // 시치미 윗끝 134 · 주문서 왼끝 288(오른쪽에서 나온다) · 수익 판 아래끝 228.
+        // 그 사이 x 210~288, y 134~228 이 비어 있어 한가운데인 (249, 180) 에 세운다.
+        Image fast = BuildKeyHint(canvas, "KeyHint_Fast", "Icon_Fast.png", "F", Center,
+                                  KeyHintFastPos, tmpFont, iconSide: KeyHintFastSide);
+
+        // 화살표만으로는 「빨리 감기」인지 「다음 손님」인지 알 수 없다. 이름을 위에 붙인다.
+        // 아래 키 글자(F)와 같은 만큼 띄워 위아래가 대칭이다.
+        Vector2 captionPos = new Vector2(0f, KeyHintFastSide * 0.5f + 10f);
+        var caption = CreateTmpText("Caption", fast.transform, Center, captionPos,
+                                    new Vector2(76f, 18f), "배속모드", TextBody, tmpFont);
+        caption.alignment = TextAlignmentOptions.Center;
+        caption.raycastTarget = false;
+        caption.color = Color.white;
+        AttachPixelOutline(caption, fast.transform, captionPos, tmpFont);
+
+        var fastHint = Undo.AddComponent<FastModeHint>(fast.gameObject);
+        SetPrivateReference(fastHint, "icon", fast);
+        SetPrivateReference(fastHint, "offSprite", LoadSprite(GeneratedDir + "Icon_Fast.png"));
+        SetPrivateReference(fastHint, "onSprite", LoadSprite(GeneratedDir + "Icon_Fast_On.png"));
+
         // 아이콘을 눌러도 열린다. 키를 모르는 사람은 아이콘이 떠 있어도 누를 생각을 못 한다.
         // CookingHotkeys 를 거쳐야 「조리 중일 때만」 판정이 한 곳에만 남는다.
         var hotkeys = Object.FindFirstObjectByType<CookingHotkeys>();
@@ -3405,6 +3445,7 @@ public static class RamenLayoutBuilder
         {
             WireKeyHintButton(tab, hotkeys.ToggleOrderNote);
             WireKeyHintButton(book, hotkeys.ToggleRecipeBook);
+            WireKeyHintButton(fast, hotkeys.ToggleFastMode);
         }
         else
         {
@@ -3415,7 +3456,7 @@ public static class RamenLayoutBuilder
 
         // 세 아이콘을 레시피북(150)보다 앞 층에 올린다. 글자가 아이콘 아래에 있어서
         // 그냥 두면 왼쪽에서 나오는 레시피북 코일에 반쯤 잘린다.
-        foreach (Image hint in new[] { tab, book, esc })
+        foreach (Image hint in new[] { tab, book, esc, fast })
         {
             if (hint == null) continue;
 
@@ -3485,11 +3526,17 @@ public static class RamenLayoutBuilder
     /// 주문 화면에서 감출지. Tab·B 는 거기서 키가 안 먹으니 감추고,
     /// ESC(설정)는 어느 화면에서나 열려야 하므로 그대로 둔다.
     /// </param>
+    /// <param name="iconSide">
+    /// 아이콘 한 변. 0 이면 상단바 줄에 끼는 기본 크기(<see cref="KeyHintIconSize"/>)다.
+    /// 배속 아이콘만 혼자 떨어져 서서 더 크게 받는다.
+    /// </param>
     private static Image BuildKeyHint(Transform canvas, string name, string iconFile, string key,
                                       Vector2 anchor, Vector2 pos, TMP_FontAsset tmpFont,
-                                      bool hideOnOrderScreen = true)
+                                      bool hideOnOrderScreen = true, float iconSide = 0f)
     {
-        Image icon = CreateImage(name, canvas, anchor, pos, KeyHintIconSize,
+        Vector2 size = iconSide > 0f ? new Vector2(iconSide, iconSide) : KeyHintIconSize;
+
+        Image icon = CreateImage(name, canvas, anchor, pos, size,
                                  Color.white, LoadSprite(GeneratedDir + iconFile));
         icon.preserveAspect = true;
         icon.raycastTarget = false;
@@ -3502,7 +3549,10 @@ public static class RamenLayoutBuilder
         }
 
         // 본문(12)이 쓸 수 있는 가장 작은 크기다. 사이 값은 획이 반칸에 걸려 흐려진다.
-        Vector2 labelPos = new Vector2(0f, KeyHintLabelY);
+        //
+        // 글자는 아이콘 아래변에서 늘 같은 만큼 떨어진다. 크기를 키운 아이콘도 간격이 같아야
+        // 한 가족으로 보인다. 기본 32 에서는 -26 으로 예전 값과 정확히 같다.
+        Vector2 labelPos = new Vector2(0f, -size.y * 0.5f + KeyHintLabelY + KeyHintIconSize.y * 0.5f);
         var label = CreateTmpText("Label", icon.transform, Center, labelPos,
                                   new Vector2(44f, 18f), key, TextBody, tmpFont);
         label.alignment = TextAlignmentOptions.Center;
@@ -3890,6 +3940,10 @@ public static class RamenLayoutBuilder
         SetPrivateReference(ui, "noticeRoot", notice.gameObject);
         SetPrivateReference(ui, "noticeText", noticeLabel);
         SetPrivateReference(ui, "noticeCloseButton", noticeClose);
+
+        // 설정창이 「지금 시작 화면인가」를 물어볼 곳. 나가는 문을 띄울지 여기서 갈린다.
+        // 시작 화면이 다 만들어진 지금에야 꽂을 수 있다.
+        SetPrivateReference(settings, "titleScreen", ui);
     }
 
     /// <summary>시작 화면 배경 영상이 그려지는 판을 세운다.</summary>
@@ -3973,6 +4027,15 @@ public static class RamenLayoutBuilder
     private static readonly Vector2 SettingsPanelSize = new Vector2(420f, 300f);
     private static readonly Vector2 SettingsPlaqueSize = new Vector2(180f, 44f);
     private static readonly Vector2 SettingsCloseSize = new Vector2(170f, 48f);
+
+    /// <summary>나가는 문 크기. 구운 그림 그대로다 — 늘리면 3칸 획이 반칸에 걸린다.</summary>
+    private static readonly Vector2 SettingsExitSize = new Vector2(48f, 64f);
+
+    /// <summary>
+    /// 그 문이 서는 가로 자리. 판 오른끝(210)에서 여백 20 과 문 절반 24 를 뺀 자리다.
+    /// [닫기] 오른끝이 85 라 57칸이 뜬다 — 잘못 누를 만큼 붙어 있지는 않다.
+    /// </summary>
+    private const float SettingsExitX = 166f;
     private static readonly Vector2 StepButtonSize = new Vector2(28f, 28f);
 
     /// <summary>눈금 한 칸과 칸 사이. 열 칸이 들어가는 폭은 여기서 계산된다.</summary>
@@ -4054,12 +4117,52 @@ public static class RamenLayoutBuilder
                                        new Vector2(SettingsCloseSize.x - 24f, 30f), "닫기", TextTitle, tmpFont);
         closeLabel.color = TitleButtonInkColor;
 
+        // 메인 화면으로 나가는 문. [닫기] 오른쪽, 판 우측 하단 구석이다.
+        //
+        // 그림은 선으로만 그린 열린 문이다(Tools/make_exit_doors.py). 칠한 그림을 얹어 봤더니
+        // 판이 이미 갈색이라 묻혔다. 선만 그으면 판 무늬가 비쳐 나와 「판에 새긴 표시」로 읽힌다.
+        Image doorImage = CreateImage("ExitButton", panel.transform, Center,
+                                      new Vector2(SettingsExitX, closeY), SettingsExitSize,
+                                      Color.white, LoadSprite(GeneratedDir + "문_열림.png"));
+        doorImage.preserveAspect = true;
+
+        Button exit = Undo.AddComponent<Button>(doorImage.gameObject);
+        exit.targetGraphic = doorImage;
+        StyleButton(exit);
+
+        // 나가기 확인창. **설정창 안에** 둔다 — 조리 화면의 확인창(폐기·마무리)은 Bowl 에
+        // 묶여 있고(빈 그릇이면 안 열린다) 정렬 순서도 설정판(210)보다 뒤라 가려진다.
+        Transform confirm = CreateGroup("ExitConfirm", sheet);
+
+        var confirmDim = CreateImage("Dim", confirm, Center, Vector2.zero, ScreenCover,
+                                     new Color(0f, 0f, 0f, 0.55f));
+        confirmDim.raycastTarget = true;
+
+        Image confirmPanel = CreateImage("Panel", confirm, Center, Vector2.zero,
+                                         new Vector2(300f, 120f), Hex("#FFF8E7"), DialogBoxSprite());
+        confirmPanel.type = Image.Type.Sliced;
+        confirmPanel.pixelsPerUnitMultiplier = 1f;
+
+        CreateTmpText("MessageText", confirmPanel.transform, Center, new Vector2(0f, 22f),
+                      new Vector2(280f, 27f), "메인 화면으로 나가시겠습니까?", TextBody, tmpFont);
+
+        Button exitYes = MakeDialogButton("ConfirmButton", confirmPanel.transform, new Vector2(-56f, -26f),
+                                          "넵", Hex("#C05A4A"), tmpFont);
+        Button exitNo = MakeDialogButton("CancelButton", confirmPanel.transform, new Vector2(56f, -26f),
+                                         "아뇨", Hex("#7BA7C7"), tmpFont);
+
+        confirm.gameObject.SetActive(false);
+
         var ui = Undo.AddComponent<SettingsUI>(root.gameObject);
         SetPrivateReference(ui, "root", sheet.gameObject);
         SetPrivateReference(ui, "bgmRow", bgm);
         SetPrivateReference(ui, "sfxRow", sfx);
         SetPrivateReference(ui, "filterRow", filter);
         SetPrivateReference(ui, "closeButton", close);
+        SetPrivateReference(ui, "exitButton", exit);
+        SetPrivateReference(ui, "exitConfirm", confirm.gameObject);
+        SetPrivateReference(ui, "exitYesButton", exitYes);
+        SetPrivateReference(ui, "exitNoButton", exitNo);
 
         sheet.gameObject.SetActive(false);
 

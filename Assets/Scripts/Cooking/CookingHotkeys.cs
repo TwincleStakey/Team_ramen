@@ -52,6 +52,21 @@ public class CookingHotkeys : MonoBehaviour
         // 붙잡고 있으면 한 손이 묶여서 보면서 조리를 못 한다.
         if (keyboard.tabKey.wasPressedThisFrame) ToggleOrderNote();
         if (keyboard.bKey.wasPressedThisFrame) ToggleRecipeBook();
+        if (keyboard.fKey.wasPressedThisFrame) ToggleFastMode();
+    }
+
+    /// <summary>
+    /// 재료 넣는 연출을 두 배로 돌릴지 여닫는다. F 키와 상단 아이콘이 같이 쓴다.
+    ///
+    /// 한 번 켜면 끌 때까지 그대로다(CookTempo 가 PlayerPrefs 에 적어 둔다).
+    /// 손님 입장·시식 컷신 같은 흐름 연출은 안 건드린다 — 그쪽은 읽는 시간이 필요하다.
+    /// </summary>
+    public void ToggleFastMode()
+    {
+        if (!IsCooking) return;
+
+        CookTempo.Toggle();
+        Sfx.Play("sfx_ui_press", 0.5f);
     }
 
     /// <summary>
