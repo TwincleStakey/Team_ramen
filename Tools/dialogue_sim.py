@@ -173,6 +173,10 @@ for _ in range(N):
     if hint and any(w in hint for w in ('가볍게','기름진 건 피하고')) and any(c['ing']=='FlavorOil' and c['kind']=='Add' for c in changes): flag('힌트-요청 모순(기름)', full)
     if hint and '고기' in hint and any(c['ing']=='Chashu' and c['kind']=='Add' for c in changes): flag('힌트-요청 모순(고기)', full)
     if hint and any(w in hint for w in ('담백','자극','깔끔')) and any(c['ing']=='ChiliPowder' and c['kind']=='Add' for c in changes): flag('힌트-요청 모순(매움)', full)
+    # 양을 줄이겠다는 말("가볍게")은 어떤 재료와도 안 맞는다 — 뒤에 토핑을 셋 넣으면 거짓말이 된다. 맛 표현(담백·기름진)으로만 쓴다.
+    if re.search(r'가볍게|간단히|조금만 먹', full) and sum(1 for c in changes if c['kind']=='Add') >= 2: flag('양 줄이는 말 + 추가 2개↑', full)
+    if re.search(r'처음|소문|카던데|드디어|첫 끼|자주 오|늘 먹던|늘 주시던|지난번|맨날', full): flag('방문 횟수 전제(처음/단골)', full)  # "~라고 들었습니다"는 어느 방문이든 되므로 뺀다
+    if re.search(r'점심|아침', full): flag('시간대 불일치(영업 17시~)', full)
     if any('짜지 않게' in l or '따뜻하게' in l or '단단하게' in l for l in lines): flag('조절 불가 필러 노출', full)
     if any((('조금만' in l and '더' not in l) or '있으면' in l) for l, c in zip(lines[2+(1 if hint else 0)+(1 if keep else 0):], changes) if c['kind']=='Add'): flag('추가인데 감소로 읽힘', full)
     if any('두 개는 꼭' in l for l in lines): flag('계란 두 개는 꼭(추가2)', full)

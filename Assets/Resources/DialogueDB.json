@@ -2104,7 +2104,7 @@
     },
     {
       "personaId": "Polite",
-      "text": "저 여기 자주 오는데 오늘도 잘 부탁드려요."
+      "text": "오늘도 잘 부탁드려요."
     },
     {
       "personaId": "Polite",
@@ -2124,7 +2124,7 @@
     },
     {
       "personaId": "Formal",
-      "text": "점심시간이 짧아서 바로 주문하겠습니다."
+      "text": "다음 일정이 있어 바로 주문하겠습니다."
     },
     {
       "personaId": "Gyeongsang",
@@ -2132,7 +2132,7 @@
     },
     {
       "personaId": "Gyeongsang",
-      "text": "사장님예, 여기 라멘 잘한다 카던데예."
+      "text": "사장님예, 국물 냄새가 골목까지 나네예."
     },
     {
       "personaId": "Gyeongsang",
@@ -2164,11 +2164,11 @@
     },
     {
       "personaId": "Jeolla",
-      "text": "여그 라멘 맛있다고 소문났던디."
+      "text": "여그 국물 냄새는 여전하구만잉."
     },
     {
       "personaId": "Jeolla",
-      "text": "여그가 그 집이구만잉."
+      "text": "오다가 배꼽시계가 울리더라잉."
     },
     {
       "personaId": "Jeolla",
@@ -2188,7 +2188,7 @@
     },
     {
       "personaId": "Otaku",
-      "text": "드디어 성지에 도착한 것입니다..."
+      "text": "성지 순례, 오늘도 무사히 도착한 것입니다..."
     },
     {
       "personaId": "Military",
@@ -2204,7 +2204,7 @@
     },
     {
       "personaId": "Military",
-      "text": "휴가 나와서 첫 끼입니다!"
+      "text": "휴가 중 식사 신고합니다!"
     },
     {
       "personaId": "Sageuk",
@@ -2216,7 +2216,7 @@
     },
     {
       "personaId": "Sageuk",
-      "text": "이 집 국물이 일품이라 들었소."
+      "text": "이 집 국물 냄새에 발이 절로 멈추었소."
     },
     {
       "personaId": "Sageuk",
@@ -2276,7 +2276,7 @@
     },
     {
       "personaId": "Youtuber",
-      "text": "여러분, 드디어 그 집에 왔습니다!"
+      "text": "여러분, 오늘도 그 집입니다!"
     },
     {
       "personaId": "Youtuber",
@@ -2284,7 +2284,7 @@
     },
     {
       "personaId": "Youtuber",
-      "text": "구독자 추천 맛집, 바로 갑니다!"
+      "text": "구독자 요청 폭주 맛집, 바로 갑니다!"
     },
     {
       "personaId": "Gourmet",
@@ -2545,7 +2545,7 @@
     {
       "ramenType": "Shio",
       "difficulty": 3,
-      "template": "어제 고기를 너무 많이 먹어서 오늘은 가볍게 먹고 {want}.",
+      "template": "어제 고기를 너무 많이 먹어서 오늘은 담백하게 먹고 {want}.",
       "excludePersona": []
     },
     {
@@ -3040,7 +3040,7 @@
       "ingredient": "Any",
       "amount": -2,
       "difficulty": 2,
-      "template": "{ing} 평소보다 {less}."
+      "template": "{ing} 보통보다 {less}."
     },
     {
       "ingredient": "Any",
@@ -3166,7 +3166,7 @@
       "ingredient": "Any",
       "amount": -4,
       "difficulty": 2,
-      "template": "면은 늘 먹던 {ing}으로 {make}."
+      "template": "면은 입에 익은 {ing}으로 {make}."
     },
     {
       "ingredient": "Any",
@@ -3191,7 +3191,7 @@
     { "persona": "Polite", "ingredient": "Any", "amount": -3, "difficulty": 3, "template": "부탁드릴 게 있는데, 면은 {ing_desc}이면 {good}." },
     { "persona": "Polite", "ingredient": "ThickNoodles", "amount": -3, "difficulty": 2, "template": "오늘은 든든하게 먹고 싶어서 면은 {ing}으로 {make}." },
     { "persona": "Polite", "ingredient": "Any", "amount": -4, "difficulty": 0, "template": "면은 기본 {ing}으로 하면 {good}." },
-    { "persona": "Polite", "ingredient": "Any", "amount": -4, "difficulty": 3, "template": "면은 늘 주시던 {ing_desc} 그대로 {make}." },
+    { "persona": "Polite", "ingredient": "Any", "amount": -4, "difficulty": 3, "template": "{ing_desc}이면 저는 충분해요. 면은 그대로 {make}." },
     { "persona": "Formal", "ingredient": "Any", "amount": -3, "difficulty": 1, "template": "면은 {ing}으로 변경하고 {want}." },
     { "persona": "Formal", "ingredient": "Any", "amount": -3, "difficulty": 2, "template": "개인적으로 {ing}을 선호합니다. 면은 그걸로 {make}." },
     { "persona": "Formal", "ingredient": "Any", "amount": -3, "difficulty": 3, "template": "면은 {ing_desc}이 적합할 것 같습니다. 그렇게 {make}." },
@@ -3216,7 +3216,7 @@
     { "persona": "Grandma", "ingredient": "Any", "amount": -3, "difficulty": 2, "template": "우리 손주가 {ing}이 맛있다더라. 그걸로 {make}." },
     { "persona": "Grandma", "ingredient": "Any", "amount": -3, "difficulty": 3, "template": "총각, 요즘은 {ing_desc}이 자꾸 {crave}." },
     { "persona": "Grandma", "ingredient": "ThinNoodles", "amount": -3, "difficulty": 2, "template": "틀니라 {ing}으로 먹고 {want}." },
-    { "persona": "Grandma", "ingredient": "Any", "amount": -4, "difficulty": 0, "template": "면은 늘 먹던 {ing}이면 된다. 그대로 {make}." },
+    { "persona": "Grandma", "ingredient": "Any", "amount": -4, "difficulty": 0, "template": "면은 {ing}이면 된다. 그대로 {make}." },
     { "persona": "Grandma", "ingredient": "Any", "amount": -4, "difficulty": 2, "template": "{ing}은 우리 영감도 좋아해. 면은 그대로 {make}." },
     { "persona": "Grandma", "ingredient": "Any", "amount": -4, "difficulty": 3, "template": "{ing_desc}이면 나야 좋지. 면은 그대로 {make}." },
     { "persona": "Grandpa", "ingredient": "Any", "amount": -3, "difficulty": 1, "template": "주인 양반, {ing}으로 한 그릇 {make}." },
@@ -3229,7 +3229,7 @@
     { "persona": "Child", "ingredient": "Any", "amount": -3, "difficulty": 2, "template": "엄마가 {ing}이 맛있대요. 면은 그걸로 {make}." },
     { "persona": "Child", "ingredient": "Any", "amount": -3, "difficulty": 3, "template": "아저씨, {ing_desc} {ask} 그걸로 {make}." },
     { "persona": "Child", "ingredient": "ThinNoodles", "amount": -3, "difficulty": 2, "template": "저 이가 흔들려서요. 면은 {ing}으로 {make}." },
-    { "persona": "Child", "ingredient": "Any", "amount": -4, "difficulty": 1, "template": "면은 맨날 먹던 {ing}으로 {make}." },
+    { "persona": "Child", "ingredient": "Any", "amount": -4, "difficulty": 1, "template": "면은 제가 좋아하는 {ing}으로 {make}." },
     { "persona": "Child", "ingredient": "Any", "amount": -4, "difficulty": 2, "template": "저는 {ing}이 좋아요. 면은 그대로 {make}." },
     { "persona": "Child", "ingredient": "Any", "amount": -4, "difficulty": 3, "template": "{ing_desc}이 제일 맛있어요. 면은 그대로 {make}." },
     { "persona": "Gourmet", "ingredient": "Any", "amount": -3, "difficulty": 1, "template": "국물에 맞춰 면은 {ing}으로 {make}." },
@@ -3258,7 +3258,7 @@
     { "persona": "Chungcheong", "ingredient": "Any", "amount": -3, "difficulty": 3, "template": "{ing_desc}이 겁나게 {crave}. 그걸로 {make}." },
     { "persona": "Chungcheong", "ingredient": "ThickNoodles", "amount": -3, "difficulty": 2, "template": "느긋허니 먹을 거니께 {ing}으로 {make}." },
     { "persona": "Chungcheong", "ingredient": "Any", "amount": -4, "difficulty": 1, "template": "면은 {ing} 그대로 냅두고 {make}." },
-    { "persona": "Chungcheong", "ingredient": "Any", "amount": -4, "difficulty": 2, "template": "지난번에 {ing}으로 먹었더니 좋았슈. 그대로 {make}." },
+    { "persona": "Chungcheong", "ingredient": "Any", "amount": -4, "difficulty": 2, "template": "{ing}이 지한테는 딱이유. 그대로 {make}." },
     { "persona": "Chungcheong", "ingredient": "Any", "amount": -4, "difficulty": 3, "template": "속 편허게 {ing_desc} 그대로 {make}." },
     { "persona": "Jeolla", "ingredient": "Any", "amount": -3, "difficulty": 1, "template": "면은 거시기, {ing}으로 {make}." },
     { "persona": "Jeolla", "ingredient": "Any", "amount": -3, "difficulty": 2, "template": "{ing}이 오지게 맛나서 그걸로 {make}." },
@@ -3547,12 +3547,12 @@
     {
       "type": "Conflict",
       "enumName": "FlavorOil",
-      "value": "가볍게"
+      "value": "담백"
     },
     {
       "type": "Conflict",
       "enumName": "Chashu",
-      "value": "가볍게"
+      "value": "기름진"
     },
     {
       "type": "Conflict",

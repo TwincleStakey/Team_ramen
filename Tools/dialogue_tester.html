@@ -251,6 +251,8 @@ function check(s) {
   const noodleWords = DB.keywords.filter(k => (k.type === 'Ingredient' || k.type === 'IngDesc') && k.enumName.includes('Noodle'));
   L.forEach((l, i) => { if (i > 0 && i < L.length - 1 && noodleWords.some(k => l.includes(k.value) && k.enumName !== wantNoodle)) mark('면 모순(대사≠정답)', i); });
   if ((full.match(/그대로/g) || []).length > 1) mark('그대로 중복');
+  if (/가볍게|간단히|조금만 먹/.test(full) && s.changes.filter(c => c.kind === 'Add').length >= 2) mark('양 줄이는 말 + 추가 2개↑');
+  L.forEach((l, i) => { if (/처음|소문|카던데|드디어|첫 끼|자주 오|늘 먹던|늘 주시던|지난번|맨날/.test(l)) mark('방문 횟수 전제(처음/단골)', i); if (/점심|아침/.test(l)) mark('시간대 불일치(영업 17시~)', i); });
   L.forEach((l, i) => { for (const m of l.matchAll(/([가-힣])으로/g)) if ((m[1].charCodeAt(0) - 0xAC00) % 28 === 8) mark('ㄹ받침+으로', i); });
   return { flags, bad };
 }
