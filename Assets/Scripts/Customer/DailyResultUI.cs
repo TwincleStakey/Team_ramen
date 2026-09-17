@@ -144,14 +144,32 @@ public class DailyResultUI : MonoBehaviour
         if (confirmButton != null) confirmButton.gameObject.SetActive(false);
         if (retryButton != null) retryButton.gameObject.SetActive(false);
 
-        yield return Roll(profitText, p => $"당일 총 수익 : {Mathf.RoundToInt(todayProfit * p):N0}원");
-        yield return Roll(totalProfitText, p => $"누적 총 매출 : {Mathf.RoundToInt(totalProfit * p):N0}원");
-        yield return Roll(averageAccuracyText, p => $"평균 정확도 : {averageAccuracy * p:F1}%");
+        System.Func<float, string> profit = p => $"당일 총 수익 : {Mathf.RoundToInt(todayProfit * p):N0}원";
+        System.Func<float, string> total = p => $"누적 총 매출 : {Mathf.RoundToInt(totalProfit * p):N0}원";
+        System.Func<float, string> accuracy = p => $"평균 정확도 : {averageAccuracy * p:F1}%";
+        System.Func<float, string> perfect = p => $"완벽한 한 그릇 : {Mathf.RoundToInt(perfectCount * p)}건";
+
+        // 넉 줄을 **한꺼번에 0 으로 세워 두고** 시작한다.
+        //
+        // 줄은 제 차례가 와야 글이 바뀐다. 그 전까지는 프리팹에 박혀 있던 자리글이 그대로
+        // 보이는데, 그게 영문(「Total Profit」·「Today Accuracy」·「Perfect Ramen」)이라
+        // 「누적 총 매출」은 1.5초, 「완벽한 한 그릇」은 4초 넘게 영어로 떠 있었다.
+        //
+        // 프리팹 자리글도 한글로 바꿔 두었지만 그건 에디터에서 보기 위한 것이고,
+        // **실제로 뜨는 문구는 여기 네 줄이 전부 만든다.** 프리팹에 숫자까지 적지 않는다 —
+        // 적으면 형식이 두 곳에 생겨 한쪽만 고쳤을 때 어긋난다.
+        Set(profitText, profit);
+        Set(totalProfitText, total);
+        Set(averageAccuracyText, accuracy);
+        Set(perfectCountText, perfect);
+
+        yield return Roll(profitText, profit);
+        yield return Roll(totalProfitText, total);
+        yield return Roll(averageAccuracyText, accuracy);
 
         // 건수는 많아야 여덟이라 한 칸 오를 때마다 「띡」이 붙는다. 띡, 띡, 띡 하고 세어 준다.
         // 금액 줄에 같은 걸 하면 3만 번 울리므로 그쪽은 시간 기준 그대로다.
-        yield return Roll(perfectCountText, p => $"완벽한 한 그릇 : {Mathf.RoundToInt(perfectCount * p)}건",
-                          p => Mathf.RoundToInt(perfectCount * p));
+        yield return Roll(perfectCountText, perfect, p => Mathf.RoundToInt(perfectCount * p));
 
         // 목표 달성 여부에 따라 버튼 표시 분기
         if (confirmButton != null) confirmButton.gameObject.SetActive(isSuccess);
@@ -163,6 +181,12 @@ public class DailyResultUI : MonoBehaviour
             yield return ResultStamp.Instance.Play(isSuccess, averageAccuracy);
 
         rollRoutine = null;
+    }
+
+    /// <summary>줄 하나를 굴리기 전 0 상태로 세운다. 프리팹 자리글이 비치지 않게 하는 자리다.</summary>
+    private static void Set(TextMeshProUGUI label, System.Func<float, string> draw)
+    {
+        if (label != null) label.text = draw(0f);
     }
 
     /// <summary>

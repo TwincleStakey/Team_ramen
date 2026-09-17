@@ -37,6 +37,9 @@
 # Visual Studio cache directory
 .vs/
 
+# VS Code 개인 설정. 유니티 VS Code 패키지가 자동으로 만든다.
+.vscode/
+
 # Gradle cache directory
 .gradle/
 

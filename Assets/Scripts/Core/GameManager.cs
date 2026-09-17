@@ -256,6 +256,20 @@ public class GameManager : MonoBehaviour
         BeginGame();
     }
 
+    /// <summary>
+    /// 일차를 몰아서 넘기는 중인가. 그동안은 하루 시작 연출(검은 화면·자막·아이리스)을 안 건다.
+    ///
+    /// 안 막으면 넘긴 일차마다 그 코루틴이 하나씩 쌓여, 네 일차를 건너뛰는 데 20초가 넘게 걸리고
+    /// 자막 넷이 줄지어 뜬다.
+    ///
+    /// **개발용 건너뛰기가 세우는 값인데 선언은 `#if UNITY_EDITOR` 바깥에 둔다.** 이걸 보는
+    /// <see cref="HandleDayStarted"/> 는 본편 흐름이라 안 가려져 있어서, 선언만 안쪽에 두면
+    /// 에디터에서는 멀쩡하고 **빌드에서만** CS0103 으로 깨진다. 실제로 2026-09-16 에 그랬다 —
+    /// 콘솔은 조용한데 Build 를 누르면 그때서야 실패했다.
+    /// 값을 세우는 쪽(F8)은 그대로 에디터 전용이라, 빌드에서는 늘 거짓이다.
+    /// </summary>
+    private bool fastForwarding;
+
 #if UNITY_EDITOR
     /// <summary>
     /// 개발용 건너뛰기 두 가지. 타이틀의 F1 과 같이 에디터에서만 듣는다 — 빌드에는 이 키가 아예 없다.
@@ -408,14 +422,6 @@ public class GameManager : MonoBehaviour
 
         yield return CloseShop();
     }
-
-    /// <summary>
-    /// 일차를 몰아서 넘기는 중인가. 그동안은 하루 시작 연출(검은 화면·자막·아이리스)을 안 건다.
-    ///
-    /// 안 막으면 넘긴 일차마다 그 코루틴이 하나씩 쌓여, 네 일차를 건너뛰는 데 20초가 넘게 걸리고
-    /// 자막 넷이 줄지어 뜬다.
-    /// </summary>
-    private bool fastForwarding;
 
     /// <summary>
     /// F8 — 1~4일차를 정답으로 몰아 넘기고 5일차 주문마감까지 간다.
@@ -813,6 +819,13 @@ public class GameManager : MonoBehaviour
     public void SaveNow()
     {
         if (!saveEnabled) return;
+
+        // 크레딧 중에는 남기지 않는다. 그 자리는 판이 이미 끝난 뒤이고, 무대가 소리를 내려고
+        // 그릇에 실제로 재료를 담는다(CreditsPour) — 담을 때마다 Bowl 이 여기를 부른다.
+        // 남겨 두면 5일을 다 판 뒤 지워 둔 저장이 크레딧 도중에 되살아나, 다음에 켰을 때
+        // 끝난 판이 이어진다. 지금은 saveEnabled 가 꺼져 있어 안 드러나지만, 그 값 하나만
+        // 켜면 바로 터지는 자리다.
+        if (CreditsSequence.Running) return;
 
         // 튜토리얼을 끝내야 저장이 시작된다. 도중에 껐다 켜면 튜토리얼부터 다시 한다.
         if (!TutorialManager.CanSave()) return;
@@ -1307,17 +1320,37 @@ public class GameManager : MonoBehaviour
         // 5일을 다 팔았으면 이어할 것이 없다. 남겨 두면 다음에 켰을 때 끝난 판이 되살아난다.
         SaveSystem.Delete();
 
-        StartCoroutine(PlayEnding(average));
+        // **성적표가 먼저, 이야기가 그다음이다.** 숫자를 확인하고 [확인]을 누르면
+        // 엔딩 글 → 암전 → 크레딧으로 이어진다.
+        //
+        // 예전에는 엔딩 글부터 띄우고 그 뒤에 성적표를 올렸는데, 그때 화면은 전환 판(300)이
+        // 검게 덮고 있고 성적표는 팝업 층(185)이라 **그 밑에 깔려 보이지도 눌리지도 않았다.**
+        // 순서를 뒤집으니 성적표는 가게 화면 위에 제 배경(70% 검정)으로 뜨고, 검게 덮는 일은
+        // 엔딩 글의 몫이 된다 — 층 문제가 아예 사라진다.
+        if (finalResultUI != null)
+        {
+            finalResultUI.Open(totalRevenue, average, perfectCount, servedCount,
+                               () => StartCoroutine(PlayEnding()));
+        }
+        else
+        {
+            Debug.LogWarning("[영업 종료] 씬에 FinalResultUI 가 없어 성적표를 건너뜁니다.");
+            StartCoroutine(PlayEnding());
+        }
     }
 
     /// <summary>
-    /// 엔딩. 검은 화면에 글이 쌓이고, 다 읽으면 최종 성적표가 뜬다.
+    /// 엔딩. 성적표를 걷고, 검은 화면에 글이 한 줄씩 쌓이고, 다 읽으면 암전을 지나 크레딧으로 간다.
     ///
-    /// 성적표를 바로 띄우지 않는다. 닷새를 버틴 끝인데 숫자 석 줄이 툭 올라오면
-    /// 장사가 끝난 것이지 이야기가 끝난 것으로 안 읽힌다.
+    /// 크레딧을 부르고 끝난다. 여기서 검은 판을 걷지 않는다 — 크레딧이 그 어둠을 그대로
+    /// 넘겨받아 소리를 마저 잦아들게 한 뒤에 무대를 차린다(CreditsSequence.Prelude).
     /// </summary>
-    private IEnumerator PlayEnding(float average)
+    private IEnumerator PlayEnding()
     {
+        // 성적표를 먼저 걷는다. 덮이고 나서 걷으면 검은 화면 뒤에서 판이 사라지는 셈이라
+        // 걷는 것이 안 보이고, 덮이는 동안 남겨 두면 판이 같이 어두워지다 툭 없어진다.
+        if (finalResultUI != null) finalResultUI.Close();
+
         ScreenFade fade = ScreenFade.Instance;
         if (fade != null) yield return fade.FadeOut();
 
@@ -1331,9 +1364,11 @@ public class GameManager : MonoBehaviour
 
         yield return new WaitForSecondsRealtime(BlackHoldSeconds);
 
-        // 검은 판은 성적표가 뜬 뒤에도 남는다. 가게로 돌아갈 일이 없으니 걷을 이유가 없다.
+        // 글자만 걷고 검은 판은 그대로 둔다. 가게로 돌아갈 일이 없으니 걷을 이유가 없고,
+        // 크레딧이 이 어둠을 그대로 넘겨받는다.
         if (narration != null) narration.Hide();
-        if (finalResultUI != null) finalResultUI.Open(totalRevenue, average, perfectCount, servedCount);
+
+        CreditsSequence.Begin(CreditsSequence.Exit.Reload);
     }
 
     /// <summary>
@@ -1716,19 +1751,43 @@ public class GameManager : MonoBehaviour
     /// </summary>
     public IEnumerator CreditsPour(Dictionary<IngredientType, int> recipe)
     {
-        Bowl bowl = FindFirstObjectByType<Bowl>();
+        Bowl bowl = CreditsBowl();
         if (bowl == null || recipe == null) yield break;
 
-        if (!bowl.IsEmpty) bowl.Discard();
+        // 버리는 것이 아니라 그냥 비운다. 폐기 소리와 화면 거칠어짐은 크레딧에 얹을 것이 아니다.
+        if (!bowl.IsEmpty) bowl.ClearQuietly();
         yield return PourRecipe(bowl, recipe);
         yield return new WaitForSecondsRealtime(PourSeconds);
+    }
+
+    /// <summary>
+    /// 크레딧이 담을 그릇을 집어 온다.
+    ///
+    /// ⚠️ <b>꺼져 있는 것까지 찾고, 찾은 뒤에는 켜 둔다.</b> 주문 화면이 열릴 때마다
+    /// <c>ShowCookingProps(false)</c> 가 그릇을 통째로 끄는데, 기본값(활성만 찾기)으로 두면
+    /// 그 뒤로 null 이 돌아와 <see cref="CreditsPour"/> 가 통째로 건너뛰어진다. 그러면 크레딧
+    /// 내내 <b>재료 담는 소리가 한 번도 안 난다</b> — 2026-09-16 에 실측으로 확인했다
+    /// (주문 화면이 열린 t≈10초부터 끝까지 그릇이 빈 채였다).
+    ///
+    /// 켜 두어도 화면에는 안 나온다. 그릇은 캔버스 층 0 이고 주문 화면은 180 이라, 그 위에
+    /// 깔린 불투명한 밤 배경에 가려진다.
+    /// </summary>
+    private Bowl CreditsBowl()
+    {
+        Bowl bowl = FindFirstObjectByType<Bowl>(FindObjectsInactive.Include);
+        if (bowl == null) return null;
+
+        // 타래·육수는 붓는 장면을 코루틴으로 돌린다. 꺼진 오브젝트에서는 코루틴이 시작조차
+        // 안 되고 콘솔에 경고만 쌓이므로, 담기 전에 켜 둔다.
+        if (!bowl.gameObject.activeSelf) bowl.gameObject.SetActive(true);
+        return bowl;
     }
 
     /// <summary>담아 둔 것을 비운다. 다음 손님이 앞 손님 그릇에 얹지 않게.</summary>
     public void CreditsClearBowl()
     {
-        Bowl bowl = FindFirstObjectByType<Bowl>();
-        if (bowl != null && !bowl.IsEmpty) bowl.Discard();
+        Bowl bowl = CreditsBowl();
+        if (bowl != null && !bowl.IsEmpty) bowl.ClearQuietly();
     }
 
     /// <summary>손님 화면. 크레딧이 무대를 세우는 데 쓴다.</summary>

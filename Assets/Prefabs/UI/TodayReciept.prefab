@@ -65,7 +65,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: today goal
+  m_text: 목표 금액
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 2c10444aaffdcee48b8845d4c9db7aa2, type: 2}
   m_sharedMaterial: {fileID: 3175182377096558280, guid: 2c10444aaffdcee48b8845d4c9db7aa2, type: 2}
@@ -462,7 +462,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Today Accuracy
+  m_text: 평균 정확도
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 2c10444aaffdcee48b8845d4c9db7aa2, type: 2}
   m_sharedMaterial: {fileID: 3175182377096558280, guid: 2c10444aaffdcee48b8845d4c9db7aa2, type: 2}
@@ -840,7 +840,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: day
+  m_text: 1 일차
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: f9967b82295be174e88095c46bc1981d, type: 2}
   m_sharedMaterial: {fileID: -5447721509298957945, guid: f9967b82295be174e88095c46bc1981d, type: 2}
@@ -977,7 +977,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: today profit
+  m_text: 당일 총 수익
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 2c10444aaffdcee48b8845d4c9db7aa2, type: 2}
   m_sharedMaterial: {fileID: 3175182377096558280, guid: 2c10444aaffdcee48b8845d4c9db7aa2, type: 2}
@@ -1189,9 +1189,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Perfect Ramen
-
-'
+  m_text: 완벽한 한 그릇
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 2c10444aaffdcee48b8845d4c9db7aa2, type: 2}
   m_sharedMaterial: {fileID: 3175182377096558280, guid: 2c10444aaffdcee48b8845d4c9db7aa2, type: 2}
@@ -1448,9 +1446,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Total Profit
-
-'
+  m_text: 누적 총 매출
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 2c10444aaffdcee48b8845d4c9db7aa2, type: 2}
   m_sharedMaterial: {fileID: 3175182377096558280, guid: 2c10444aaffdcee48b8845d4c9db7aa2, type: 2}
