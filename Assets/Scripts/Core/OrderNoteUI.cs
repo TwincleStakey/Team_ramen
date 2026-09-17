@@ -125,6 +125,20 @@ public class OrderNoteUI : MonoBehaviour
         // 종이 높이가 방금 정해졌다. 설 자리와 숨을 자리를 그 높이로 다시 잡는다.
         LayoutPositions();
 
+        // 새 높이로 y 가 바뀌었으니, 미끄러지기 전에 지금 서 있는 자리의 y 부터 맞춘다.
+        //
+        // 안 맞추면 종이가 옛 y 에서 새 y 로 가로 이동과 함께 보간되어 **비스듬히** 들어온다.
+        // 첫 Tab 에서 특히 크게 보인다. Awake 는 FitPaper 전이라 빌더가 넣어 둔 임시 높이
+        // (73+130=203)로 자리를 잡아 두는데, 실제 주문서는 보통 130~175 라 15~35칸 어긋난다.
+        // 두 번째부터도 직전 주문과 길이가 다르면 그만큼 어긋난다.
+        //
+        // x 는 건드리지 않는다. 종이 폭은 안 변하고(FitPaper 는 높이만 잡는다), 들어오다 만
+        // 종이를 다시 열었을 때 그 자리에서 이어 가야 한다.
+        if (panel != null)
+        {
+            panel.anchoredPosition = Snap(new Vector2(panel.anchoredPosition.x, shownPosition.y));
+        }
+
         // 흐려진 채로 숨었다가 다시 나오면 흐린 상태로 시작한다. 나올 때는 늘 진하게.
         if (fade != null) fade.alpha = 1f;
 
